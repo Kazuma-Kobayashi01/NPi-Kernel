@@ -26,6 +26,7 @@ import { CustomEditor } from "./custom-editor";
 import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
 import { WelcomeComponent } from "./welcome";
+import { isComposerDockInput } from "./dock-input";
 import { ensureThemeSync, getEditorTheme, theme } from "../theme/theme";
 
 const DOUBLE_INTERRUPT_MS = 500;
@@ -451,10 +452,18 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			this.#lastViewportRows = [];
 			this.#syncLinkHints([], 0);
 			const viewport: string[] = [];
+			const parts: string[][] = [];
 			for (const root of roots) {
 				const rendered = root.render(width);
 				if (!this.#runtimeMounted && root === this.editor) this.#recordBootstrapEditorRows(rendered.length);
-				viewport.push(...rendered);
+				parts.push([...rendered]);
+			}
+			// The prompt sits on the bottom row from the first frame: the slack goes above the input.
+			const total = parts.reduce((sum, part) => sum + part.length, 0);
+			const inputAt = Math.max(0, roots.indexOf(this.#runtimeMounted ? this.editor : this.#bootstrapInputGap));
+			for (const [index, part] of parts.entries()) {
+				if (isComposerDockInput() && index === inputAt && total < rows) viewport.push(...Array<string>(rows - total).fill(""));
+				viewport.push(...part);
 			}
 			return { viewport: viewport.slice(-rows) };
 		}
@@ -527,9 +536,14 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// rows back out of native scrollback. Let the editor move up instead of
 		// inserting a seam band; subsequent frames retain that natural anchor
 		// until new output fills the screen again. Shell history stays untouched.
+		// NPi: the prompt always sits on the bottom row. With no native history yet the whole
+		// document is the viewport, and the rows it does not fill go above the input (between the
+		// transcript and the dock) instead of leaving the prompt floating under a short transcript.
 		const slack =
 			filledHistoryRows === undefined || promotedChromeContracted
-				? 0
+				? isComposerDockInput() && !promotedChromeContracted
+					? Math.max(0, rows - mutable.length)
+					: 0
 				: Math.max(0, rows - Math.min(rows, filledHistoryRows + (history?.rows.length ?? 0)) - mutable.length);
 		// Park the slack below the live rows rather than above them. Above, it
 		// splits the on-screen history from the live tail and reads as a hole

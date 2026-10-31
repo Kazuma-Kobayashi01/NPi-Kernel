@@ -25,6 +25,11 @@ export default class Update extends Command {
 		const { flags } = await this.parse(Update);
 		await initTheme();
 		if (flags.canary && flags.stable) throw new CliUsageError("--canary and --stable are mutually exclusive");
+		if (!flags.plugins) {
+			// NPi has no self-updater of its own and does not follow the upstream release channel.
+			console.log("npi does not update itself: new versions arrive with NPi Desktop releases. Use `npi update --plugins` for plugins.");
+			return;
+		}
 		if (flags.plugins) {
 			await pluginCli.runPluginCommand({ action: "upgrade", args: [], flags: flags.check ? { dryRun: true } : {} });
 		} else {
