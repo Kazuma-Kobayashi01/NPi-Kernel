@@ -13,6 +13,7 @@ import {
 } from "@oh-my-pi/pi-tui/status-line/schema";
 import { setChatTranscriptDisplayPreferences } from "@oh-my-pi/pi-tui/chat/display-preferences";
 import { setEditorGapComposerShape } from "@oh-my-pi/pi-tui/prompt/editor-top-gap";
+import { setComposerDockInput } from "@oh-my-pi/pi-tui/prompt/dock-input";
 import { setEmojiAutocompleteEnabled } from "@oh-my-pi/pi-tui/prompt/prompt-action-autocomplete";
 import { WORD_COMPLETION_METHODS } from "@oh-my-pi/pi-tui/prompt/word-completion";
 import { applyHyperlinkSetting } from "@oh-my-pi/pi-tui/render/hyperlink";
@@ -135,6 +136,19 @@ export const cfgComposerShape = register({
 	},
 });
 effect(cfgComposerShape, setEditorGapComposerShape);
+
+export const cfgComposerDockInput = register({
+	id: "composer.dockInput",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "appearance",
+		group: "Composer",
+		label: "Dock Input to the Bottom",
+		description: "Keep the prompt on the bottom row, with the welcome and the transcript above it, even when the screen is mostly empty",
+	},
+});
+effect(cfgComposerDockInput, setComposerDockInput);
 
 export const cfgComposerTokenRate = register({
 	id: "composer.tokenRate",
@@ -1137,7 +1151,7 @@ export const cfgStartupSetupWizard = register({
 export const cfgStartupCheckUpdate = register({
 	id: "startup.checkUpdate",
 	type: "boolean",
-	default: true,
+	default: false,
 	ui: {
 		tab: "interaction",
 		group: "Startup & Updates",

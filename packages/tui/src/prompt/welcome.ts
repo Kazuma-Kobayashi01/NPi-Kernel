@@ -407,7 +407,7 @@ export function lockupNode(version: string): NativeNode {
 }
 
 /** Block-grid brand mark shared by the welcome and setup surfaces. */
-export const PI_LOGO = ["████████████", "   ██  ██   ", "   ██  ██   ", "   ▒▒  ██   ", "       ██   "];
+export const PI_LOGO = ["▄██████████▄", "▀▀▀▀▀▀▀▀▀▀▀▀", "  ██    ██  ", "  ██  ▪ ██  ", "▄▄██▄▄▄▄██▄▄"];
 
 /** Columns of {@link PI_LOGO}. */
 const LOGO_WIDTH = Math.max(...PI_LOGO.map(row => row.length));
@@ -448,13 +448,13 @@ function centerBlock(lines: readonly string[], width: number): string[] {
 
 /** Multi-stop palette for the diagonal gradient. */
 const GRADIENT_STOPS: ReadonlyArray<readonly [number, number, number]> = [
-	[248, 79, 204], // oklch(0.7 0.24 340)
-	[147, 98, 244], // oklch(0.62 0.21 295)
-	[0, 219, 228], // oklch(0.81 0.14 200)
+	[243, 239, 230], // ivory
+	[200, 169, 106], // antique gold
+	[127, 163, 214], // slate blue
 ];
 
 /** 256-color ramp fallback when truecolor isn't available. */
-const GRADIENT_RAMP_256 = [206, 170, 134, 99, 69, 74, 44];
+const GRADIENT_RAMP_256 = [255, 230, 223, 180, 143, 110, 74];
 
 /** Half-width of the shine highlight band, expressed in gradient-t units. */
 const SHINE_HALF_WIDTH = 0.18;

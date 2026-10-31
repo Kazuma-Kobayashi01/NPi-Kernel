@@ -118,7 +118,7 @@ describe("MCP add wizard under a native surface", () => {
 		for (let i = 0; i < 8; i++) wizard.handleInput("\x7f");
 		type(wizard, "linear");
 		act(wizard, "next");
-		expect(title(wizard)).toBe("How does omp reach it?");
+		expect(title(wizard)).toBe("How does npi reach it?");
 		expect(phases(wizard).slice(0, 2)).toEqual(["success", "accent"]);
 		expect(buttons(wizard)).toEqual(["Cancel  ⌃C", "Back  esc", "Continue  ⏎"]);
 	});
@@ -134,7 +134,7 @@ describe("MCP add wizard under a native surface", () => {
 		expect(title(wizard)).toBe("Server URL");
 
 		act(wizard, "back");
-		expect(title(wizard)).toBe("How does omp reach it?");
+		expect(title(wizard)).toBe("How does npi reach it?");
 		wizard.handleNativeEvent({ type: "select", key: "sheet/choices-transport", item: "0" });
 		expect(title(wizard)).toBe("Command");
 	});
@@ -165,7 +165,7 @@ describe("MCP add wizard under a native surface", () => {
 		resolve();
 		// The wizard's continuation was queued on the test before this await's, so it has run.
 		await promise;
-		expect(title(wizard)).toBe("How does omp reach it?");
+		expect(title(wizard)).toBe("How does npi reach it?");
 	});
 
 	it("reviews the server and saves it on Enter", () => {

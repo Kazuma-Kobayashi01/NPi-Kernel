@@ -271,8 +271,12 @@ function writeStartupWarning(warning: string): void {
 	process.stderr.write(`${chalk.yellow(`Warning: ${warning}`)}\n`);
 }
 
+/** Upstream self-update is off for good in NPi: updates ship with NPi Desktop releases. */
+const NPI_UPSTREAM_UPDATES = false;
+
 async function checkForNewVersion(currentVersion: string): Promise<string | undefined> {
-	if (!cfgStartupCheckUpdate.get(settings)) {
+	// NPi is cut off from the upstream build service: it never looks for, or advertises, an upstream update.
+	if (!NPI_UPSTREAM_UPDATES || !cfgStartupCheckUpdate.get(settings)) {
 		return;
 	}
 	try {

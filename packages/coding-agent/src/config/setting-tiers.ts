@@ -22,7 +22,7 @@ const TIER_A = new Set<string>([
 	"skills.enabled", "browser.enabled", "mcp.enableProjectConfig",
 	"compaction.enabled", "retry.enabled", "git.enabled", "ask.enabled",
 	"display.showTokenUsage", "display.showTurnTime",
-	"memory.backend", "memories.enabled",
+	"memory.backend", "memories.enabled", "autolearn.enabled",
 	"completion.notify", "error.notify",
 ]);
 
@@ -34,6 +34,9 @@ const TIER_D = [
 	"stt.", "tts.", "speech.", "live.", "collab.", "share.", "stream.", "auth.", "telemetry.", "dev.",
 	"codexResets.", "claudeResets.", "ida.", "computer.", "exa.", "searxng.", "secrets.", "power.", "title.",
 	"images.", "extensionRenderers.", "extensionHandlers.",
+	// The tuning knobs of the memory systems, retries, providers and housekeeping (merged: the switch stays up front).
+	"mnemopi.", "hindsight.", "memories.", "sharpshooter.", "autolearn.", "snapcompact.",
+	"retry.", "providers.", "gc.", "async.", "bashInterceptor.", "shellMinimizer.", "eval.", "commit.", "ttsr.", "thinkingBudgets.",
 ];
 
 export function tierOf(id: string): SettingTier {
