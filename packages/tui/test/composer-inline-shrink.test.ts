@@ -2,7 +2,6 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { COMPOSER_DEFAULTS, Composer } from "@oh-my-pi/pi-tui/prompt/composer";
-import { UserMessageComponent } from "@oh-my-pi/pi-tui/chat/user-message";
 import { EditorTopGap } from "@oh-my-pi/pi-tui/prompt/editor-top-gap";
 import { setComposerDockInput } from "@oh-my-pi/pi-tui/prompt/dock-input";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
@@ -950,7 +949,6 @@ describe("composer inline shrink (#11007)", () => {
 			setComposerDockInput(true);
 			try {
 				const h = makeHarness(COLUMNS, ROWS, 3);
-				h.transcript.addChild(new UserMessageComponent("hello"));
 				await h.scheduler.settle(h.terminal);
 				expect(editorRow(h)).toBe(ROWS - 1);
 				h.widget.rows = 6;
@@ -967,7 +965,7 @@ describe("composer inline shrink (#11007)", () => {
 			}
 		});
 
-		it("shows an empty transcript as a start page: the editor sits mid-screen, not on the bottom row", async () => {
+		it("keeps the editor on the bottom row after a reset to an empty transcript", async () => {
 			setComposerDockInput(true);
 			try {
 				const h = makeHarness();
@@ -975,9 +973,10 @@ describe("composer inline shrink (#11007)", () => {
 				h.composer.setRuntimeChildren([new TranscriptContainer(), h.hud, h.editor]);
 				h.composer.ui.resetDisplay();
 				await h.scheduler.settle(h.terminal);
-				const at = editorRow(h);
-				expect(at).toBeGreaterThan(2);
-				expect(at).toBeLessThan(ROWS - 2);
+				h.widget.rows = 3;
+				h.composer.ui.requestRender();
+				await h.scheduler.settle(h.terminal);
+				expect(editorRow(h)).toBe(ROWS - 1);
 				h.composer.stop();
 			} finally {
 				setComposerDockInput(false);

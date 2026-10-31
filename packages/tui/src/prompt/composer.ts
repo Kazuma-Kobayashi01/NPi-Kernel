@@ -18,7 +18,7 @@ import {
 	type TUIOptions,
 	type ViewportSize,
 } from "../tui";
-import { visibleWidth, wrapLiteralLine } from "../utils";
+import { wrapLiteralLine } from "../utils";
 import type { NativeChild, NativeSurface, NativeSurfaceProvider } from "../native/node";
 import { sameItems } from "../native/memo";
 import { postmortem } from "@oh-my-pi/pi-utils";
@@ -27,20 +27,7 @@ import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
 import { WelcomeComponent } from "./welcome";
 import { isComposerDockInput } from "./dock-input";
-import { UserMessageComponent } from "../chat/user-message";
-import { VERSION } from "@oh-my-pi/pi-utils/dirs";
 import { ensureThemeSync, getEditorTheme, theme } from "../theme/theme";
-
-/** The start page's last row: working folder at the left, version at the right (dim). */
-function startFooter(width: number): string {
-	const home = process.env.HOME ?? "";
-	const cwd = process.cwd();
-	const left = ` ${home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd}`;
-	const right = `v${VERSION} `;
-	const gap = width - visibleWidth(left) - visibleWidth(right);
-	if (gap < 1) return theme.fg("dim", left.slice(0, Math.max(0, width)));
-	return theme.fg("dim", `${left}${" ".repeat(gap)}${right}`);
-}
 
 const DOUBLE_INTERRUPT_MS = 500;
 // How long idle chrome must hold its height after a turn before it is treated as permanent.
@@ -531,7 +518,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			activeSpans.push({ start: span.start, end: span.end, candidates: () => ids });
 		}
 		const drop = Math.max(0, before.length + active.length + after.length - rows);
-		const mutable: string[] = [...before, ...active, ...after].slice(drop);
+		const mutable = [...before, ...active, ...after].slice(drop);
 		// Once a paint reaches the bottom row over committed history, rows above
 		// it may already be in native scrollback, which no later frame can pull
 		// back down. Keep the input on the bottom row whenever the frame shrinks
@@ -554,20 +541,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// transcript and the dock) instead of leaving the prompt floating under a short transcript.
 		// Docked (NPi): whatever the history state, the live rows plus the slack fill the screen, so
 		// the prompt stays on the last row, also after a dialog or menu closes.
-		// The start page (nothing said yet, nothing in history): the welcome and the prompt sit
-		// together in the upper-middle of the screen, as a start page does. The first message
-		// fills the transcript and the prompt drops to the bottom row for good.
-		// Startup notices ("Connected to MCP server") share the page; a user message ends it.
-		const startPage =
-			isComposerDockInput() &&
-			history === undefined &&
-			(filledHistoryRows ?? 0) === 0 &&
-			!transcript.children.some(child => child instanceof UserMessageComponent);
-		const startPad = startPage ? Math.max(0, rows - mutable.length) : 0;
-		const topPad = Math.floor(startPad * 0.4);
-		const slack = startPage
-			? 0
-			: isComposerDockInput()
+		const slack = isComposerDockInput()
 			? Math.max(0, rows - mutable.length)
 			: filledHistoryRows === undefined || promotedChromeContracted
 				? 0
@@ -584,12 +558,6 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			const at = Math.max(0, Math.min(mutable.length, before.length + active.length - drop));
 			mutable.splice(at, 0, ...Array<string>(slack).fill(""));
 		}
-		if (startPage) {
-			mutable.unshift(...Array<string>(topPad).fill(""));
-			mutable.push(...Array<string>(startPad - topPad).fill(""));
-			// A quiet footer on the last row: the folder at the left, the version at the right.
-			if (startPad - topPad >= 2) mutable[mutable.length - 1] = startFooter(width);
-		}
 		const viewportLength = mutable.length;
 		const spans: ViewportClickSpan[] = [];
 		const shift = (span: ViewportClickSpan, base: number): void => {
@@ -603,8 +571,8 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 				spans.push({ start: clamped, end, candidates: (local: number) => span.candidates(local + skew) });
 			}
 		};
-		for (const span of activeSpans) shift(span, before.length - drop + topPad);
-		for (const span of afterSpans) shift(span, slack + before.length + active.length - drop + topPad);
+		for (const span of activeSpans) shift(span, before.length - drop);
+		for (const span of afterSpans) shift(span, slack + before.length + active.length - drop);
 		this.#lastClickSpans = spans;
 		this.#lastViewportRows = mutable;
 		this.#lastViewportWidth = width;
