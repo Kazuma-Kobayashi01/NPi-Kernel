@@ -1,0 +1,8 @@
+// Catalog entry for "alibaba-cn" (Alibaba Cloud DashScope pay-as-you-go).
+
+provider "alibaba-cn" {
+	default-model "qwen-plus"
+	env "DASHSCOPE_API_KEY" "QIANWEN_API_KEY"
+	dynamic-models-authoritative #true
+	discovery label="Alibaba(China)"
+}

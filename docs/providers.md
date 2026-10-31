@@ -133,6 +133,7 @@ The variables below supply credentials after runtime/config overrides and stored
 | `abliteration`                   | `ABLITERATION_API_KEY`, then `ABLIT_KEY`                                            |
 | `aiand`                          | `AIAND_API_KEY`                                                                     |
 | `cerebras`                       | `CEREBRAS_API_KEY`                                                                  |
+| `alibaba-cn`                     | `DASHSCOPE_API_KEY`, then `QIANWEN_API_KEY`                                         |
 | `alibaba-token-plan`             | `ALIBABA_TOKEN_PLAN_API_KEY`, then `BAILIAN_TOKEN_PLAN_API_KEY`                     |
 | `baseten`                        | `BASETEN_API_KEY`                                                                   |
 | `bedrock-mantle`                 | `AWS_BEARER_TOKEN_BEDROCK` or the AWS credential chain (SigV4)                      |

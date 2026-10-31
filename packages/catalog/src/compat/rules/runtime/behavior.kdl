@@ -213,10 +213,13 @@ behavior {
 		substring="sensevoice" substring="cosyvoice" substring="fish-speech" substring="indextts" \
 		substring="sovits" substring="whisper" substring="hunyuanvideo" substring="wan2" \
 		substring="ltx-video" substring="speech" substring="moderator" substring="tts"
-	// Alibaba Token Plan serves ASR/image/embedding SKUs the chat picker
-	// cannot route.
+	// Alibaba Token Plan & DashScope serve ASR/image/embedding/video SKUs the
+	// chat picker cannot route.
 	exclude-models provider="alibaba-token-plan" prefix="fun-asr" prefix="happyhorse-" \
 		prefix="qwen-audio-" prefix="qwen-image-" prefix="text-embedding-" prefix="wan2.7-"
+	exclude-models provider="alibaba-cn" substring="embedding" substring="reranker" \
+		substring="rerank" substring="sensevoice" substring="cosyvoice" substring="paraformer" \
+		substring="fun-asr" substring="wanx" substring="tts" substring="asr"
 	// Copilot's /models listing carries no transport field; route Claude ids
 	// to Anthropic Messages, the reviewed Responses roster to Responses, and
 	// everything else to chat completions. Every Grok Copilot has served since

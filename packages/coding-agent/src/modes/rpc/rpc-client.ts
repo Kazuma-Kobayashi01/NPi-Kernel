@@ -1296,9 +1296,9 @@ export class RpcClient {
 		return this.#getData<RpcMessagesPage>(response);
 	}
 
-	/** Get all messages, draining stable pages when protocol v2 is available. */
-	async getMessages(): Promise<AgentMessage[]> {
-		if (this.#protocolVersion === 2) {
+	/** Get context messages with v2 paging, or the full persisted active-branch history in one response. */
+	async getMessages(options: { fullHistory?: boolean } = {}): Promise<AgentMessage[]> {
+		if (!options.fullHistory && this.#protocolVersion === 2) {
 			try {
 				const messages: AgentMessage[] = [];
 				const seenCursors = new Set<string>();
@@ -1325,7 +1325,7 @@ export class RpcClient {
 				if (!isPageFallbackError(error)) throw error;
 			}
 		}
-		const response = await this.#send({ type: "get_messages" });
+		const response = await this.#send({ type: "get_messages", ...options });
 		return this.#getData<{ messages: AgentMessage[] }>(response).messages;
 	}
 

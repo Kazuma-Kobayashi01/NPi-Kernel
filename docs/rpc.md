@@ -253,12 +253,16 @@ correlate it via `id`. Ordering across concurrent commands is not guaranteed
 
 ### Messages
 
-- `{ id?, type: "get_messages" }`
+- `{ id?, type: "get_messages", fullHistory?: boolean }`
 - `{ id?, type: "get_messages_page", cursor?: string, limit?: number }`
+
+`get_messages` returns `{ messages }` containing the current model context by default (also when `fullHistory` is `false`). Set `fullHistory: true` to read every persisted message entry on the current root-to-leaf branch, in chronological order, including user, assistant, and tool-result messages from before compaction. Sibling branches and non-message entries such as compaction summaries are excluded. This is a display/history snapshot only: it does not expand or otherwise change the model context.
 
 `get_messages_page` returns a stable chronological page with `messages`, `totalMessages`, and an opaque `nextCursor` when more messages remain. Cursors are bound to the session ID, durable leaf, and message count. The server rejects stale cursors if the session changes between requests, and refuses to start a paging walk while the session is streaming or compacting. Failed page requests carry a machine-readable `code` on the error response — `session_busy` (session is streaming or compacting) or `stale_cursor` (the snapshot behind the cursor changed, e.g. a background bash appended a message between pages) — so clients can react without matching error-message text. Pages default to 100 messages; `limit` must be an integer from 1 through 256. The page builder normally caps serialized message content at 768 KiB, but always includes at least one message, so a single large message can exceed that budget. A v1 caller can page ordinary histories, but an individual message whose response exceeds the 1 MiB physical-frame ceiling produces an overflow error; retrieving it losslessly requires negotiated v2 framing.
 
 The bundled TypeScript `RpcClient.getMessages()` and Python `RpcClient.get_messages()` drain this paged endpoint automatically after negotiating v2. They retain the legacy monolithic command when connected to a v1 server, and on either `session_busy` or `stale_cursor` they discard partial pages and fall back to the legacy best-effort snapshot. Direct `getMessagesPage()` and `get_messages_page()` calls remain strict so incremental hosts never mix snapshots silently.
+
+Full history is not paged: TypeScript `RpcClient.getMessages({ fullHistory: true })` and Python `RpcClient.get_messages(full_history=True)` send the monolithic command, using the negotiated transport's normal chunking and size limits. Rust and Go callers can request it with the generated `GetMessagesCommand` (`full_history: Some(true)` / `FullHistory: Ptr(true)`); their high-level paging helpers retain the default context behavior.
 
 ### Login
 

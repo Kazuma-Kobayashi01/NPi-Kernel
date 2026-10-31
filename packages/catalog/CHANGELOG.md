@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Alibaba(China) pay-as-you-go provider (`alibaba-cn`) for DashScope / platform.qianwenai.com API keys, supporting dynamic model discovery, API key login and validation, and environment variables `DASHSCOPE_API_KEY` / `QIANWEN_API_KEY`.
+
 ### Changed
 
 - Clamping a requested thinking effort now resolves through the model's `effortMap` alias first, so the request lands on the tier the model serves instead of the nearest lower one ([#17395](https://github.com/can1357/oh-my-pi/pull/17395) by [@Maziar123](https://github.com/Maziar123))

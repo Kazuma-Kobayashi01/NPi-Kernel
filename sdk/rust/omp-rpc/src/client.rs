@@ -1039,7 +1039,7 @@ impl Client {
 				result => return result,
 			}
 		}
-		self.call(&GetMessagesCommand {})
+		self.call(&GetMessagesCommand::default())
 	}
 
 	fn get_message_pages(&self) -> Result<Vec<AgentMessage>, Error> {

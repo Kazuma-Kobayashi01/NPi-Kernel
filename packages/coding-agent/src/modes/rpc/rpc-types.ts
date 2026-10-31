@@ -141,7 +141,7 @@ export type RpcCommand =
 	| { id?: string; type: "handoff"; customInstructions?: string }
 
 	// Messages
-	| { id?: string; type: "get_messages" }
+	| { id?: string; type: "get_messages"; fullHistory?: boolean }
 	| { id?: string; type: "get_messages_page"; cursor?: string; limit?: number }
 
 	// Login

@@ -214,7 +214,7 @@ func (c *Client) GetMessages(ctx context.Context) ([]AgentMessage, error) {
 			return messages, err
 		}
 	}
-	return c.Commands.GetMessages(ctx)
+	return c.Commands.GetMessages(ctx, GetMessagesCommand{})
 }
 
 func (c *Client) pageMessages(ctx context.Context) ([]AgentMessage, error) {

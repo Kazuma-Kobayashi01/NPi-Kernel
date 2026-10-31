@@ -1,0 +1,9 @@
+auth "alibaba-cn" {
+	name "Alibaba(China)"
+	login "api-key" {
+		auth-url "https://platform.qianwenai.com/home/api-keys"
+		instructions "Create or copy your API key from the QianWen AI console"
+		prompt "Paste your Alibaba(China) API key" placeholder="sk-..."
+		validate "models-endpoint" label="Alibaba(China)" url="https://dashscope.aliyuncs.com/compatible-mode/v1/models"
+	}
+}
