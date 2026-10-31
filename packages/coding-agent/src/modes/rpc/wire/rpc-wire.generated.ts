@@ -1047,12 +1047,12 @@ export type PromptStatus = "completed" | "aborted" | "error";
 /** Failure detail of a `prompt_result` with `status: "error"`. */
 export interface PromptError {
 	message: string;
-	/** Transient: resubmitting later may succeed (omp's own retries are exhausted). */
+	/** Transient: resubmitting later may succeed (npi's own retries are exhausted). */
 	retryable: boolean;
 	provider?: string;
 	model?: string;
 	httpStatus?: number;
-	/** `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request. */
+	/** `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request. */
 	code?: "cost_cap";
 }
 

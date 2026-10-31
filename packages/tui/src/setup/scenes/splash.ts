@@ -158,7 +158,7 @@ function resetCells(width: number, height: number): string[][] {
 let diagonalEscapes: (string | undefined)[] = [];
 
 /**
- * Animated setup splash, in the spirit of the omp landing page: the brand π
+ * Animated setup splash, in the spirit of the npi landing page: the brand π
  * mark rendered with the live diagonal gradient + shine sweep, rising out of a
  * rippling, gradient-lit water surface, under a faint twinkling starfield. The
  * mark and water share one continuous gradient so the sweep reads across the
@@ -251,7 +251,7 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 let splashNode: NativeNode | undefined;
 
 /**
- * Native splash: omp's lockup as the welcome draws it (the builtin mark
+ * Native splash: npi's lockup as the welcome draws it (the builtin mark
  * drawing on beside the wordmark and version), centered, and a quiet Enter
  * hint pinned to the bottom. The water and starfield are cell paintings with
  * no semantic counterpart. A click anywhere sends `skip`.

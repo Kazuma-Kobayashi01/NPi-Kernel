@@ -207,7 +207,7 @@ const UNASSUMED_KINDS: Partial<Record<TspKind, true>> = { media: true, json: tru
  * The reply a v1 terminal is assumed to give before its real `hello` arrives
  * (the `TERM_PROGRAM=tern` optimistic start): the whole vocabulary except
  * {@link UNASSUMED_KINDS}, the default APC limit and credits, the terminal's
- * width, the appearance omp already detected, full motion, and `blobs`, so a
+ * width, the appearance npi already detected, full motion, and `blobs`, so a
  * resumed session's images are asked about rather than resent before the
  * reply comes.
  */

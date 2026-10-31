@@ -1842,7 +1842,7 @@ export class SelectorController {
 							onRename: async (session: SessionInfo, title: string): Promise<string | null> => {
 								if (this.ctx.sessionManager.getSessionFile() === session.path) {
 									// A session that has only been read does not hold
-									// its ownership lease, so another omp process can
+									// its ownership lease, so another npi process can
 									// claim it; the live rename would then fork onto
 									// a sibling and still report success, leaving the
 									// row here pointing at the old path. Claim the
@@ -1851,7 +1851,7 @@ export class SelectorController {
 									const claim = new FileSessionStorage().claimSession(session.id, session.path);
 									if (!claim) {
 										throw new Error(
-											"Failed to rename session: it is currently in use by another omp process",
+											"Failed to rename session: it is currently in use by another npi process",
 										);
 									}
 									try {

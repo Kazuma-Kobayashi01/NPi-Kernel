@@ -627,7 +627,7 @@ const KNOWN_TERMINALS = Object.freeze({
 	// the conservative defaults.
 	rio: new TerminalInfo("rio", ImageProtocol.Kitty, true, true),
 	// Tern (Stencil's terminal, `stencil-term`) sets TERM_PROGRAM=tern and
-	// implements Kitty graphics, OSC 8 and OSC 9/99 notifications. Whether omp
+	// implements Kitty graphics, OSC 8 and OSC 9/99 notifications. Whether npi
 	// renders natively (Tern Surface Protocol) is decided by the `hello`
 	// handshake alone, never by this identity.
 	tern: new TerminalInfo("tern", ImageProtocol.Kitty, true, true, NotifyProtocol.Osc99),
@@ -641,7 +641,7 @@ const KNOWN_TERMINALS = Object.freeze({
 	// gets the Ghostty progress keepalive. The Ghostty initial image delay stays
 	// Ghostty-only: it works around a Ghostty app startup race, not libghostty.
 	// Monstar turns OSC 9 into a D-Bus notification with a default action;
-	// activating it focuses the Monstar window. The BEL path uses omp's own
+	// activating it focuses the Monstar window. The BEL path uses npi's own
 	// `notify-send` fallback instead, which cannot focus a window.
 	monstar: new TerminalInfo("monstar", ImageProtocol.Kitty, true, true, NotifyProtocol.Osc9, false, false, false, 2),
 });

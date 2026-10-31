@@ -307,9 +307,9 @@ export class PluginListComponent extends OverlayPanel {
 		if (entries.length === 0) {
 			this.addChild(new Text(theme.fg("muted", "No plugins installed"), 0, 0));
 			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", "Install npm plugins:        omp plugin install <package>"), 0, 0));
+			this.addChild(new Text(theme.fg("dim", "Install npm plugins:        npi plugin install <package>"), 0, 0));
 			this.addChild(
-				new Text(theme.fg("dim", "Install marketplace plugins: omp plugin install <name>@<marketplace>"), 0, 0),
+				new Text(theme.fg("dim", "Install marketplace plugins: npi plugin install <name>@<marketplace>"), 0, 0),
 			);
 			this.addChild(new Spacer(1));
 
@@ -378,7 +378,7 @@ export class PluginListComponent extends OverlayPanel {
 			lead:
 				rows.length > 0
 					? "Plugins installed for you and this project. Configure one to turn it or its features on and off."
-					: "No plugins installed. Install one with omp plugin install <package>, or <name>@<marketplace>.",
+					: "No plugins installed. Install one with npi plugin install <package>, or <name>@<marketplace>.",
 			sections: rows.length > 0 ? [{ id: "installed", title: "Installed", rows }] : [],
 			focus: this.#selectList.getSelectedItem()?.value ?? null,
 			editing: null,
@@ -403,10 +403,10 @@ export class PluginListComponent extends OverlayPanel {
 						text([span("No plugins installed", "muted")]),
 						node("kv", {
 							items: [
-								{ k: "Install npm plugins", v: [span("omp plugin install <package>", "code")] },
+								{ k: "Install npm plugins", v: [span("npi plugin install <package>", "code")] },
 								{
 									k: "Install marketplace plugins",
-									v: [span("omp plugin install <name>@<marketplace>", "code")],
+									v: [span("npi plugin install <name>@<marketplace>", "code")],
 								},
 							],
 						}),

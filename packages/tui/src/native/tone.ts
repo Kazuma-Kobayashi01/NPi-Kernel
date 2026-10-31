@@ -1,5 +1,5 @@
 /**
- * omp theme colours → TSP tones. Components that only hold ANSI stylers
+ * npi theme colours → TSP tones. Components that only hold ANSI stylers
  * (`(text) => string`) sample them with a probe string to recover the theme
  * token behind the escape, then map the token to a card/text tone.
  */
@@ -28,7 +28,7 @@ export interface BackgroundChrome {
 	selected?: boolean;
 }
 
-/** Map an omp background token to card tone/role. */
+/** Map an npi background token to card tone/role. */
 export function backgroundChrome(bg: ThemeBg | undefined): BackgroundChrome {
 	switch (bg) {
 		case "userMessageBg":
@@ -50,7 +50,7 @@ export function backgroundChrome(bg: ThemeBg | undefined): BackgroundChrome {
 	}
 }
 
-/** The omp theme colour an ANSI renderer draws a TSP tone with (the inverse of {@link colorTone}). */
+/** The npi theme colour an ANSI renderer draws a TSP tone with (the inverse of {@link colorTone}). */
 export function toneColor(tone: TspTone): ThemeColor {
 	switch (tone) {
 		case "neutral":
@@ -73,7 +73,7 @@ export function toneColor(tone: TspTone): ThemeColor {
 }
 
 /**
- * Tone of an omp colour used as a severity or border colour; undefined for
+ * Tone of an npi colour used as a severity or border colour; undefined for
  * colours that carry no tone (callers pick their own fallback).
  */
 export function colorTone(color: ThemeColor | undefined): TspTone | undefined {

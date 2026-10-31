@@ -116,7 +116,7 @@ class DaemonConnection {
 }
 
 /**
- * Connect and confirm the daemon speaks this omp version or a newer one;
+ * Connect and confirm the daemon speaks this npi version or a newer one;
  * `undefined` when nothing usable listens.
  */
 async function connectDaemon(endpoint: string): Promise<DaemonConnection | undefined> {
@@ -132,7 +132,7 @@ async function connectDaemon(endpoint: string): Promise<DaemonConnection | undef
 		if (pong.ok && pong.op === "ping" && (pong.version === VERSION || compareVersions(pong.version, VERSION) > 0)) {
 			return connection;
 		}
-		// A daemon from an older omp version: retire it so this version's starts. A newer
+		// A daemon from an older npi version: retire it so this version's starts. A newer
 		// one keeps serving: after an in-place upgrade this process would start that same
 		// newer build again, and retiring it cuts off every process already on it.
 		await connection.request(id => ({ id, op: "shutdown" }), REQUEST_TIMEOUT_MS).catch(() => undefined);
@@ -294,7 +294,7 @@ export function textPredictionBackend(method: WordCompletionEngine): WordPredict
 
 /**
  * One completion from the daemon with its confidence, for diagnostics such as
- * `omp predict`. Unlike the editor backend, failures reject instead of
+ * `npi predict`. Unlike the editor backend, failures reject instead of
  * degrading to no ghost text.
  */
 export function requestTextPrediction(
@@ -308,7 +308,7 @@ export function requestTextPrediction(
 
 /**
  * Close this process's daemon connection (the daemon keeps running). For
- * short-lived commands such as `omp predict`; the composer keeps its
+ * short-lived commands such as `npi predict`; the composer keeps its
  * connection for the process lifetime.
  */
 export function closeTextPrediction(): void {

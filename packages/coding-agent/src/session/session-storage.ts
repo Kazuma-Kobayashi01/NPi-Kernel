@@ -31,7 +31,7 @@ const utf8Decoder = new TextDecoder("utf-8");
 /**
  * Basename of a rewrite staged by {@link sessionStagingPath}; group 1 is the
  * target's basename. A live publish renames it away within milliseconds;
- * `omp gc` reclaims one a killed writer left behind.
+ * `npi gc` reclaims one a killed writer left behind.
  */
 export const SESSION_STAGING_RE = /^\.(.+)\.[0-9a-f]{16}\.tmp$/;
 
@@ -557,7 +557,7 @@ const TEST_SESSION_OWNERS_DIR_ENV = "PI_TEST_SESSION_OWNERS_DIR";
 /**
  * A test run never touches the real state dir for session ownership leases:
  * bun test processes use one per-user directory in the OS temp dir. It is
- * exported when this module loads, before a test can spawn an omp process,
+ * exported when this module loads, before a test can spawn an npi process,
  * so spawned processes meet the same leases. Session ids are unique, so
  * concurrent test processes can share it, and it is reused across runs (bun
  * test fires no exit hook to remove it).
@@ -643,7 +643,7 @@ function sessionLeasePath(sessionId: string, createDir: boolean): string {
 /**
  * Take a session's ownership lease without waiting, or `null` while another
  * process holds it. A process writing the session holds it (see
- * `FileSessionStorage.claimSession`) until it exits; `omp gc` takes it to
+ * `FileSessionStorage.claimSession`) until it exits; `npi gc` takes it to
  * delete a session no running process owns. Throws when the lock cannot be
  * probed.
  */
@@ -672,7 +672,7 @@ export interface SessionLeaseReport {
 	unknown: string[];
 }
 
-/** `isSessionLeaseHeld` over many ids, for `omp session lease` and RPC `get_session_lease`. */
+/** `isSessionLeaseHeld` over many ids, for `npi session lease` and RPC `get_session_lease`. */
 export function probeSessionLeases(sessionIds: readonly string[]): SessionLeaseReport {
 	const report: SessionLeaseReport = { held: [], unknown: [] };
 	for (const id of sessionIds) {

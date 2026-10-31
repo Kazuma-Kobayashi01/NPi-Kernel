@@ -85,7 +85,7 @@ export interface Provider<T> {
 	/**
 	 * Priority (higher = checked first, wins on conflicts).
 	 * Suggested ranges:
-	 *   100+ : Primary providers (omp, pi)
+	 *   100+ : Primary providers (npi, pi)
 	 *   50-99: Tool-specific providers (claude, codex, gemini)
 	 *   1-49 : Shared standards (mcp-json, agents-md)
 	 */
@@ -156,8 +156,8 @@ export interface SourceMeta {
 	/**
 	 * Registry or CLI source that supplied a plugin root, when the provider
 	 * tracks it (currently `claude-plugins`: `"claude"` for `~/.claude/plugins`,
-	 * `"omp"` for omp's own registry, `"plugin-dir"` for `--plugin-dir`). Lets
-	 * user-scope gating distinguish omp's own installs from the foreign Claude
+	 * `"omp"` for npi's own registry, `"plugin-dir"` for `--plugin-dir`). Lets
+	 * user-scope gating distinguish npi's own installs from the foreign Claude
 	 * tree — see `isSourceEnabled` in `extensibility/skills.ts` (#10743).
 	 */
 	origin?: string;

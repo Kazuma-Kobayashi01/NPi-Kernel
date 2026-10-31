@@ -2,8 +2,8 @@
  * Cross-process contract for the machine-global text-prediction daemon.
  *
  * One daemon per agent directory runs under the `text-predict` global daemon
- * broker (`omp ps --global text-predict`) and serves ghost-text word
- * completion to every omp process over newline-delimited JSON on a native IPC
+ * broker (`npi ps --global text-predict`) and serves ghost-text word
+ * completion to every npi process over newline-delimited JSON on a native IPC
  * endpoint (`ipcEndpoint`). Each request carries a numeric `id` echoed by its
  * response; responses may arrive out of order.
  */
@@ -28,7 +28,7 @@ export type TextPredictMethod = "ngram" | "smollm" | "apple";
 
 /** Banner printed on stdout once the daemon accepts connections. */
 export function textPredictReadyBanner(endpoint: string): string {
-	return `omp text-predict listening on ${endpoint}`;
+	return `npi text-predict listening on ${endpoint}`;
 }
 
 /**
@@ -56,7 +56,7 @@ export type TextPredictRequest =
 	  }
 	/** Ingest history rows newer than each open engine's cursor. */
 	| { id: number; op: "sync" }
-	/** Persist and exit (a client found a daemon from an older omp version). */
+	/** Persist and exit (a client found a daemon from an older npi version). */
 	| { id: number; op: "shutdown" };
 
 /** Daemon → client response. */

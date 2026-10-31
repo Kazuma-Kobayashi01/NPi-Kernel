@@ -148,7 +148,7 @@ export async function installJsPackages(options: InstallJsPackagesOptions): Prom
 				.exec([resolveExecutablePath(), "add", "--cwd", environment.root, "--ignore-scripts", ...packages], {
 					// In a compiled distribution the resolved executable is omp.
 					// BUN_BE_BUN re-enters Bun's real package-manager
-					// CLI instead of recursively dispatching omp's command parser.
+					// CLI instead of recursively dispatching npi's command parser.
 					env: { ...Bun.env, BUN_BE_BUN: "1" },
 					signal: options.signal,
 					allowNonZero: true,

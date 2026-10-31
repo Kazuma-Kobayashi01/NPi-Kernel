@@ -387,7 +387,7 @@ export function buildHeatmapLayout(points: DailyActivityPoint[], weeks: number, 
 const NATIVE_HEATMAP_WEEKS = 53;
 /** Span tokens for heatmap intensity levels 1..4 (the `table` fallback). */
 const HEAT_LEVEL_TOKENS = ["dim", "accent dim", "accent", "accent strong"];
-/** Heatmap row labels, Monday first like omp's grid: M/W/F only. */
+/** Heatmap row labels, Monday first like npi's grid: M/W/F only. */
 const HEATMAP_ROW_LABELS = ["M", "", "W", "", "F", "", ""];
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 

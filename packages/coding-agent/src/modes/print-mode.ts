@@ -2,8 +2,8 @@
  * Print mode (single-shot): Send prompts, output result, exit.
  *
  * Used for:
- * - `omp -p "prompt"` - text output
- * - `omp --mode json "prompt"` - JSON event stream
+ * - `npi -p "prompt"` - text output
+ * - `npi --mode json "prompt"` - JSON event stream
  */
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
@@ -299,7 +299,7 @@ async function runPrintModeCore(
 	 * Dispatch a CLI-authored message as a local command, if it is one.
 	 * Only CLI-authored input (`messages`, the positional/-p args) is ever
 	 * dispatched. The merged stdin/@file `initialMessage` is attacker-shaped
-	 * end to end — `curl … | omp "summarize"` must never run a slash payload
+	 * end to end — `curl … | npi "summarize"` must never run a slash payload
 	 * from the pipe as a command — so it always prompts the model as text.
 	 * Commands outside the dispatched list keep the historic behavior of
 	 * prompting the model with the literal text. Returns whether the message
@@ -474,7 +474,7 @@ async function runPrintModeCore(
 		await promptTurn(message);
 	}
 	// A run with no model turn (every input consumed locally, or none) still
-	// reports strict unreadiness: `OMP_MCP_REQUIRE_READY=1 omp -p '/mcp reauth
+	// reports strict unreadiness: `OMP_MCP_REQUIRE_READY=1 npi -p '/mcp reauth
 	// foo'` that failed to repair its server exits with the strict error, not
 	// only the builtin's own failure.
 	if (strict && !admittedAgentTurn && !strictMCPFailure) {

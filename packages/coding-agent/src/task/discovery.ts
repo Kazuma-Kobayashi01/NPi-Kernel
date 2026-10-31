@@ -120,7 +120,7 @@ export async function discoverAgents(
 	}
 
 	// Load agents from Claude Code marketplace plugins (respects disabledProviders and opt-in).
-	// User-scope roots whose origin is not the foreign ~/.claude/plugins tree (omp's own
+	// User-scope roots whose origin is not the foreign ~/.claude/plugins tree (npi's own
 	// installs and `--plugin-dir` roots) survive the claude-plugins opt-in gate, mirroring
 	// isSourceEnabled in extensibility/skills.ts (#10743). Without this, `--plugin-dir` and
 	// omp-installed agents are dropped at user scope whenever the Claude source is disabled.

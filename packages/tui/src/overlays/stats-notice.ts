@@ -1,5 +1,5 @@
 /**
- * `/stats` result: omp serves the stats dashboard in the browser. ANSI keeps
+ * `/stats` result: npi serves the stats dashboard in the browser. ANSI keeps
  * the dim status line; natively it is an inline notice with an
  * `Open dashboard ↗` button that opens the URL terminal-side.
  */

@@ -1,7 +1,7 @@
 /**
  * CDP façade over `chrome.debugger`.
  *
- * Puppeteer clients (the omp browser tool: one supervisor connection plus one
+ * Puppeteer clients (the npi browser tool: one supervisor connection plus one
  * per tab worker) connect to this bridge as if it were Chrome's browser
  * debugging endpoint. Chrome only allows a single debugger attachment per tab,
  * so the bridge owns ONE `chrome.debugger` attachment per tab (via the
@@ -47,7 +47,7 @@ interface CdpCommand {
 /**
  * Per-pseudo-session Runtime domain state.
  * - `default`: never toggled Runtime — still receives the relay's legacy
- *   root-event fan-out, so omp's own patched-puppeteer client (which
+ *   root-event fan-out, so npi's own patched-puppeteer client (which
  *   pull-acquires contexts and never sends `Runtime.enable`) keeps getting
  *   `Runtime.executionContextCreated`.
  * - `enabled`: ran `Runtime.enable`; gets the existing-context replay.
@@ -118,8 +118,8 @@ class CdpConnection {
 class ExtensionReplacedError extends Error {}
 
 /**
- * Rewrites the files of the extension Chrome knows as `extensionId` to this omp's, when that is the copy this relay
- * may update; resolves whether the files on disk are now this omp's (then the bridge asks the extension to reload).
+ * Rewrites the files of the extension Chrome knows as `extensionId` to this npi's, when that is the copy this relay
+ * may update; resolves whether the files on disk are now this npi's (then the bridge asks the extension to reload).
  */
 export type RelayBridgeExtensionUpdater = (extensionId: string) => Promise<boolean>;
 
@@ -189,7 +189,7 @@ class TabState {
 	/** Whether `chrome.debugger` is currently attached to this tab. */
 	attached = false;
 	/**
-	 * Why Chrome refused omp this tab (its attach error, or the user cancelling the debugger bar); while set the
+	 * Why Chrome refused npi this tab (its attach error, or the user cancelling the debugger bar); while set the
 	 * tab is not adoptable. Cleared on navigation.
 	 */
 	refusal: string | undefined;
@@ -208,12 +208,12 @@ class TabState {
 	reattachedAfterDetach = false;
 	/** The relay asked the extension to close this tab (`Target.closeTarget`); its coming detach is not Chrome's own. */
 	closing = false;
-	/** True after the relay put this tab in the omp group; `ompGroupId` holds that group. */
+	/** True after the relay put this tab in the npi group; `ompGroupId` holds that group. */
 	grouped = false;
 	/** Group RPC in flight — suppresses duplicate requests from load-time tabUpdated bursts. */
 	grouping = false;
 	ompGroupId: number | undefined;
-	/** User pulled the tab out of the omp group — never re-group it. */
+	/** User pulled the tab out of the npi group — never re-group it. */
 	groupOptOut = false;
 	/**
 	 * Real Chrome sessions (OOPIF/worker children) under this tab's attachment: the child session
@@ -292,7 +292,7 @@ export class RelayBridge {
 	#socketInstance = new Map<RelaySocket, string>();
 	/** Chrome extension id each extension socket's upgrade named in its `Origin`. */
 	#socketExtensionId = new Map<RelaySocket, string>();
-	/** Rewrites the files of the extension with this id to this omp's; resolves whether it did (see {@link RelayBridgeExtensionUpdater}). */
+	/** Rewrites the files of the extension with this id to this npi's; resolves whether it did (see {@link RelayBridgeExtensionUpdater}). */
 	#updateExtension: RelayBridgeExtensionUpdater | null;
 	/** Per instance, the extension versions the relay already reloaded it from: never twice from the same one. */
 	#updateTried = new Map<string, Set<string>>();
@@ -300,7 +300,7 @@ export class RelayBridge {
 	#lastHelloInstance: string | null = null;
 	#extensionSeen = false;
 	/**
-	 * Tabs omp opened whose close failed while their browser was offline (see {@link #closeTab}), by tab key, with
+	 * Tabs npi opened whose close failed while their browser was offline (see {@link #closeTab}), by tab key, with
 	 * the URL the tab showed: closed at that browser's next hello, unless the tab is gone or shows another page.
 	 */
 	#closeOnHello = new Map<string, string>();
@@ -311,7 +311,7 @@ export class RelayBridge {
 		{ resolve: (value: unknown) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
 	>();
 	/**
-	 * Timed-out RPCs whose late success still needs undoing (a tab Chrome created after omp gave up), by
+	 * Timed-out RPCs whose late success still needs undoing (a tab Chrome created after npi gave up), by
 	 * `instance:id`.
 	 */
 	#lateRpc = new Map<string, { onResult: (result: unknown) => void; timer: NodeJS.Timeout }>();
@@ -363,7 +363,7 @@ export class RelayBridge {
 
 	/**
 	 * The browser the caller's tabs live in: the one named by `nearTargetId` (a tab the caller drives on another
-	 * connection; omp gives every tab its own), else one holding a tab this connection drives. Offline or not.
+	 * connection; npi gives every tab its own), else one holding a tab this connection drives. Offline or not.
 	 */
 	#affineInstance(conn: CdpConnection, nearTargetId: unknown): ExtInstance | undefined {
 		const near = typeof nearTargetId === "string" ? parseTargetId(nearTargetId) : null;
@@ -417,7 +417,7 @@ export class RelayBridge {
 		return this.#extensionGoneSince === null ? null : Date.now() - this.#extensionGoneSince;
 	}
 
-	/** Downstream CDP clients (omp browser sessions, puppeteer) connected right now. */
+	/** Downstream CDP clients (npi browser sessions, puppeteer) connected right now. */
 	get cdpClientCount(): number {
 		return this.#conns.size;
 	}
@@ -426,7 +426,7 @@ export class RelayBridge {
 	versionInfo(wsUrl: string): Record<string, string | number> {
 		const info = this.#lastHello()?.info;
 		let hasCompatibleExtension = false;
-		// The oldest connected extension's installing omp, so a current browser cannot hide a stale one.
+		// The oldest connected extension's installing npi, so a current browser cannot hide a stale one.
 		// A stamp of unknown age yields to any other, so it cannot hide one either.
 		let oldestExtensionOmp: string | undefined;
 		for (const instance of this.#instances.values()) {
@@ -515,7 +515,7 @@ export class RelayBridge {
 			tab.attached = false;
 			tab.attaching = null;
 			this.#resetRuntime(tab);
-			// The extension dissolves omp groups on disconnect (or died along
+			// The extension dissolves npi groups on disconnect (or died along
 			// with them); grouping state is unknowable until the next hello.
 			tab.grouped = false;
 			tab.grouping = false;
@@ -697,8 +697,8 @@ export class RelayBridge {
 	// ---- extension self-update ------------------------------------------------
 
 	/**
-	 * The older omp version this extension runs, when the relay may replace it: the extension reloads on request,
-	 * its script carries an omp version older than this relay's, its socket named its Chrome id, and the relay has
+	 * The older npi version this extension runs, when the relay may replace it: the extension reloads on request,
+	 * its script carries an npi version older than this relay's, its socket named its Chrome id, and the relay has
 	 * not already reloaded it from that version (a reload that brings the same version back must not loop).
 	 */
 	#outdatedReloadable(inst: ExtInstance): string | null {
@@ -713,7 +713,7 @@ export class RelayBridge {
 	 * socket and every debugger attachment it holds, so it waits for no CDP client to be connected (no claimed
 	 * tab, no held session) and none of the extension's tabs to be attached, attaching or detaching. It also waits
 	 * out the extension's calls in flight and the tab closes queued for its next hello: the reloaded extension
-	 * reports a new browser session, which retires the target ids they name, so a tab omp opened would stay open.
+	 * reports a new browser session, which retires the target ids they name, so a tab npi opened would stay open.
 	 */
 	#reloadBlocker(inst: ExtInstance): string | null {
 		if (!inst.socket) return "disconnected";
@@ -723,7 +723,7 @@ export class RelayBridge {
 				return "tabs attached";
 			}
 		}
-		// A call past its timeout whose late result still closes what it made (a tab created after omp gave up) counts.
+		// A call past its timeout whose late result still closes what it made (a tab created after npi gave up) counts.
 		for (const key of [...this.#pendingRpc.keys(), ...this.#lateRpc.keys()]) {
 			if (key.startsWith(`${inst.instanceId}:`)) return "extension calls pending";
 		}
@@ -733,7 +733,7 @@ export class RelayBridge {
 		return null;
 	}
 
-	/** Rewrite an outdated extension's files to this omp's and ask it to reload, when that costs nothing. */
+	/** Rewrite an outdated extension's files to this npi's and ask it to reload, when that costs nothing. */
 	#maybeUpdateExtension(inst: ExtInstance): void {
 		const updateExtension = this.#updateExtension;
 		if (!updateExtension || inst.updating) return;
@@ -814,7 +814,7 @@ export class RelayBridge {
 		}
 		conn.sessions.clear();
 		for (const tabKey of intercepting) this.#releaseFileChooserInterception(tabKey);
-		// Tabs this client claimed leave the omp group unless another claimant
+		// Tabs this client claimed leave the npi group unless another claimant
 		// remains — session holders don't count: the long-lived registry
 		// connection holds sessions on every tab without driving any of them.
 		for (const tabId of conn.claims) {
@@ -1040,7 +1040,7 @@ export class RelayBridge {
 			this.#reply(conn, msg, {});
 			return true;
 		}
-		// Relay-private claim: the omp tab worker marks the page it was spawned
+		// Relay-private claim: the npi tab worker marks the page it was spawned
 		// to drive. Never forwarded — real Chrome rejects the unknown method.
 		if (msg.method === "OMP.claimTarget") {
 			this.#claimTab(conn, tabKey);
@@ -1272,7 +1272,7 @@ export class RelayBridge {
 					});
 				})) as { tab: TabSnapshot };
 				this.#onTabUpsert(result.tab, inst.instanceId);
-				// The client left while Chrome created the tab (omp gave up on a slow open), so nobody
+				// The client left while Chrome created the tab (npi gave up on a slow open), so nobody
 				// can learn its id to close it later: close it now instead of leaving it in the user's browser.
 				if (this.#conns.get(conn.id) !== conn) {
 					await this.#closeTab(tabKeyOf(inst.code, result.tab.tabId), result.tab.tabId, inst);
@@ -1352,7 +1352,7 @@ export class RelayBridge {
 				this.#reply(conn, msg, {});
 				return;
 			case "Target.createBrowserContext":
-				this.#replyError(conn, msg, "Browser contexts are not supported by the omp browser relay");
+				this.#replyError(conn, msg, "Browser contexts are not supported by the npi browser relay");
 				return;
 			default:
 				this.#replyError(conn, msg, `'${msg.method}' wasn't found`, CDP_ERROR_METHOD_NOT_FOUND);
@@ -1516,7 +1516,7 @@ export class RelayBridge {
 			this.#tabs.set(key, tab);
 		} else {
 			if (tab.url !== snap.url) tab.refusal = undefined;
-			// The user dragging a tab out of the omp group is an opt-out; the
+			// The user dragging a tab out of the npi group is an opt-out; the
 			// relay never fights the user over grouping.
 			if (tab.grouped && tab.ompGroupId !== undefined && snap.groupId !== tab.ompGroupId) {
 				tab.grouped = false;
@@ -1597,7 +1597,7 @@ export class RelayBridge {
 
 	// ---- tab grouping -----------------------------------------------------------
 
-	/** A tab belongs in the omp group when claimed by a client, controllable, unpinned, not user-opted-out, and not already in a user group. */
+	/** A tab belongs in the npi group when claimed by a client, controllable, unpinned, not user-opted-out, and not already in a user group. */
 	#groupWorthy(tab: TabState): boolean {
 		if (!this.#claimed(tab.tabKey) || !this.#eligible(tab) || tab.pinned || tab.groupOptOut) return false;
 		return tab.grouped || tab.groupId === -1;
@@ -1627,7 +1627,7 @@ export class RelayBridge {
 	/**
 	 * Queue tabs for grouping and drain serially. Overlapping group RPCs race
 	 * the extension's non-atomic query→create→set-title sequence and mint
-	 * duplicate omp groups, so at most one group RPC is ever in flight.
+	 * duplicate npi groups, so at most one group RPC is ever in flight.
 	 */
 	#requestGroup(tabs: TabState[]): void {
 		if (!this.#group) return;
@@ -1993,7 +1993,7 @@ export class RelayBridge {
 	}
 
 	/**
-	 * Close a tab omp opened. The extension retries a close Chrome refuses before answering, so the caller holds
+	 * Close a tab npi opened. The extension retries a close Chrome refuses before answering, so the caller holds
 	 * its relay lease through the retry. One whose close still fails (its browser offline, the socket dropping
 	 * mid-call, or Chrome refusing every try) is closed at that browser's next hello, unless the user closed it.
 	 */

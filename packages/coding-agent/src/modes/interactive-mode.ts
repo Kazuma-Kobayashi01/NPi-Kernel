@@ -2749,7 +2749,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// custom messages, branch summaries, and compaction summaries) and the user
 		// set no explicit `mode_change` (which #reconcileModeFromSession just
 		// restored). SDK startup metadata and extension `custom` state entries are
-		// ignored. This way `omp --continue` (or auto-resume) that finds no recent
+		// ignored. This way `npi --continue` (or auto-resume) that finds no recent
 		// session and creates a fresh one still honors the default, while a session
 		// with restored context or an explicit mode keeps its reconciled mode. Not
 		// part of the switch reconciler above: the plan-approval → execution handoff
@@ -2844,7 +2844,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		);
 		// The preset may have switched before this listener existed.
 		this.#refreshSlashCommandIcons();
-		// A confirmed Glyph Protocol handshake means omp's own icons render in
+		// A confirmed Glyph Protocol handshake means npi's own icons render in
 		// this terminal without a Nerd Font, so the unconfigured `unicode` preset
 		// is upgraded to `nerd` for this session. The persisted setting is left
 		// alone: it travels to terminals (ssh, tmux) where the upgrade would
@@ -2897,7 +2897,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		});
 
 		// Tern kept the typing of a startup and draws it in the composer; plain
-		// typing that reached omp already went into the draft. The first other
+		// typing that reached npi already went into the draft. The first other
 		// key and everything after it were held until hooks ran, the session
 		// mode settled, the draft was restored and every subscription above was
 		// installed. Tern now sends what it kept, a startup shortcut (Alt+P,
@@ -9011,7 +9011,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			await active.stop();
 			this.statusLine.setRecording(false);
 			this.showStatus(
-				`Saved ${formatDuration(elapsed)} recording to ${active.path} · replay: omp play · share: omp clip`,
+				`Saved ${formatDuration(elapsed)} recording to ${active.path} · replay: npi play · share: npi clip`,
 			);
 			return;
 		}

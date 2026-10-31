@@ -815,7 +815,7 @@ const SESSION_CWD_CHANGE_REJECTED = Symbol("sessionCwdChangeRejected");
 export function powerAssertionOptions(mode: "off" | "idle" | "display" | "system"): PowerAssertionOptions | undefined {
 	if (mode === "off") return undefined;
 	return {
-		reason: "omp agent session",
+		reason: "npi agent session",
 		idle: true,
 		display: mode === "display" || mode === "system",
 		system: mode === "system",
@@ -6071,7 +6071,7 @@ export class AgentSession implements SettingsScope {
 	 * `metadata.user_id` shaped like real Claude Code's `getAPIMetadata` output:
 	 * `{ session_id, account_uuid, device_id }`. `account_uuid` is included only
 	 * when an Anthropic OAuth credential with a known account UUID is loaded;
-	 * `device_id` is derived from both the persistent omp install id and that
+	 * `device_id` is derived from both the persistent npi install id and that
 	 * account UUID. Resolving live keeps the value in sync with auth-state changes
 	 * (login/logout, token refresh that surfaces a new account UUID) without
 	 * needing to re-call `#syncAgentSessionId()` on every such event.
@@ -12483,7 +12483,7 @@ export class AgentSession implements SettingsScope {
 	}
 
 	/**
-	 * Go on with the turn the previous process was in when it ended (`omp --restore`).
+	 * Go on with the turn the previous process was in when it ended (`npi --restore`).
 	 *
 	 * A turn cut off without an exit record (a crash, SIGKILL or power loss records
 	 * none) is first closed the way exit recovery closes one whose exit was recorded:

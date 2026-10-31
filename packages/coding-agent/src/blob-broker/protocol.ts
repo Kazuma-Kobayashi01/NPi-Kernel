@@ -2,7 +2,7 @@
  * Cross-process contract for the broker-owned blob daemon.
  *
  * One blob daemon runs per project scope (launched through the same daemon
- * broker that owns the shared Chromium and LSP mux), so every omp process in
+ * broker that owns the shared Chromium and LSP mux), so every npi process in
  * the project shares one exposure (tunnel or uploader) and one URL per blob.
  * Control traffic rides HTTP over a Unix socket in the daemon runtime dir;
  * public traffic reaches the same store through the exposure.
@@ -28,7 +28,7 @@ export const BLOB_BROKER_READY_PATTERN = String.raw`omp blob broker serving \S+`
 
 /** Banner printed on stdout once the exposure is up and control is listening. */
 export function blobBrokerReadyBanner(baseUrl: string): string {
-	return `omp blob broker serving ${baseUrl}`;
+	return `npi blob broker serving ${baseUrl}`;
 }
 
 /** Resolve the control socket path for one project scope. */

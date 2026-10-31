@@ -218,7 +218,7 @@ const piSegment: StatusLineSegment = {
 		const fgAnsi = ctx.brandFgAnsi ?? theme.getFgAnsi("dim");
 		const profile = ctx.options.pi?.showProfile === false ? undefined : getActiveProfile();
 		// While a turn runs the brand icon becomes a braille spinner plus a
-		// whole-unit turn timer (port of rust omp's status-band active brand).
+		// whole-unit turn timer (port of rust npi's status-band active brand).
 		// No trailing pad: the group renderer owns inter-segment spacing, so a
 		// trailing space here would double the gap at the first separator (#11103).
 		const content =
@@ -250,7 +250,7 @@ function brandSpinnerFrame(nowMs = Date.now()): string {
 	return frames[Math.floor(nowMs / SPINNER_ADVANCE_MS) % frames.length] ?? "";
 }
 
-/** Turn timer in omp's brand format: whole seconds → minutes → hours (capped at 99h). */
+/** Turn timer in npi's brand format: whole seconds → minutes → hours (capped at 99h). */
 function brandTimer(elapsedMs: number): string {
 	const seconds = Math.floor(elapsedMs / 1000);
 	if (seconds < 60) return `${seconds}s`;

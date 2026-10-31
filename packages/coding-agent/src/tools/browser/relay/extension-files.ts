@@ -1,5 +1,5 @@
 /**
- * The relay extension's files as omp installs them, and the checks that let a
+ * The relay extension's files as npi installs them, and the checks that let a
  * relay rewrite an installed copy in place (extension self-update).
  */
 import * as fs from "node:fs/promises";
@@ -13,10 +13,10 @@ import optionsJs from "./extension-assets/options.js.txt" with { type: "text" };
 import { replaceFileAtomically } from "../../../utils/atomic-file";
 import { stampRelayExtensionManifest, stampRelayExtensionScript } from "./protocol";
 
-/** The extension files `omp browser-relay install` writes, stamped with the installing omp's version. */
+/** The extension files `npi browser-relay install` writes, stamped with the installing npi's version. */
 export function relayExtensionFiles(ompVersion: string): Record<string, string> {
 	return {
-		// The extension reports this stamp in its hello, so omp can tell when an older install keeps running.
+		// The extension reports this stamp in its hello, so npi can tell when an older install keeps running.
 		"background.js": stampRelayExtensionScript(backgroundJs, ompVersion),
 		LICENSE: licenseText,
 		// Shown in chrome://extensions.
@@ -26,7 +26,7 @@ export function relayExtensionFiles(ompVersion: string): Record<string, string> 
 	};
 }
 
-/** Where `omp browser-relay install` puts the extension without `--dir` (~/.omp/browser-relay/extension). */
+/** Where `npi browser-relay install` puts the extension without `--dir` (~/.omp/browser-relay/extension). */
 export function defaultRelayExtensionDir(): string {
 	return path.join(getBrowserRelayDir(), "extension");
 }
@@ -87,7 +87,7 @@ export function extensionIdForPath(absolutePath: string, platform: NodeJS.Platfo
 	return Array.from(hex, digit => String.fromCharCode(97 + Number.parseInt(digit, 16))).join("");
 }
 
-/** The omp version stamped in `dir`'s manifest; "" when it has none or cannot be read. */
+/** The npi version stamped in `dir`'s manifest; "" when it has none or cannot be read. */
 export async function installedRelayExtensionVersion(dir: string): Promise<string> {
 	try {
 		const manifest: unknown = await Bun.file(path.join(dir, "manifest.json")).json();

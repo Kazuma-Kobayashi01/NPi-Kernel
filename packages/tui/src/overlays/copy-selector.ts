@@ -238,7 +238,7 @@ function blockBody(block: CopyBlock): NativeNode {
 
 /**
  * One borderless preview section of the copy picker. A click copies it in the
- * terminal (`copy`) when the preview holds the whole text, else asks omp to
+ * terminal (`copy`) when the preview holds the whole text, else asks npi to
  * (`pick`); link sections also offer `open`. The focused block's section takes
  * the `omp.picker.block.focused` role and the accent tone.
  */
@@ -604,7 +604,7 @@ export class CopySelectorComponent implements Component {
 			return;
 		}
 		if (event.type === "action" && event.act === "pick") {
-			// A preview section too long to copy in the terminal: omp copies the full text.
+			// A preview section too long to copy in the terminal: npi copies the full text.
 			this.#pickSection(event.key);
 			return;
 		}

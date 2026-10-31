@@ -2,7 +2,7 @@
  * A browser tab shown as a Tern browser picture-in-picture: every helper of
  * the tab API drives the PiP's native web view through Tern's browser op
  * protocol (`wire.ts`). Pages are reached through `eval` (page world for user
- * code and page instrumentation, the isolated world for omp's kit), trusted
+ * code and page instrumentation, the isolated world for npi's kit), trusted
  * `input` events at element centres, `capture`, `pdf` and the Tern-level ops;
  * what the page reports on its own arrives through `events` polling.
  */
@@ -353,7 +353,7 @@ export class TernTab implements InProcessRunTab {
 	readonly block: number;
 	readonly #client: TernSocketClient;
 	readonly #name: string;
-	/** The user's block this tab adopted (released, never closed); undefined for omp's own PiP. */
+	/** The user's block this tab adopted (released, never closed); undefined for npi's own PiP. */
 	readonly adopted: TernBlockEntry | undefined;
 	#url = "about:blank";
 	#title = "";
@@ -457,7 +457,7 @@ export class TernTab implements InProcessRunTab {
 	/**
 	 * Drive the user's existing browser block `opts.block` (docked or PiP)
 	 * without opening anything: skip the events it reported before, apply only
-	 * the page settings the caller gave (plus omp's document-start scripts,
+	 * the page settings the caller gave (plus npi's document-start scripts,
 	 * installed into the current document too), and navigate only when `url`
 	 * is given. A failure releases the block again; it is never closed.
 	 */
@@ -539,9 +539,9 @@ export class TernTab implements InProcessRunTab {
 	}
 
 	/**
-	 * Close omp's PiP (its page goes), or release an adopted block: Tern stops
-	 * driving it and resets what omp set, the user's page stays. A Tern without
-	 * `release` (answers `invalid`) only gets omp's scripts cleared, best-effort.
+	 * Close npi's PiP (its page goes), or release an adopted block: Tern stops
+	 * driving it and resets what npi set, the user's page stays. A Tern without
+	 * `release` (answers `invalid`) only gets npi's scripts cleared, best-effort.
 	 * A block already gone is no error.
 	 */
 	async close(opts: { timeoutMs: number }): Promise<void> {
@@ -655,7 +655,7 @@ export class TernTab implements InProcessRunTab {
 			}
 			if (this.#events.length > EVENT_LOG_LIMIT) this.#events.splice(0, this.#events.length - EVENT_LOG_LIMIT);
 			if (typeof answer.dropped === "number" && answer.dropped > 0) {
-				logger.debug("Tern dropped browser events before omp read them", { dropped: answer.dropped });
+				logger.debug("Tern dropped browser events before npi read them", { dropped: answer.dropped });
 			}
 		})();
 		this.#pulling = pulling;

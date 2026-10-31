@@ -544,7 +544,7 @@ export class JobWidgetRuntime {
 			const line = lines[lineIndex];
 			if (tools) {
 				for (; scanned <= lineIndex; scanned++) this.#scanToolCall(lines[scanned]);
-				// omp's marker of a tool call is not output of the subagent's work.
+				// npi's marker of a tool call is not output of the subagent's work.
 				if (line.startsWith(TOOL_CALL_MARK)) continue;
 			}
 			if (matched.at(-1) !== lineIndex) matched.push(lineIndex);

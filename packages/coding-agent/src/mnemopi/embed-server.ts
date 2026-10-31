@@ -1,6 +1,6 @@
 /**
  * Machine-shared mnemopi embedding server: one detached process per (model,
- * cache dir) that owns that pair's IPC endpoint, serves every omp process on
+ * cache dir) that owns that pair's IPC endpoint, serves every npi process on
  * the machine, and exits once idle so the model's memory is returned (issue
  * #9908). Entered from `cli.ts` via the `__omp_worker_mnemopi_embed_server`
  * selector with the endpoint/model/tag env set by `embed-client.ts`.
@@ -51,14 +51,14 @@ export async function startMnemopiEmbedServerFromEnvironment(): Promise<void> {
 	const model = process.env[MNEMOPI_EMBED_MODEL_ENV];
 	const tag = process.env[MNEMOPI_EMBED_TAG_ENV];
 	if (!endpoint || !model || !tag) throw new Error("mnemopi embed server environment is incomplete");
-	setProcessName(`omp mnemopi embed ${model}`);
-	// Same correlation, timeout, and wedge reaping as an omp process, over the private child.
+	setProcessName(`npi mnemopi embed ${model}`);
+	// Same correlation, timeout, and wedge reaping as an npi process, over the private child.
 	const runtime = new MnemopiEmbedClient(spawnMnemopiEmbedWorker);
 	const server: JsonLineServer<MnemopiEmbedServerRequest, MnemopiEmbedServerResponse> = new JsonLineServer({
 		name: "mnemopi-embed-server",
 		cleanupLabel: "mnemopi-embed-server",
 		idleMs: Number(process.env[MNEMOPI_EMBED_IDLE_MS_ENV]) || MNEMOPI_EMBED_IDLE_MS,
-		banner: bound => `omp mnemopi embed server listening on ${bound}`,
+		banner: bound => `npi mnemopi embed server listening on ${bound}`,
 		onRequest(request, reply) {
 			if (request.type === "ping") {
 				reply.send({ type: "pong", id: request.id, tag });

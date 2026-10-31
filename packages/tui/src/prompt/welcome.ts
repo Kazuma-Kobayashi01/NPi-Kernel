@@ -377,7 +377,7 @@ export class WelcomeComponent implements Component {
 }
 
 /**
- * omp's native lockup (`omp.welcome.lockup`, keyed `lockup`): the terminal's
+ * npi's native lockup (`omp.welcome.lockup`, keyed `lockup`): the terminal's
  * builtin `omp` mark, which it draws on, beside the `omp` wordmark with
  * `v<version>` under it. The welcome card and the setup splash show it.
  */
@@ -413,10 +413,10 @@ export const PI_LOGO = ["████████████", "   ██  █�
 const LOGO_WIDTH = Math.max(...PI_LOGO.map(row => row.length));
 
 /**
- * The `omp` wordmark in half-blocks, set beside {@link PI_LOGO} from its second
+ * The `npi` wordmark in half-blocks, set beside {@link PI_LOGO} from its second
  * row: the `p` descends into the fourth, the version takes the fifth.
  */
-const WORDMARK = ["▄▀▀▄ █▀▄▀▄ █▀▀▄", "▀▄▄▀ █ █ █ █▄▄▀", "           █"];
+const WORDMARK = ["█▀▀▄ █▀▀▄ ▄", "█  █ █▄▄▀ █", "     █"];
 
 /** Columns of {@link WORDMARK}. */
 const WORDMARK_WIDTH = Math.max(...WORDMARK.map(row => row.length));

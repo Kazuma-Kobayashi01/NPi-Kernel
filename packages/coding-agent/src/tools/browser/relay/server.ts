@@ -1,7 +1,7 @@
 /**
  * HTTP + WebSocket server for the browser relay.
  *
- * Impersonates Chrome's CDP discovery endpoint so the omp browser tool (and
+ * Impersonates Chrome's CDP discovery endpoint so the npi browser tool (and
  * any puppeteer client) can connect with a plain `browserURL`:
  * - `GET /json/version` → 200 with `webSocketDebuggerUrl` once the extension
  *   is connected, 503 with a {@link RelayUnavailableInfo} body before that
@@ -32,7 +32,7 @@ export interface RelayServerOptions {
 	group?: boolean | { title: string; color: string };
 	/**
 	 * The extension copy this relay keeps current: an older extension Chrome loaded from here is rewritten and
-	 * reloaded (default: `omp browser-relay install`'s directory).
+	 * reloaded (default: `npi browser-relay install`'s directory).
 	 */
 	extensionDir?: string;
 	log?: (message: string, data?: Record<string, unknown>) => void;
@@ -40,7 +40,7 @@ export interface RelayServerOptions {
 
 /**
  * Updates the extension when Chrome loaded it from `dir`: an extension loaded from elsewhere (`install --dir`, a
- * development build) is not this relay's to rewrite, and files a newer omp wrote are left for that omp's relay.
+ * development build) is not this relay's to rewrite, and files a newer npi wrote are left for that npi's relay.
  * Calls run one at a time: Chrome profiles that load the same folder share its files, and a later call finds them
  * already current.
  */
@@ -96,7 +96,7 @@ type RelayWebSocket = Bun.ServerWebSocket<SocketData>;
 const WS_KEEPALIVE_MS = 30_000;
 /** Screenshots travel base64-encoded through both websocket legs. */
 const MAX_PAYLOAD_BYTES = 256 * 1024 * 1024;
-/** Default appearance of the omp tab group. */
+/** Default appearance of the npi tab group. */
 const DEFAULT_GROUP = { title: "omp", color: "cyan" } as const;
 /** True when `raw` can serve as the authority of a `ws://` URL: no whitespace,
  *  slashes, userinfo, fragments, or control characters, and URL-parseable. */

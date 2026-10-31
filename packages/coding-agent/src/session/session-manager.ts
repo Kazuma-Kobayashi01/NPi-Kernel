@@ -146,7 +146,7 @@ export function mintSessionId(): string {
 }
 
 /**
- * `moveTo` refused before anything moved: another live omp process writes the
+ * `moveTo` refused before anything moved: another live npi process writes the
  * session, or the session file at the destination.
  */
 export class SessionMoveRefusedError extends Error {
@@ -846,7 +846,7 @@ export class SessionPersistenceIndeterminateError extends AggregateError {
  */
 export interface SessionPersistenceNotice {
 	/**
-	 * `"open-elsewhere"`: another live omp process wrote `from` first and still
+	 * `"open-elsewhere"`: another live npi process wrote `from` first and still
 	 * has it open, so this process saves its entries elsewhere instead of mixing
 	 * them into that file. `"replaced"`: `from` changed on disk and no longer
 	 * reads as this session's journal, so it is left untouched. `"contested"`:
@@ -1110,7 +1110,7 @@ export class SessionManager {
 	/**
 	 * Hold this process's ownership claim on `#sessionId`, moving it off a
 	 * previous session. Only write paths claim, so the first process to write a
-	 * session owns it and inspection (`omp share`, `--export`, `render`) never
+	 * session owns it and inspection (`npi share`, `--export`, `render`) never
 	 * does. A failed claim is retried on the next write, so a writer takes over
 	 * once the owner closed the session or exited.
 	 */
@@ -1128,7 +1128,7 @@ export class SessionManager {
 	}
 
 	/**
-	 * Whether another live omp process owns this session, claiming it first
+	 * Whether another live npi process owns this session, claiming it first
 	 * when it is free. A non-owner never writes the session's file: its next
 	 * write moves this session to a sibling with a new id instead, so two
 	 * processes never mix their entries in one journal and the owner's full
@@ -1203,7 +1203,7 @@ export class SessionManager {
 
 	/**
 	 * A synchronous full rewrite of `#sessionFile` met bytes this manager did
-	 * not write: usually a writer without the ownership lease (an older omp,
+	 * not write: usually a writer without the ownership lease (an older npi,
 	 * an external tool) appending to the file this process owns. Overwriting
 	 * would erase those entries and retrying blindly can never succeed, so read
 	 * the file back, keep its new entries, and retry against the size just read.
@@ -2549,7 +2549,7 @@ export class SessionManager {
 		}
 
 		// A move writes both paths: it must neither move a session another live
-		// omp process writes nor replace a destination one writes. Checked before
+		// npi process writes nor replace a destination one writes. Checked before
 		// relocation starts (appends still go to the source) and before any
 		// directory is created, so a refusal touches nothing.
 		let destination: { id: string; release: () => void } | undefined;
@@ -2562,7 +2562,7 @@ export class SessionManager {
 			const release = this.#storage.claimSession?.(id, file);
 			if (release === null) {
 				throw new SessionMoveRefusedError(
-					`Cannot move session to "${file}": another live omp process writes the session there. Nothing was moved.`,
+					`Cannot move session to "${file}": another live npi process writes the session there. Nothing was moved.`,
 				);
 			}
 			destination?.release();
@@ -2586,7 +2586,7 @@ export class SessionManager {
 			this.#claimSession();
 			if (this.#sessionClaim?.release === undefined) {
 				throw new SessionMoveRefusedError(
-					`Cannot move session "${this.#sessionFile}": another live omp process writes it. Nothing was moved.`,
+					`Cannot move session "${this.#sessionFile}": another live npi process writes it. Nothing was moved.`,
 				);
 			}
 			if (expectedSessionFile && path.resolve(this.#sessionFile) !== path.resolve(expectedSessionFile)) {
@@ -4423,7 +4423,7 @@ export class SessionManager {
 	 * Open a session whose recorded directory `recordedCwd` is gone and move it,
 	 * artifacts included, into `cwd` so it resumes from there.
 	 * @param sessionDir Target session directory; defaults to `cwd`'s.
-	 * @throws {SessionMoveRefusedError} when another live omp process writes the session.
+	 * @throws {SessionMoveRefusedError} when another live npi process writes the session.
 	 */
 	static async openRelocated(
 		sessionPath: string,
@@ -4588,10 +4588,10 @@ export class SessionManager {
 						return manager;
 					} catch (err) {
 						if (!(err instanceof SessionMoveRefusedError)) throw err;
-						// Another live omp process still writes the session (the
+						// Another live npi process still writes the session (the
 						// project was renamed under it): leave it there and continue
 						// as if no move were possible.
-						logger.warn("Not re-rooting moved session: it is open in another omp process", {
+						logger.warn("Not re-rooting moved session: it is open in another npi process", {
 							from: breadcrumbCwd,
 							to: resolvedCwd,
 						});

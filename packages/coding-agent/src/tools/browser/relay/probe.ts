@@ -150,7 +150,7 @@ export const UPDATE_RELAY_EXTENSION = "Run `omp browser-relay install` and reloa
 
 /**
  * Notice for an open through a ready relay where a connected extension was
- * installed by an older omp, or null. The extension still speaks the relay
+ * installed by an older npi, or null. The extension still speaks the relay
  * protocol, so the open goes ahead; relay fixes shipped since that install
  * stay inactive until the user reinstalls it. A relay too old to report the
  * extension's version gets no notice: it cannot tell.
@@ -167,6 +167,6 @@ export async function relayExtensionNotice(cdpUrl: string, signal?: AbortSignal)
 		return null;
 	}
 	if (typeof installedBy !== "string" || !isOlderOmpVersion(installedBy, VERSION)) return null;
-	const origin = installedBy === "" ? "an older omp" : `omp ${installedBy}; this is omp ${VERSION}`;
+	const origin = installedBy === "" ? "an older npi" : `npi ${installedBy}; this is npi ${VERSION}`;
 	return `The OMP Browser Relay extension is out of date (installed by ${origin}). ${UPDATE_RELAY_EXTENSION}`;
 }

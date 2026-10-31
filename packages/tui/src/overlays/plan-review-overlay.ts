@@ -1807,7 +1807,7 @@ export class PlanReviewOverlay implements Component {
 			];
 			if (this.#editingAnnotation) hints.push({ keys: [], label: "empty deletes" });
 			if (this.#externalEditorLabel) hints.push({ keys: [], label: `${this.#externalEditorLabel} editor` });
-			// The feedback field, inline under the plan: its caption names the anchor, omp's editor holds the text.
+			// The feedback field, inline under the plan: its caption names the anchor, npi's editor holds the text.
 			return [
 				node(
 					"col",

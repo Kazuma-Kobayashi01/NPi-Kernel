@@ -1549,7 +1549,7 @@ function validateCostThreshold(id: string): (raw: unknown) => void {
 	};
 }
 
-/** Session-tree spend (USD) at which omp warns once; `--warn-cost` overrides it for one run. */
+/** Session-tree spend (USD) at which npi warns once; `--warn-cost` overrides it for one run. */
 export const cfgSessionWarnCost = register({
 	id: "session.warnCost",
 	type: "number",
@@ -1557,7 +1557,7 @@ export const cfgSessionWarnCost = register({
 	validate: validateCostThreshold("session.warnCost"),
 });
 
-/** Session-tree spend (USD) at which omp stops sending model requests; `--max-cost` overrides it for one run. */
+/** Session-tree spend (USD) at which npi stops sending model requests; `--max-cost` overrides it for one run. */
 export const cfgSessionMaxCost = register({
 	id: "session.maxCost",
 	type: "number",
