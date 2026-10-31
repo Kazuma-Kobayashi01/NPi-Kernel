@@ -1170,6 +1170,36 @@ describe("InputController escape behavior", () => {
 });
 
 describe("InputController Ctrl+C behavior", () => {
+	it("interrupts active work without losing queued input or arming double-tap exit", () => {
+		const { ctx, editor, spies } = createContext();
+		const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+		ctx.lastSigintTime = 900;
+		ctx.loadingAnimation = {} as InteractiveModeContext["loadingAnimation"];
+		mutableSessionState(ctx).isStreaming = true;
+		spies.clearQueue.mockReturnValue({ steering: [{ text: "next instruction" }], followUp: [] });
+		const controller = new InputController(ctx);
+		controller.setupKeyHandlers();
+
+		editor.onClear?.();
+
+		expect(editor.getText()).toBe("next instruction");
+		expect(spies.abort).toHaveBeenCalledWith({ reason: USER_INTERRUPT_LABEL });
+		expect(spies.shutdown).not.toHaveBeenCalled();
+		expect(ctx.lastSigintTime).toBe(0);
+
+		// Cancellation can settle asynchronously; a repeated press must not quit.
+		clock.mockReturnValue(1_100);
+		spies.clearQueue.mockReturnValue({ steering: [], followUp: [] });
+		editor.onClear?.();
+		expect(spies.shutdown).not.toHaveBeenCalled();
+
+		ctx.loadingAnimation = undefined;
+		mutableSessionState(ctx).isStreaming = false;
+		clock.mockReturnValue(1_200);
+		editor.onClear?.();
+		expect(spies.shutdown).not.toHaveBeenCalled();
+	});
+
 	it("sync-flushes the session JSONL on first Ctrl+C (editor clear)", () => {
 		const { ctx, editor, spies } = createContext();
 		const controller = new InputController(ctx);
