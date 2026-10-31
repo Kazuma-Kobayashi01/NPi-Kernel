@@ -3,6 +3,7 @@ import type { AssistantMessage } from "@oh-my-pi/pi-ai";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { COMPOSER_DEFAULTS, Composer } from "@oh-my-pi/pi-tui/prompt/composer";
 import { EditorTopGap } from "@oh-my-pi/pi-tui/prompt/editor-top-gap";
+import { setComposerDockInput } from "@oh-my-pi/pi-tui/prompt/dock-input";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { type Component, Container, getKeybindings, setKeybindings, Text } from "@oh-my-pi/pi-tui";
@@ -938,5 +939,48 @@ describe("composer inline shrink (#11007)", () => {
 		expect(longest).toBeLessThanOrEqual(1);
 		expect(view.findIndex(row => row.includes("EDITOR"))).toBe(rows - 1);
 		h.composer.stop();
+	});
+
+	describe("docked input", () => {
+		const editorRow = (h: ReturnType<typeof makeHarness>): number =>
+			h.terminal.getViewport().findIndex(row => row.includes("EDITOR"));
+
+		it("keeps the editor on the bottom row under a short transcript, also after a panel closes", async () => {
+			setComposerDockInput(true);
+			try {
+				const h = makeHarness(COLUMNS, ROWS, 3);
+				await h.scheduler.settle(h.terminal);
+				expect(editorRow(h)).toBe(ROWS - 1);
+				h.widget.rows = 6;
+				h.composer.ui.requestRender();
+				await h.scheduler.settle(h.terminal);
+				expect(editorRow(h)).toBe(ROWS - 1);
+				h.widget.rows = 0;
+				h.composer.ui.requestRender();
+				await h.scheduler.settle(h.terminal);
+				expect(editorRow(h)).toBe(ROWS - 1);
+				h.composer.stop();
+			} finally {
+				setComposerDockInput(false);
+			}
+		});
+
+		it("keeps the editor on the bottom row after a reset to an empty transcript", async () => {
+			setComposerDockInput(true);
+			try {
+				const h = makeHarness();
+				await h.scheduler.settle(h.terminal);
+				h.composer.setRuntimeChildren([new TranscriptContainer(), h.hud, h.editor]);
+				h.composer.ui.resetDisplay();
+				await h.scheduler.settle(h.terminal);
+				h.widget.rows = 3;
+				h.composer.ui.requestRender();
+				await h.scheduler.settle(h.terminal);
+				expect(editorRow(h)).toBe(ROWS - 1);
+				h.composer.stop();
+			} finally {
+				setComposerDockInput(false);
+			}
+		});
 	});
 });

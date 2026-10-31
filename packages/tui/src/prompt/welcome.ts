@@ -432,7 +432,9 @@ const TIP_MIN_COLUMNS = 50;
 
 /** Logo frame `logo` with the wordmark beside it and `version` (styled) under the wordmark. */
 function lockup(logo: readonly string[], version: string): string[] {
-	const beside = ["", ...WORDMARK.map(row => theme.bold(theme.fg("text", row))), version];
+	// The wordmark takes the logo's ivory, not the terminal's text colour.
+	const ivory = gradientEscape(0);
+	const beside = ["", ...WORDMARK.map(row => `${ivory}\x1b[1m${row}\x1b[0m`), version];
 	return logo.map((row, index) => `${row}${padding(LOCKUP_GAP)}${beside[index] ?? ""}`);
 }
 

@@ -539,11 +539,12 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// NPi: the prompt always sits on the bottom row. With no native history yet the whole
 		// document is the viewport, and the rows it does not fill go above the input (between the
 		// transcript and the dock) instead of leaving the prompt floating under a short transcript.
-		const slack =
-			filledHistoryRows === undefined || promotedChromeContracted
-				? isComposerDockInput() && !promotedChromeContracted
-					? Math.max(0, rows - mutable.length)
-					: 0
+		// Docked (NPi): whatever the history state, the live rows plus the slack fill the screen, so
+		// the prompt stays on the last row, also after a dialog or menu closes.
+		const slack = isComposerDockInput()
+			? Math.max(0, rows - mutable.length)
+			: filledHistoryRows === undefined || promotedChromeContracted
+				? 0
 				: Math.max(0, rows - Math.min(rows, filledHistoryRows + (history?.rows.length ?? 0)) - mutable.length);
 		// Park the slack below the live rows rather than above them. Above, it
 		// splits the on-screen history from the live tail and reads as a hole
