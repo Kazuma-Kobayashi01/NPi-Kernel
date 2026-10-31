@@ -1308,8 +1308,16 @@ Use `--mode rpc --no-ui` for a host without a tool UI surface; use `--mode rpc-u
 - `select`, `confirm`, `input`, `editor`, `ask`, `cancel`
    - `select` keeps labels in `options: string[]` and, when any option has a
      description, emits a positionally aligned
-     `optionDetails: Array<{ description?: string }>` array. Hosts that do not
-     render descriptions can continue using `options` alone.
+     `optionDetails: Array<{ description?: string }>` array. When emitted by a
+     tool-approval gate, it also carries
+     `approval: { toolName: string, choices: Array<{ action: "once" | "session" | "always" | "deny", grant?: "folder" | "target" }>, targetKeys?: string[], sessionKey?: string }`
+     aligned positionally with `options`. `targetKeys` are opaque canonical
+     capability-and-target grant keys; `sessionKey` is the core policy-and-capability
+     session scope, present only when that scope can be granted. Cache these keys
+     within the current conversation only, and keep target keys separate from
+     session-scope keys. Never infer authorization from a tool name or prompt text.
+     Hosts that do not render descriptions or structured approval metadata can
+     continue using `options` alone.
    - `input` carries `title: string` and optional `placeholder?: string`,
      `timeout?: number`, and `secret?: boolean`. `secret` is an unnegotiated
      host hint from `ExtensionUIDialogOptions.secret`; hosts that support

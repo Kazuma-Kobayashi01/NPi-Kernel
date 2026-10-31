@@ -457,4 +457,50 @@ describe("always-ask-cached wrapper cycle", () => {
 		await wrapper.execute("e2", {}, undefined, undefined, context(session));
 		expect(select).toHaveBeenCalledTimes(1);
 	});
+
+	it("attaches structured approval metadata to select prompts and aborts a waiting approval when signalled", async () => {
+		const cwd = path.join(agentDir, "work");
+		const tool = pathTool("write", "write", cwd);
+		const session = SessionManager.inMemory(cwd);
+		const seenOptions: unknown[] = [];
+		const controller = new AbortController();
+		const selectCalled = Promise.withResolvers<void>();
+		const selectAnswer = Promise.withResolvers<string | undefined>();
+		const select = vi.fn((_title: string, _choices: string[], dialogOptions?: unknown) => {
+			seenOptions.push(dialogOptions);
+			selectCalled.resolve();
+			controller.signal.addEventListener("abort", () => selectAnswer.resolve(undefined), { once: true });
+			return selectAnswer.promise;
+		});
+		const wrapper = new ExtensionToolWrapper(tool, runnerWith(session, select));
+		const pending = wrapper.execute("abort-1", { path: "a.txt" }, controller.signal, undefined, context(session));
+		await selectCalled.promise;
+		expect(seenOptions[0]).toMatchObject({
+			signal: controller.signal,
+			approval: {
+				toolName: "write",
+				choices: [
+					{ action: "session", grant: "folder" },
+					{ action: "session", grant: "target" },
+					{ action: "always", grant: "folder" },
+					{ action: "always", grant: "target" },
+					{ action: "once" },
+					{ action: "deny" },
+				],
+			},
+		});
+		const metadata = seenOptions[0] as { approval: { targetKeys?: string[] } };
+		expect(metadata.approval.targetKeys).toHaveLength(1);
+		const otherOptions: Array<{ approval?: { targetKeys?: string[] } }> = [];
+		const otherRunner = runnerWith(session, async (_title, _choices, options) => {
+			otherOptions.push(options ?? {});
+			return undefined;
+		});
+		await new ExtensionToolWrapper(tool, otherRunner)
+			.execute("other-target", { path: "b.txt" }, undefined, undefined, context(session))
+			.catch(() => {});
+		expect(otherOptions[0]?.approval?.targetKeys).not.toEqual(metadata.approval.targetKeys);
+		controller.abort(new Error("RPC command aborted by host"));
+		await expect(pending).rejects.toThrow("RPC command aborted by host");
+	});
 });

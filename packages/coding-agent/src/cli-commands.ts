@@ -120,6 +120,11 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.findHelp,
 	},
 	{
+		name: "gateway",
+		load: () => import("./commands/gateway").then(m => m.default),
+		help: commandHelp.gatewayHelp,
+	},
+	{
 		name: "gc",
 		load: () => import("./commands/gc").then(m => m.default),
 		help: commandHelp.gcHelp,

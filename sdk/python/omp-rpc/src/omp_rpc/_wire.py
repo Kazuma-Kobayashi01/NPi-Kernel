@@ -191,6 +191,16 @@ _WIDGET_PLACEMENT_VALUES: Final[frozenset[str]] = frozenset({"aboveEditor", "bel
 _decode_widget_placement = cast("Decoder[WidgetPlacement]", literal(_WIDGET_PLACEMENT_VALUES))
 
 
+ApprovalSelectAction: TypeAlias = Literal["once", "session", "always", "deny"]
+_APPROVAL_SELECT_ACTION_VALUES: Final[frozenset[str]] = frozenset({"once", "session", "always", "deny"})
+_decode_approval_select_action = cast("Decoder[ApprovalSelectAction]", literal(_APPROVAL_SELECT_ACTION_VALUES))
+
+
+ApprovalGrantScope: TypeAlias = Literal["folder", "target"]
+_APPROVAL_GRANT_SCOPE_VALUES: Final[frozenset[str]] = frozenset({"folder", "target"})
+_decode_approval_grant_scope = cast("Decoder[ApprovalGrantScope]", literal(_APPROVAL_GRANT_SCOPE_VALUES))
+
+
 ExtensionUiMethod: TypeAlias = Literal["select", "confirm", "input", "editor", "ask", "cancel", "notify", "setStatus", "setWidget", "setTitle", "set_editor_text", "open_url"]
 _EXTENSION_UI_METHOD_VALUES: Final[frozenset[str]] = frozenset({"select", "confirm", "input", "editor", "ask", "cancel", "notify", "setStatus", "setWidget", "setTitle", "set_editor_text", "open_url"})
 _decode_extension_ui_method = cast("Decoder[ExtensionUiMethod]", literal(_EXTENSION_UI_METHOD_VALUES))
@@ -1253,12 +1263,12 @@ class PromptError:
     """Failure detail of a `prompt_result` with `status: "error"`."""
     message: str
     retryable: bool
-    """Transient: resubmitting later may succeed (omp's own retries are exhausted)."""
+    """Transient: resubmitting later may succeed (npi's own retries are exhausted)."""
     provider: str | None = None
     model: str | None = None
     http_status: int | None = None
     code: Literal["cost_cap"] | None = None
-    """`cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request."""
+    """`cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -1452,6 +1462,22 @@ class RpcFrameErrorEvent:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class ApprovalSelectChoice:
+    """Structured meaning of one tool-approval `select` option, aligned positionally with `options`."""
+    action: ApprovalSelectAction
+    grant: ApprovalGrantScope | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ApprovalSelectMetadata:
+    """Present on a `select` request emitted by a tool-approval gate."""
+    tool_name: str
+    choices: tuple[ApprovalSelectChoice, ...]
+    target_keys: tuple[str, ...] | None = None
+    session_key: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class AskOption:
     label: str
     description: str | None = None
@@ -1478,6 +1504,7 @@ class SelectUiRequest:
     title: str
     options: tuple[str, ...]
     option_details: tuple[SelectOptionDetail, ...] | None = None
+    approval: ApprovalSelectMetadata | None = None
     timeout: int | None = None
 
 
@@ -1595,6 +1622,7 @@ class ExtensionUiRequest(ExtensionUiRequestMixin):
     title: str | None = None
     options: tuple[str, ...] | None = None
     option_details: tuple[SelectOptionDetail, ...] | None = None
+    approval: ApprovalSelectMetadata | None = None
     timeout: int | None = None
     message: str | None = None
     placeholder: str | None = None
@@ -2907,6 +2935,24 @@ def parse_rpc_frame_error_event(value: object, path: str = "RpcFrameErrorEvent")
     )
 
 
+def parse_approval_select_choice(value: object, path: str = "ApprovalSelectChoice") -> ApprovalSelectChoice:
+    payload = expect_object(value, path)
+    return ApprovalSelectChoice(
+        action=required(payload, "action", _decode_approval_select_action, path),
+        grant=optional(payload, "grant", _decode_approval_grant_scope, path),
+    )
+
+
+def parse_approval_select_metadata(value: object, path: str = "ApprovalSelectMetadata") -> ApprovalSelectMetadata:
+    payload = expect_object(value, path)
+    return ApprovalSelectMetadata(
+        tool_name=required(payload, "toolName", decode_str, path),
+        choices=required(payload, "choices", array(parse_approval_select_choice), path),
+        target_keys=optional(payload, "targetKeys", array(decode_str), path),
+        session_key=optional(payload, "sessionKey", decode_str, path),
+    )
+
+
 def parse_ask_option(value: object, path: str = "AskOption") -> AskOption:
     payload = expect_object(value, path)
     return AskOption(
@@ -2937,6 +2983,7 @@ def parse_select_ui_request(value: object, path: str = "SelectUiRequest") -> Sel
         title=required(payload, "title", decode_str, path),
         options=required(payload, "options", array(decode_str), path),
         option_details=optional(payload, "optionDetails", array(parse_select_option_detail), path),
+        approval=optional(payload, "approval", parse_approval_select_metadata, path),
         timeout=optional(payload, "timeout", decode_int, path),
     )
 
@@ -3074,6 +3121,7 @@ def parse_extension_ui_request(value: object, path: str = "ExtensionUiRequest") 
         title=optional(payload, "title", decode_str, path),
         options=optional(payload, "options", array(decode_str), path),
         option_details=optional(payload, "optionDetails", array(parse_select_option_detail), path),
+        approval=optional(payload, "approval", parse_approval_select_metadata, path),
         timeout=optional(payload, "timeout", decode_int, path),
         message=optional(payload, "message", decode_str, path),
         placeholder=optional(payload, "placeholder", decode_str, path),
@@ -3957,6 +4005,10 @@ __all__ = [
     "AgentSource",
     "AgentStartEvent",
     "AnthropicServerToolContent",
+    "ApprovalGrantScope",
+    "ApprovalSelectAction",
+    "ApprovalSelectChoice",
+    "ApprovalSelectMetadata",
     "AskAnswer",
     "AskOption",
     "AskQuestion",
@@ -4156,6 +4208,8 @@ __all__ = [
     "parse_agent_message",
     "parse_agent_start_event",
     "parse_anthropic_server_tool_content",
+    "parse_approval_select_choice",
+    "parse_approval_select_metadata",
     "parse_ask_answer",
     "parse_ask_option",
     "parse_ask_question",

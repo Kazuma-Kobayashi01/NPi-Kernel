@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `npi gateway` (`serve`, `token`, `status`), providing a LabBot / LabLink-compatible HTTP REST, SSE, and WebSocket PTY gateway (`/m/v1` and `/p/<profile>/v1`) backed by NPi RPC workers and SQLite state storage.
+- Added real per-Bot Docker RPC workers and PTY shells, scoped credential-proxy provisioning, hard project quotas, private-network isolation, and deployment scripts for a nonprivileged Incus controller alongside Hermes.
+- Added `--restrict-tools` to enforce a hard tool allowlist, including runtime-discovered tools.
 - Added queueable compaction: `/compact` sent with the follow-up key (Ctrl+Q) while the agent works now runs when it yields instead of interrupting it ([#17397](https://github.com/can1357/oh-my-pi/pull/17397) by [@H4vC](https://github.com/H4vC))
 - Added `omp session lease [--json] -- <session-id>...` and the RPC command `get_session_lease`, which report which sessions a running omp owns (`{"held": [...], "unknown": [...]}`) without taking ownership, so another program can check a session without forking it ([#17428](https://github.com/can1357/oh-my-pi/pull/17428) by [@andrebrait](https://github.com/andrebrait))
 - Added opt-in `title.refreshAfterPrompts`: every N operator prompts, the judge model checks whether a generated session title still fits the conversation and regenerates it when it does not; user-set titles are never replaced ([#17443](https://github.com/can1357/oh-my-pi/pull/17443) by [@wolfiesch](https://github.com/wolfiesch))
@@ -16,6 +19,11 @@
 
 ### Fixed
 
+- Fixed tool-approval prompts ignoring the tool call's abort signal in RPC and extension hosts, and attached structured `approval` choice metadata to tool-approval `select` requests.
+- Fixed Gateway workers running on the control-plane host despite Docker availability checks; unavailable sandbox prerequisites now fail closed.
+- Fixed Gateway approval grants leaking across unrelated tool targets; structured approval metadata now carries canonical target and session-scope keys.
+- Fixed worker admission races, cancellation and subprocess cleanup, empty-history session persistence, and compiled CLI subprocess entry resolution.
+- Fixed uploaded files becoming unreadable to non-root Docker workers under a restrictive service umask.
 - Fixed Ctrl+C clearing input instead of cancelling active CLI work; interrupting now keeps the session available for the next command without arming the idle double-tap exit.
 - Fixed account-policy recovery repeatedly rotating through denied credentials instead of surfacing the error or using the configured model fallback, including unnecessary sibling-unblock waits after the account allowance is spent ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))
 - Startup prewalk now arms a later fallback candidate of the role named by prewalk.into when its first candidate is unavailable, matching /prewalk and /new ([#17373](https://github.com/can1357/oh-my-pi/pull/17373)).

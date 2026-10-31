@@ -4704,12 +4704,12 @@ func (v *PromptStatus) UnmarshalJSON(data []byte) error {
 // Failure detail of a `prompt_result` with `status: "error"`.
 type PromptError struct {
 	Message string `json:"message"`
-	// Transient: resubmitting later may succeed (omp's own retries are exhausted).
+	// Transient: resubmitting later may succeed (npi's own retries are exhausted).
 	Retryable  bool    `json:"retryable"`
 	Provider   *string `json:"provider,omitempty"`
 	Model      *string `json:"model,omitempty"`
 	HTTPStatus *int64  `json:"httpStatus,omitempty"`
-	// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request.
+	// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request.
 	Code *PromptErrorCode `json:"code,omitempty"`
 }
 
@@ -5533,6 +5533,96 @@ func (v SelectOptionDetail) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), "", v.Extra)
 }
 
+type ApprovalSelectAction string
+
+const (
+	ApprovalSelectActionOnce    ApprovalSelectAction = "once"
+	ApprovalSelectActionSession ApprovalSelectAction = "session"
+	ApprovalSelectActionAlways  ApprovalSelectAction = "always"
+	ApprovalSelectActionDeny    ApprovalSelectAction = "deny"
+)
+
+func (v *ApprovalSelectAction) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ApprovalSelectAction")
+	if err != nil {
+		return err
+	}
+	switch value := ApprovalSelectAction(s); value {
+	case ApprovalSelectActionOnce, ApprovalSelectActionSession, ApprovalSelectActionAlways, ApprovalSelectActionDeny:
+		*v = value
+		return nil
+	}
+	return unknownValue("ApprovalSelectAction", s)
+}
+
+type ApprovalGrantScope string
+
+const (
+	ApprovalGrantScopeFolder ApprovalGrantScope = "folder"
+	ApprovalGrantScopeTarget ApprovalGrantScope = "target"
+)
+
+func (v *ApprovalGrantScope) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ApprovalGrantScope")
+	if err != nil {
+		return err
+	}
+	switch value := ApprovalGrantScope(s); value {
+	case ApprovalGrantScopeFolder, ApprovalGrantScopeTarget:
+		*v = value
+		return nil
+	}
+	return unknownValue("ApprovalGrantScope", s)
+}
+
+// Structured meaning of one tool-approval `select` option, aligned positionally with `options`.
+type ApprovalSelectChoice struct {
+	Action ApprovalSelectAction `json:"action"`
+	Grant  *ApprovalGrantScope  `json:"grant,omitempty"`
+}
+
+func (v *ApprovalSelectChoice) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ApprovalSelectChoice", v.decodeFrom)
+}
+
+func (v *ApprovalSelectChoice) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ApprovalSelectChoice
+	d := fieldDecoder{raw: raw, owner: "ApprovalSelectChoice"}
+	d.required("action", &out.Action)
+	d.optional("grant", &out.Grant)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+// Present on a `select` request emitted by a tool-approval gate.
+type ApprovalSelectMetadata struct {
+	ToolName   string                 `json:"toolName"`
+	Choices    []ApprovalSelectChoice `json:"choices"`
+	TargetKeys []string               `json:"targetKeys,omitempty"`
+	SessionKey *string                `json:"sessionKey,omitempty"`
+}
+
+func (v *ApprovalSelectMetadata) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ApprovalSelectMetadata", v.decodeFrom)
+}
+
+func (v *ApprovalSelectMetadata) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ApprovalSelectMetadata
+	d := fieldDecoder{raw: raw, owner: "ApprovalSelectMetadata"}
+	d.required("toolName", &out.ToolName)
+	d.required("choices", &out.Choices)
+	d.optional("targetKeys", &out.TargetKeys)
+	d.optional("sessionKey", &out.SessionKey)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type AskOption struct {
 	Label       string  `json:"label"`
 	Description *string `json:"description,omitempty"`
@@ -5588,11 +5678,12 @@ func (v *AskQuestion) decodeFrom(raw map[string]json.RawMessage) error {
 }
 
 type SelectUiRequest struct {
-	ID            string               `json:"id"`
-	Title         string               `json:"title"`
-	Options       []string             `json:"options"`
-	OptionDetails []SelectOptionDetail `json:"optionDetails,omitempty"`
-	Timeout       *int64               `json:"timeout,omitempty"`
+	ID            string                  `json:"id"`
+	Title         string                  `json:"title"`
+	Options       []string                `json:"options"`
+	OptionDetails []SelectOptionDetail    `json:"optionDetails,omitempty"`
+	Approval      *ApprovalSelectMetadata `json:"approval,omitempty"`
+	Timeout       *int64                  `json:"timeout,omitempty"`
 }
 
 func (v *SelectUiRequest) UnmarshalJSON(data []byte) error {
@@ -5608,6 +5699,7 @@ func (v *SelectUiRequest) decodeFrom(raw map[string]json.RawMessage) error {
 	d.required("title", &out.Title)
 	d.required("options", &out.Options)
 	d.optional("optionDetails", &out.OptionDetails)
+	d.optional("approval", &out.Approval)
 	d.optional("timeout", &out.Timeout)
 	if d.err != nil {
 		return d.err

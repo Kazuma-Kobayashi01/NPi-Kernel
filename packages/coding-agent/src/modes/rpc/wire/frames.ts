@@ -143,6 +143,24 @@ export const frameDefs = {
 
 	WidgetPlacement: "'aboveEditor' | 'belowEditor'",
 	SelectOptionDetail: doc({ "description?": "string" }, "Presentation metadata aligned positionally with `options`."),
+	ApprovalSelectAction: "'once' | 'session' | 'always' | 'deny'",
+	ApprovalGrantScope: "'folder' | 'target'",
+	ApprovalSelectChoice: doc(
+		{
+			action: "ApprovalSelectAction",
+			"grant?": "ApprovalGrantScope",
+		},
+		"Structured meaning of one tool-approval `select` option, aligned positionally with `options`.",
+	),
+	ApprovalSelectMetadata: doc(
+		{
+			toolName: "string",
+			choices: "ApprovalSelectChoice[]",
+			"targetKeys?": "string[]",
+			"sessionKey?": "string",
+		},
+		"Present on a `select` request emitted by a tool-approval gate.",
+	),
 	AskOption: { label: "string", "description?": "string", "preview?": "string" },
 	AskQuestion: doc(
 		{
@@ -162,6 +180,7 @@ export const frameDefs = {
 		title: "string",
 		options: "string[]",
 		"optionDetails?": "SelectOptionDetail[]",
+		"approval?": "ApprovalSelectMetadata",
 		"timeout?": "number.integer",
 	},
 	ConfirmUiRequest: {

@@ -16,6 +16,7 @@ import type { Settings } from "../config/settings";
 import { normalizeToLF } from "../edit/normalize";
 import type {
 	ExtensionApprovalAnswer,
+	ExtensionApprovalChoiceMetadata,
 	ExtensionApprovalGrant,
 	ExtensionApprovalPrompt,
 	ExtensionUIContext,
@@ -840,7 +841,15 @@ export async function requestApproval(
 	ui: Pick<ExtensionUIContext, "select" | "approve">,
 	tool: ApprovalSubject,
 	args: unknown,
-	options: { reason?: string; appendix?: readonly string[]; sessionSubject?: string; grants?: boolean } = {},
+	options: {
+		reason?: string;
+		appendix?: readonly string[];
+		sessionSubject?: string;
+		sessionKey?: string;
+		grants?: boolean;
+		signal?: AbortSignal;
+		capability?: ToolTier;
+	} = {},
 ): Promise<ExtensionApprovalAnswer> {
 	const { reason, appendix = [], sessionSubject } = options;
 	const header = approvalHeader(tool, reason);
@@ -850,8 +859,10 @@ export async function requestApproval(
 	const grants = options.grants ? approvalGrantChoices(tool, args, folder) : [];
 	// A directory answer names what it covers: the folder's own entries, listed in the prompt.
 	const listing = folder ? await approvalFolderListing(folder.key, APPROVAL_FOLDER_FULL_LISTING) : undefined;
+	if (options.signal?.aborted) return "deny";
 	const folderBlock = approvalFolderPromptBlock(folder?.label, listing, APPROVAL_FOLDER_FULL_LISTING);
 	const full = [...header, ...details, ...(folderBlock ? [folderBlock] : []), ...appendix].join("\n");
+	const dialogOptions = options.signal ? { signal: options.signal } : undefined;
 	if (ui.approve) {
 		const summary = approvalSummary(details);
 		const compactBlock = approvalFolderPromptBlock(folder?.label, listing, APPROVAL_FOLDER_COMPACT_LISTING);
@@ -861,12 +872,15 @@ export async function requestApproval(
 			...(compactBlock ? [compactBlock] : []),
 			...appendix,
 		].join("\n");
-		const answer = await ui.approve({
-			full,
-			compact,
-			...(session ? { session } : {}),
-			...(grants.length > 0 ? { grants } : {}),
-		});
+		const answer = await ui.approve(
+			{
+				full,
+				compact,
+				...(session ? { session } : {}),
+				...(grants.length > 0 ? { grants } : {}),
+			},
+			dialogOptions,
+		);
 		if (answer === "once" || (answer === "session" && session)) return answer;
 		if (typeof answer === "object" && answer !== null && grants.some(grant => grant.scope === answer.grant)) {
 			return { grant: answer.grant, always: answer.always === true };
@@ -874,7 +888,24 @@ export async function requestApproval(
 		return "deny";
 	}
 	const choices = { ...(session ? { session } : {}), ...(grants.length > 0 ? { grants } : {}) };
-	return approvalAnswerForChoice(choices, await ui.select(full, approvalChoiceLabels(choices)));
+	return approvalAnswerForChoice(
+		choices,
+		await ui.select(full, approvalChoiceLabels(choices), {
+			...dialogOptions,
+			approval: {
+				toolName: tool.name,
+				choices: approvalChoiceMetadata(choices),
+				...(session && options.sessionKey ? { sessionKey: options.sessionKey } : {}),
+				...(options.grants && options.capability
+					? {
+							targetKeys: approvalCacheTargets(tool, args).map(target =>
+								approvalGrantKey(options.capability!, target),
+							),
+						}
+					: {}),
+			},
+		}),
+	);
 }
 
 /** The approve-this-call-only label: "Approve", or "Approve Once" beside grants that remember more. */
@@ -895,6 +926,20 @@ export function approvalChoiceLabels(prompt: Pick<ExtensionApprovalPrompt, "sess
 		approvalOnceLabel(prompt),
 		...(prompt.session ? [prompt.session] : []),
 		"Deny",
+	];
+}
+
+/** Structured meaning for each option returned by {@link approvalChoiceLabels}, in the same order. */
+export function approvalChoiceMetadata(
+	prompt: Pick<ExtensionApprovalPrompt, "session" | "grants">,
+): ExtensionApprovalChoiceMetadata[] {
+	const grants = prompt.grants ?? [];
+	return [
+		...grants.map(grant => ({ action: "session" as const, grant: grant.scope })),
+		...grants.map(grant => ({ action: "always" as const, grant: grant.scope })),
+		{ action: "once" },
+		...(prompt.session ? [{ action: "session" as const }] : []),
+		{ action: "deny" },
 	];
 }
 

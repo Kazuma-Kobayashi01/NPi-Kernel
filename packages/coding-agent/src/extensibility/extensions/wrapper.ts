@@ -461,12 +461,17 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				pendingSafetyChecks.length > 0 ? ["Provider safety checks:", ...safetyCheckLines(pendingSafetyChecks)] : [];
 			let approved: boolean;
 			try {
-				const answer = await requestApproval(uiContext, this.tool, resolvedArgs, {
-					reason: approvalCheck.reason,
-					appendix: safetyAppendix,
-					sessionSubject: sessionScope?.subject,
-					grants: cacheTargets,
-				});
+				const answer = await untilAborted(signal, () =>
+					requestApproval(uiContext, this.tool, resolvedArgs, {
+						reason: approvalCheck.reason,
+						appendix: safetyAppendix,
+						sessionSubject: sessionScope?.subject,
+						sessionKey: sessionScope?.key,
+						grants: cacheTargets,
+						capability: resolved.tier,
+						signal,
+					}),
+				);
 				approved = answer !== "deny";
 				if (answer === "session" && sessionScope) this.runner.grantSessionApproval(sessionScope.key);
 				if (typeof answer === "object" && approvalGrants) {

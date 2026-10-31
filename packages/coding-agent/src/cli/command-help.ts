@@ -64,6 +64,11 @@ export const dryBalanceHelp = {
 	description: "Dry-run OAuth account balancing across random session ids",
 } satisfies CommandMetadata;
 
+export const gatewayHelp = {
+	description:
+		"Run the NPi Bot Gateway (`/m/v1` and `/p/<profile>/v1` HTTP/SSE/WebSocket server for LabBot and Android clients)",
+} satisfies CommandMetadata;
+
 export const galleryHelp = {
 	description: "Preview tool, composer, and status-line renderers in a deterministic visual gallery",
 } satisfies CommandMetadata;

@@ -78,6 +78,8 @@ export interface Args {
 	join?: string;
 	models?: string[];
 	tools?: string[];
+	/** Treat --tools as a hard allowlist, without implicit or dynamically discovered additions. */
+	restrictTools?: boolean;
 	noTools?: boolean;
 	noLsp?: boolean;
 	noPty?: boolean;
@@ -357,6 +359,8 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.noSession = true;
 		} else if (arg === "--no-tools") {
 			result.noTools = true;
+		} else if (arg === "--restrict-tools") {
+			result.restrictTools = true;
 		} else if (arg === "--no-lsp") {
 			result.noLsp = true;
 		} else if (arg === "--no-pty") {
