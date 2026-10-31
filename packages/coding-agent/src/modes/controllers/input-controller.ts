@@ -1722,6 +1722,28 @@ export class InputController {
 			return;
 		}
 
+		// While main-session work is active, cancel through the same path as Esc
+		// (including queued-input recovery) instead of clearing the draft or exiting.
+		// A cancellation press must not arm the idle double-tap exit timer.
+		if (
+			!this.ctx.focusedAgentId &&
+			this.ctx.editor.onEscape &&
+			(this.ctx.loadingAnimation ||
+				this.ctx.session.isStreaming ||
+				this.ctx.session.isBashRunning ||
+				this.ctx.session.isEvalRunning ||
+				this.ctx.viewSession.isCompacting ||
+				this.ctx.viewSession.isGeneratingHandoff ||
+				this.ctx.viewSession.isRetrying ||
+				this.ctx.eventController.isAwaitingAsyncWork() ||
+				this.ctx.loopModeEnabled ||
+				this.ctx.collabGuest?.state?.isStreaming)
+		) {
+			this.ctx.lastSigintTime = 0;
+			this.ctx.editor.onEscape();
+			return;
+		}
+
 		const now = Date.now();
 		if (now - this.ctx.lastSigintTime < 500) {
 			void this.ctx.shutdown();

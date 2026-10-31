@@ -77,13 +77,19 @@ Dictation started with this button stays in the draft, regardless of `stt.submit
 
 For live English transcription, select **Nemotron 0.6B (live streaming, English)** in `omp setup speech`, or set `modelRoles.dictation` to `local/nemotron-streaming-en-0.6b`. Words appear in the draft while you speak. The first recording waits for the model to load before opening the microphone; start speaking when the button says **Recording · Stop**. Later recordings reuse the loaded model. See [local speech models](local-models.md#speech-to-text) for download and language details.
 
+## Interrupt active work
+
+In the main-session composer, `Ctrl+C` cancels active work through the same interrupt path as `Esc`, including running shell commands, model turns, and context maintenance. Queued input is recovered using the existing interrupt behavior. A cancellation press does not arm the double-`Ctrl+C` exit timer, so repeated cancellation while work settles does not accidentally quit the CLI.
+
+When idle, `Ctrl+C` still clears the draft and two presses within 500 ms exit. Focused subagent views and dialogs retain their existing key handling. During shutdown, another `Ctrl+C` still performs the emergency exit.
+
 ## Recover a cleared prompt
 
-Press `Ctrl+C` to clear an unsent composer draft, then `Up` to recall it. Older drafts and submitted prompts share the existing Up/Down navigation. Recalled drafts remain editable and are never sent until you submit them.
+When idle, press `Ctrl+C` to clear an unsent composer draft, then `Up` to recall it. Older drafts and submitted prompts share the existing Up/Down navigation. Recalled drafts remain editable and are never sent until you submit them.
 
 Cleared drafts preserve whitespace, collapsed pastes, and image attachments in the current editor's bounded history (100 entries). They are not written to persistent prompt history and do not appear in `Ctrl+R` search. Closing the process discards these canceled drafts; the separate save-on-exit behavior still applies to text currently in the composer. This is not a per-agent stash: history follows the editor, including when Agent Hub changes focus.
 
-The existing double-`Ctrl+C` exit behavior is unchanged. Empty clears do not add history entries.
+The idle double-`Ctrl+C` exit behavior is unchanged. Empty clears do not add history entries.
 
 Recovery is on by default. Turn off **Recall Cleared Drafts** in `/settings` under Interaction > Input, or set `composer.recallClearedDrafts: false`. This takes effect on the next clear without restarting; previously retained drafts remain in history until evicted or the editor closes.
 
