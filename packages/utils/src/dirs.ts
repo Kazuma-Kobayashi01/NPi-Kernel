@@ -28,8 +28,11 @@ export const BIN_NAME: string = "npi";
 /** Public homepage that inference gateways (OpenRouter, Vercel AI Gateway) credit omp traffic to. */
 export const APP_URL: string = "https://omp.sh/";
 
-/** Config directory name (e.g. ".omp") */
+/** Project-local config directory name (e.g. ".omp" inside a project) */
 export const CONFIG_DIR_NAME: string = ".omp";
+
+/** Global data root relative to the home folder: config, auth, sessions and caches (isolated from the omp CLI's ~/.omp). */
+export const GLOBAL_CONFIG_DIR_NAME: string = ".local/share/npi";
 
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
@@ -328,9 +331,9 @@ export function getSafeProjectCwd(): string {
 	return os.homedir();
 }
 
-/** Get the config directory name relative to home (e.g. ".omp" or PI_CONFIG_DIR override). */
+/** Get the global config directory name relative to home (".local/share/npi" or PI_CONFIG_DIR override). */
 export function getConfigDirName(): string {
-	return process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
+	return process.env.PI_CONFIG_DIR || GLOBAL_CONFIG_DIR_NAME;
 }
 
 /** Get the config agent directory name relative to home (e.g. ".omp/agent" or PI_CONFIG_DIR + "/agent"). */
