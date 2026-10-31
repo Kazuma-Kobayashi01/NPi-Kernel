@@ -16,6 +16,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { expandWindowsLongPath } from "@oh-my-pi/pi-natives/path";
 import { engines, version } from "../package.json" with { type: "json" };
+
+const NPI_VERSION = "1.0.1";
 import { isEnoent, isEnotdir } from "./fs-error";
 import { isBunTestRuntime } from "./test-runtime";
 
@@ -38,7 +40,10 @@ export const GLOBAL_CONFIG_DIR_NAME: string = ".local/share/npi";
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
 /** Version (e.g. "1.0.0") */
-export const VERSION: string = version;
+/** NPi's version, kept in step with NPi Desktop (src-tauri/tauri.conf.json). `package.json`'s version stays the omp core's. */
+export const VERSION: string = NPI_VERSION;
+/** The omp core this build is made from (the packages' own version). */
+export const CORE_VERSION: string = version;
 
 /** Default User-Agent header string (e.g. "omp/17.2.12") */
 export const USER_AGENT = `omp/${VERSION}`;
