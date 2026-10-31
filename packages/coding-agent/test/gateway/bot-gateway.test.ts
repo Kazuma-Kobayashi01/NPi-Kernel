@@ -47,6 +47,7 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 		fakeModelServer = Bun.serve({
 			hostname: "127.0.0.1",
 			port: 0,
+			idleTimeout: 255,
 			async fetch(req) {
 				const url = new URL(req.url);
 				if (url.pathname.endsWith("/models")) {
@@ -69,6 +70,10 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 
 				const last = rawMsgs.at(-1);
 				const lastText = last ? extractText(last.content) : "";
+				const delayedReply = last?.role === "user" && lastText.includes("delayed reply");
+				if (delayedReply) {
+					await Bun.sleep(12_000);
+				}
 				const base = {
 					id: "chatcmpl-fake",
 					object: "chat.completion.chunk",
@@ -145,7 +150,10 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 									choices: [
 										{
 											index: 0,
-											delta: { role: "assistant", content: `reply:${lastText.trim()}` },
+											delta: {
+												role: "assistant",
+												content: delayedReply ? "delayed-completion" : `reply:${lastText.trim()}`,
+											},
 											finish_reason: null,
 										},
 									],
@@ -360,6 +368,81 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 		expect(crossBotRes.status).toBe(404);
 	});
 
+	it("keeps slow JSON replies and pending SSE approvals alive across idle periods", async () => {
+		const cfg = createConfig();
+		gateway = startBotGateway(cfg, { catalog: new GatewayModelCatalog(cfg.catalogPath!) });
+		const base = `http://127.0.0.1:${gateway.port}/m/v1`;
+		const headers = {
+			Authorization: `Bearer ${managerKey}`,
+			"Content-Type": "application/json",
+		};
+		const botRes = await fetch(`${base}/bots`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "SlowBot", sandboxed: true, modelProvider: "fake", modelId: "fake-model" }),
+		});
+		const bot = (await botRes.json()) as { id: string };
+		const slowReply = await fetch(`${base}/bots/${bot.id}/chat/completions`, {
+			method: "POST",
+			headers: { ...headers, "X-Lab-Conversation-Id": "slow-json" },
+			body: JSON.stringify({ stream: false, messages: [{ role: "user", content: "delayed reply" }] }),
+		});
+		expect(slowReply.status).toBe(200);
+		expect(
+			((await slowReply.json()) as { choices: Array<{ message: { content: string } }> }).choices[0]!.message.content,
+		).toBe("delayed-completion");
+
+		const abort = new AbortController();
+		const deadline = setTimeout(() => abort.abort(), 25_000);
+		try {
+			const response = await fetch(`${base}/bots/${bot.id}/chat/completions`, {
+				method: "POST",
+				headers: { ...headers, "X-Lab-Conversation-Id": "idle-approval" },
+				body: JSON.stringify({ stream: true, messages: [{ role: "user", content: "run bash after waiting" }] }),
+				signal: abort.signal,
+			});
+			const reader = response.body!.getReader();
+			const decoder = new TextDecoder();
+			let text = "";
+			let approval: { run_id: string; request_id: string } | undefined;
+			while (!approval) {
+				const chunk = await reader.read();
+				if (chunk.done) throw new Error("reply ended before approval");
+				text += decoder.decode(chunk.value, { stream: true });
+				for (const block of text.split("\n\n")) {
+					if (!block.startsWith("event: approval.request")) continue;
+					const data = block.split("\n").find(line => line.startsWith("data: "));
+					if (data) approval = JSON.parse(data.slice(6));
+				}
+			}
+			const waitingSince = Date.now();
+			let whileWaiting = "";
+			while (!/(?:^|\n):[^\n]*\n\n/.test(whileWaiting)) {
+				const chunk = await reader.read();
+				if (chunk.done) throw new Error("reply ended while waiting for approval");
+				whileWaiting += decoder.decode(chunk.value, { stream: true });
+			}
+			await Bun.sleep(Math.max(0, 12_000 - (Date.now() - waitingSince)));
+			const approved = await fetch(`${base}/bots/${bot.id}/runs/${approval.run_id}/approval`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ choice: "once", request_id: approval.request_id }),
+			});
+			expect(approved.status).toBe(200);
+			text += whileWaiting;
+			while (true) {
+				const chunk = await reader.read();
+				if (chunk.done) break;
+				text += decoder.decode(chunk.value, { stream: true });
+			}
+			expect(text).toContain("gateway-ok");
+			expect(text).toContain("data: [DONE]");
+		} finally {
+			clearTimeout(deadline);
+			abort.abort();
+		}
+	}, 45_000);
+
 	it("streams SSE chat, seeds history without duplication, bridges structured approvals per conversation, and connects PTY shell", async () => {
 		const cfg = createConfig();
 		gateway = startBotGateway(cfg, { catalog: new GatewayModelCatalog(cfg.catalogPath!) });
@@ -396,7 +479,13 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 		});
 		expect(turn1.status).toBe(200);
 		const turn1Text = await turn1.text();
-		expect(turn1Text).toContain("reply:hello turn 1");
+		const turn1Reply = turn1Text
+			.split("\n")
+			.filter(line => line.startsWith("data: ") && line !== "data: [DONE]")
+			.map(line => JSON.parse(line.slice(6)) as { choices?: Array<{ delta?: { content?: string } }> })
+			.flatMap(chunk => chunk.choices ?? [])
+			.map(choice => choice.delta?.content ?? "")
+			.join("");
 		expect(turn1Text).toContain("data: [DONE]");
 		expect(recordedRequests).toHaveLength(1);
 		expect(recordedRequests[0]!.messages.map(m => m.role)).toEqual(["user", "assistant", "user"]);
@@ -410,7 +499,7 @@ describe("NPi Bot Gateway end-to-end contract", () => {
 				stream: true,
 				messages: [
 					{ role: "user", content: "hello turn 1" },
-					{ role: "assistant", content: "reply:hello turn 1" },
+					{ role: "assistant", content: turn1Reply },
 					{ role: "user", content: "please run bash now" },
 				],
 			}),

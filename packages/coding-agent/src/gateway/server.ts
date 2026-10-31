@@ -153,6 +153,8 @@ export function startBotGateway(
 	const server = Bun.serve<ShellSocketData>({
 		hostname: cfg.host,
 		port: cfg.port,
+		// Match the model proxy: worker startup and non-streaming replies can be quiet for minutes.
+		idleTimeout: 255,
 		async fetch(req, srv) {
 			try {
 				const url = new URL(req.url);

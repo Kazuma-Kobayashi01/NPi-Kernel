@@ -24,6 +24,7 @@
 - Fixed Gateway approval grants leaking across unrelated tool targets; structured approval metadata now carries canonical target and session-scope keys.
 - Fixed worker admission races, cancellation and subprocess cleanup, empty-history session persistence, and compiled CLI subprocess entry resolution.
 - Fixed uploaded files becoming unreadable to non-root Docker workers under a restrictive service umask.
+- Fixed Bot Gateway replies being cut off during model thinking, long-running tools, or approval waits.
 - Fixed Ctrl+C clearing input instead of cancelling active CLI work; interrupting now keeps the session available for the next command without arming the idle double-tap exit.
 - Fixed account-policy recovery repeatedly rotating through denied credentials instead of surfacing the error or using the configured model fallback, including unnecessary sibling-unblock waits after the account allowance is spent ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))
 - Startup prewalk now arms a later fallback candidate of the role named by prewalk.into when its first candidate is unavailable, matching /prewalk and /new ([#17373](https://github.com/can1357/oh-my-pi/pull/17373)).

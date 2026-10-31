@@ -721,9 +721,11 @@ export class GatewayRunner {
 			};
 
 			let aborted = false;
+			let heartbeatTimer: Timer | undefined;
 			const abortRun = () => {
 				if (aborted) return;
 				aborted = true;
+				clearInterval(heartbeatTimer);
 				sendFrame({ id: "abort-run", type: "abort" });
 				setTimeout(() => {
 					try {
@@ -753,6 +755,7 @@ export class GatewayRunner {
 			const cleanupRun = () => {
 				cleanupPromise ??= (async () => {
 					clearTimeout(runTimeout);
+					clearInterval(heartbeatTimer);
 					options.signal?.removeEventListener("abort", abortRun);
 					try {
 						child.stdin.end();
@@ -862,6 +865,10 @@ export class GatewayRunner {
 							abortRun();
 						}
 					};
+					// Keep both Bun and the native clients connected while tools or approvals are quiet.
+					heartbeatTimer = setInterval(() => writeSse(": keep-alive\n\n"), 10_000);
+					heartbeatTimer.unref();
+					writeSse(": connected\n\n");
 					try {
 						await this.#driveWorkerFrames(child, {
 							onReady: () => {
