@@ -1,5 +1,5 @@
 /**
- * `omp browser-relay` — drive the user's own Chrome tabs.
+ * `npi browser-relay` — drive the user's own Chrome tabs.
  */
 import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
 import {
@@ -34,9 +34,9 @@ export default class BrowserRelay extends Command {
 	};
 
 	static examples = [
-		"omp browser-relay install    # write the Chrome extension to disk + setup steps",
-		"omp browser-relay            # serve the relay on the default port",
-		"omp browser-relay -p 9333 --token s3cret",
+		"npi browser-relay install    # write the Chrome extension to disk + setup steps",
+		"npi browser-relay            # serve the relay on the default port",
+		"npi browser-relay -p 9333 --token s3cret",
 	];
 
 	async run(): Promise<void> {

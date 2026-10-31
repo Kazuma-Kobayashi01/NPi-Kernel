@@ -115,7 +115,7 @@ const SPEECH_MODELS_LIST_METHOD = "speech.models.list";
  * codex-acp (spec proposal: ACP `session/inject`,
  * agentclientprotocol/agent-client-protocol#1261, still open). Advertised via
  * top-level `_meta.steering.supported` in the `initialize` response; params
- * carry `{ sessionId, prompt: ContentBlock[] }`. The omp extension
+ * carry `{ sessionId, prompt: ContentBlock[] }`. The npi extension
  * `_meta.steering.queue: "followUp"` routes to the native follow-up queue
  * instead of the steering queue. Idle sessions are never consumed or started:
  * the response is always `promptRequired`, so the host submits the prompt
@@ -823,8 +823,8 @@ export class AcpAgent implements Agent {
 			authMethods.push({
 				type: "terminal",
 				id: "terminal",
-				name: "Set up omp in terminal",
-				description: "Launch the omp TUI to add provider keys and select models.",
+				name: "Set up npi in terminal",
+				description: "Launch the npi TUI to add provider keys and select models.",
 				args: [ACP_TERMINAL_AUTH_FLAG],
 			});
 		}
@@ -1520,7 +1520,7 @@ export class AcpAgent implements Agent {
 	 *   always `promptRequired`, so the host submits the content through
 	 *   `session/prompt` and keeps owning the turn.
 	 *
-	 * omp deliberately never returns `startedNewTurn` (claude-agent-acp's
+	 * npi deliberately never returns `startedNewTurn` (claude-agent-acp's
 	 * behavior without the `idleBehavior` opt-in) because a detached turn has
 	 * no `session/prompt` response to carry a failed start, so a rejection
 	 * would be invisible to the client (claude-agent-acp#903). `queue` is

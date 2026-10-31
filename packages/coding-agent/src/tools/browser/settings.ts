@@ -38,7 +38,7 @@ export const cfgBrowserRelay = register({
 		group: "Grep & Browser",
 		label: "Browser Relay",
 		description:
-			"Drive your own Chrome tabs through the omp browser relay. Install the extension once (`omp browser-relay install`); the relay server auto-starts when the browser prelude needs it. Takes precedence over Browser CDP URL; set PI_BROWSER_RELAY=0 or PI_BROWSER_RELAY=1 to override.",
+			"Drive your own Chrome tabs through the npi browser relay. Install the extension once (`npi browser-relay install`); the relay server auto-starts when the browser prelude needs it. Takes precedence over Browser CDP URL; set PI_BROWSER_RELAY=0 or PI_BROWSER_RELAY=1 to override.",
 	},
 });
 
@@ -50,7 +50,7 @@ export const cfgBrowserRelayUrl = register({
 		tab: "tools",
 		group: "Grep & Browser",
 		label: "Browser Relay URL",
-		description: "omp browser relay endpoint (default http://127.0.0.1:9224).",
+		description: "npi browser relay endpoint (default http://127.0.0.1:9224).",
 	},
 });
 
@@ -88,7 +88,7 @@ export const cfgBrowserTern = register({
 		group: "Grep & Browser",
 		label: "Tern Browser",
 		description:
-			"Inside a Tern pane, open browser tabs as picture-in-pictures over omp's pane (native web view) instead of headless Chromium; falls back to Chromium when no Tern window can host them. Explicit app options, the relay and Browser CDP URL take precedence; app.tern:false opts one open out. Set PI_BROWSER_TERN=0 or PI_BROWSER_TERN=1 to override.",
+			"Inside a Tern pane, open browser tabs as picture-in-pictures over npi's pane (native web view) instead of headless Chromium; falls back to Chromium when no Tern window can host them. Explicit app options, the relay and Browser CDP URL take precedence; app.tern:false opts one open out. Set PI_BROWSER_TERN=0 or PI_BROWSER_TERN=1 to override.",
 	},
 });
 

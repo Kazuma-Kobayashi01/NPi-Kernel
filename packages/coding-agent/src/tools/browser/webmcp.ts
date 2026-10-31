@@ -527,7 +527,7 @@ export class WebMcpController {
 		}
 		this.#catalog = next;
 		if (next.size > 0) return undefined;
-		// omp's Puppeteer evaluates in its isolated world, where `in` sees the platform API without creating the
+		// npi's Puppeteer evaluates in its isolated world, where `in` sees the platform API without creating the
 		// page's context or reading anything the page defined.
 		const exposed = await untilAborted(signal, () =>
 			page.mainFrame().evaluate(() => "modelContext" in document || "modelContext" in navigator),

@@ -135,7 +135,7 @@ interface CollisionResolution {
  * Resolve a same-name skill against what is already loaded.
  * - Precedence, when raw names collide:
  *   1. An authored skill always outranks a registry-installed package
- *      (`omp skill install`, the `skillshare` provider) — installed steps
+ *      (`npi skill install`, the `skillshare` provider) — installed steps
  *      aside regardless of admission order.
  *   2. A custom-directory skill always outranks a provider skill (#7190's
  *      override contract) — the provider skill steps aside even though it
@@ -336,7 +336,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		if (provider === "native" && level === "project") return enablePiProject;
 		if (provider === "agents" && level === "user") return enableAgentsUser;
 		if (provider === "agents" && level === "project") return enableAgentsProject;
-		// User-scope claude-plugins skills carry the root's origin (#10743). omp's
+		// User-scope claude-plugins skills carry the root's origin (#10743). npi's
 		// own installs (`omp` registry, `--plugin-dir`) are not the foreign
 		// ~/.claude/plugins tree, so the foreign opt-in gate applies only to
 		// claude-origin roots — parity with allowedRoots() in
@@ -641,7 +641,7 @@ export interface SkillRediscoverySource {
 }
 
 /**
- * Skills to use again after one of them went stale: its instruction file is gone (`omp plugin
+ * Skills to use again after one of them went stale: its instruction file is gone (`npi plugin
  * upgrade` installed the new version in a new cache directory and deleted the old one), or the
  * registries now install its plugin elsewhere ({@link isSkillSuperseded}). The plugin-root cache
  * and the discovery file cache still name the old directory, so both are dropped first. A holder

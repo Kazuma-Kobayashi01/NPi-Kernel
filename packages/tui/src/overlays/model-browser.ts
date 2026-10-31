@@ -837,7 +837,7 @@ export function providerMark(providerId: string): TspPickerMark {
 	return { text, seed: providerId, icon: `provider:${providerId}` };
 }
 
-/** The omp theme token of a thinking level's dot (`thinkingHigh`); none for inherit and auto. */
+/** The npi theme token of a thinking level's dot (`thinkingHigh`); none for inherit and auto. */
 export function thinkingDotToken(level: ConfiguredThinkingLevel): string | undefined {
 	if (level === ThinkingLevel.Inherit || level === AUTO_THINKING) return undefined;
 	return `thinking${level.charAt(0).toUpperCase()}${level.slice(1)}`;

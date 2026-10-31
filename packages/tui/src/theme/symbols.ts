@@ -265,6 +265,7 @@ export type SymbolKey =
 	| "tab.memory"
 	| "tab.tasks"
 	| "tab.providers"
+	| "tab.advanced"
 	// Tool identity icons
 	| "tool.write"
 	| "tool.edit"
@@ -653,6 +654,7 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"tab.memory": "🧠",
 	"tab.tasks": "📦",
 	"tab.providers": "🌐",
+	"tab.advanced": "⚙️",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "✎",
 	"tool.edit": "✎",
@@ -1128,6 +1130,7 @@ const NERD_SYMBOLS: SymbolMap = {
 	"tab.memory": "󰧑",
 	"tab.tasks": "󰐱",
 	"tab.providers": "󰖟",
+	"tab.advanced": "󰒓",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "\uEA7F",
 	"tool.edit": "\uEA73",
@@ -1439,6 +1442,7 @@ const ASCII_SYMBOLS: SymbolMap = {
 	"tab.memory": "[Y]",
 	"tab.tasks": "[K]",
 	"tab.providers": "[P]",
+	"tab.advanced": "[A]",
 	// Tool identity icons (per-tool signature glyph on the success header)
 	"tool.write": "+f",
 	"tool.edit": "~",

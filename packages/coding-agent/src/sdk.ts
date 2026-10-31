@@ -913,7 +913,7 @@ export interface CreateAgentSessionOptions {
 	 */
 	settingsApproval?: boolean;
 	/**
-	 * Replies render in omp's own TUI transcript, which draws Mermaid, ```svg
+	 * Replies render in npi's own TUI transcript, which draws Mermaid, ```svg
 	 * figures and table charts; only then does the system prompt mention them.
 	 * Print, RPC, ACP and subagent sessions read replies as text. Default: false.
 	 */
@@ -1155,13 +1155,13 @@ export async function loadSessionExtensions(
 /**
  * Load discovered/configured extensions and register their providers into
  * `modelRegistry`, then discover the dynamic provider catalogs. One-shot CLIs
- * (`omp bench`, dry-balance) build a bare {@link ModelRegistry} that only knows
+ * (`npi bench`, dry-balance) build a bare {@link ModelRegistry} that only knows
  * built-in catalog providers; without this, providers contributed by an
  * extension (e.g. a custom OpenAI-compatible provider under
  * `~/.omp/agent/extensions/`) never reach model resolution. Mirrors the
- * session / `omp models` path: drain the queued provider registrations, then
+ * session / `npi models` path: drain the queued provider registrations, then
  * `refreshRuntimeProviders` so dynamically-discovered models exist before
- * selectors are resolved, unless `discoverModels: false` (e.g. `omp usage`,
+ * selectors are resolved, unless `discoverModels: false` (e.g. `npi usage`,
  * which needs only registered usage providers).
  */
 export async function loadCliExtensionProviders(
@@ -2918,7 +2918,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// Hydrate cached runtime (extension) provider catalogs before model
 		// resolution. Dynamic-only providers have no synchronous registration side
 		// effect, so a cold --model/provider resume must see the same fresh SQLite
-		// cache that `omp models find` uses before the online refresh continues in
+		// cache that `npi models find` uses before the online refresh continues in
 		// the background.
 		await modelRegistry.refreshRuntimeProviders("offline");
 		// Online runtime discovery must not steal the event loop from the first UI
@@ -4035,7 +4035,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			let activeRepoContext = initialActiveRepoContext;
 			// Re-discover rules and context files from disk on every session-scoped
 			// rebuild. The rule buckets are otherwise frozen at
-			// session creation, so a `RULES.md` (or any rule) created or edited while omp
+			// session creation, so a `RULES.md` (or any rule) created or edited while npi
 			// runs never reaches the prompt on /clear or /new until restart (issue #10940).
 			// resetCapabilities() clears the fs cache at those boundaries, so this observes
 			// the current file. TTSR registrations are replaced from the new snapshot while
@@ -5235,7 +5235,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 					for (const extensionPath of unloaded) announcedUnloadedExtensions.add(extensionPath);
 					session.emitNotice(
 						"warning",
-						`Restart omp to load newly enabled extensions: ${unloaded.join(", ")}`,
+						`Restart npi to load newly enabled extensions: ${unloaded.join(", ")}`,
 						"extensions",
 					);
 				}

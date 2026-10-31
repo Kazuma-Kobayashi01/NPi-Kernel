@@ -1,5 +1,5 @@
 /**
- * Identity of the omp build running in this process, stamped into session files so a
+ * Identity of the npi build running in this process, stamped into session files so a
  * transcript records which code produced each entry.
  *
  * Installed builds (compiled binary, package install) record only their version. A source
@@ -12,7 +12,7 @@ import { $env, isCompiledBinary, isRecord, logger, VERSION } from "@oh-my-pi/pi-
 import type { SessionEntry } from "./session-entries";
 
 export interface RuntimeIdentity {
-	/** omp package version. */
+	/** npi package version. */
 	version: string;
 	/** Source checkout commit; absent for installed builds. */
 	commit?: string;

@@ -112,7 +112,7 @@ class ComposerSceneController implements SetupSceneController {
 	}
 
 	/**
-	 * Intro, the shape list, and the live preview. The preview is omp's own
+	 * Intro, the shape list, and the live preview. The preview is npi's own
 	 * composer chrome for the highlighted shape — exactly what the classic
 	 * renderer paints — so it travels as `ansi` rendered at the surface width.
 	 */

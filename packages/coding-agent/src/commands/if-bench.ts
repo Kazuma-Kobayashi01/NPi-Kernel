@@ -22,10 +22,10 @@ export default class IfBench extends Command {
 	};
 
 	static examples = [
-		"# Compare three models on the incremental array machine\n  omp if-bench opus sonnet gpt-5.2",
-		"# Go deeper, one model at a time\n  omp if-bench opus --turns 40 --par 1",
-		"# Shorter array, tighter cat sound\n  omp if-bench sonnet --length 12 --nya-max 2",
-		"# Machine-readable per-turn transcript\n  omp if-bench opus --json",
+		"# Compare three models on the incremental array machine\n  npi if-bench opus sonnet gpt-5.2",
+		"# Go deeper, one model at a time\n  npi if-bench opus --turns 40 --par 1",
+		"# Shorter array, tighter cat sound\n  npi if-bench sonnet --length 12 --nya-max 2",
+		"# Machine-readable per-turn transcript\n  npi if-bench opus --json",
 	];
 
 	async run(): Promise<void> {

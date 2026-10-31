@@ -1,8 +1,8 @@
 /**
- * Cross-process contract between omp processes and the broker-supervised IDA host daemon.
+ * Cross-process contract between npi processes and the broker-supervised IDA host daemon.
  *
  * Each open database runs in one daemon named {@link idaDaemonName} under the project's daemon
- * broker (so it shows up in `omp ps`). The daemon is an omp worker (`host.ts`) that owns the
+ * broker (so it shows up in `npi ps`). The daemon is an npi worker (`host.ts`) that owns the
  * IDB lock and one Python worker, and serves NDJSON requests on {@link idaHostEndpoint}.
  */
 import { ipcEndpoint } from "@oh-my-pi/pi-natives";
@@ -23,7 +23,7 @@ export const IDA_HOST_READY_PATTERN = String.raw`omp ida host listening on \S+`;
 
 /** Banner printed on stdout once the host socket accepts connections. */
 export function idaHostReadyBanner(endpoint: string): string {
-	return `omp ida host listening on ${endpoint}`;
+	return `npi ida host listening on ${endpoint}`;
 }
 
 /** Message text of any thrown value, for logs and wire errors. */
@@ -50,7 +50,7 @@ export function idaHostEndpoint(runtimeDir: string, daemonName: string): string 
 	return ipcEndpoint(runtimeDir, `ida-${hash16(daemonName)}`);
 }
 
-/** RPC methods an omp process may forward to the worker through `call`. */
+/** RPC methods an npi process may forward to the worker through `call`. */
 export const IDA_CALL_METHODS = ["view", "exec", "rename", "comment", "set_type", "make_function", "save"] as const;
 
 /** A method forwarded with `call`. */
@@ -116,7 +116,7 @@ const hostStatusSchema = type({
 
 /**
  * A host's database as reported by `open`/`status`. `busy` counts queued and running requests
- * from every omp process; `lastUsed` drives LRU eviction; `dirty` means a close would save.
+ * from every npi process; `lastUsed` drives LRU eviction; `dirty` means a close would save.
  */
 export type IdaHostStatus = typeof hostStatusSchema.infer;
 
@@ -141,7 +141,7 @@ const hostConfigSchema = type({
 	idleCloseMs: "number",
 });
 
-/** Everything the host needs to open its database; built by the omp process that starts it. */
+/** Everything the host needs to open its database; built by the npi process that starts it. */
 export type IdaHostConfig = typeof hostConfigSchema.infer;
 
 /** Decode the host config from {@link IDA_HOST_CONFIG_ENV}; throws on a malformed value. */

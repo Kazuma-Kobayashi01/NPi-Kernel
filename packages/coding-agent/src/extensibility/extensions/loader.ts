@@ -65,7 +65,7 @@ type LoadedExtensionModule = ExtensionFactory | { default?: ExtensionFactory };
 /** RFC 3986 scheme syntax, lowercased, two characters at least so `c` cannot capture `C:/` paths. */
 const LINK_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]+$/;
 
-/** Standard schemes an extension may not claim: web, file and mail links. omp's internal URLs are refused too. */
+/** Standard schemes an extension may not claim: web, file and mail links. npi's internal URLs are refused too. */
 const STANDARD_LINK_SCHEMES: Readonly<Record<string, true>> = {
 	about: true,
 	blob: true,

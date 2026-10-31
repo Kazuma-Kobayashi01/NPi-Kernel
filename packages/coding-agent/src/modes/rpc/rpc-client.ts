@@ -894,7 +894,7 @@ export class RpcClient {
 	/**
 	 * Start a GPT live voice session whose audio runs on the caller's own WebRTC peer
 	 * (one Opus audio track plus an `oai-events` data channel). Send the peer's SDP offer and
-	 * apply the returned answer; omp keeps signaling, delegation and transcripts, and opens
+	 * apply the returned answer; npi keeps signaling, delegation and transcripts, and opens
 	 * no host microphone or speaker. Frames arrive through {@link onLive}; `live_levels` are not sent.
 	 */
 	async liveConnect(

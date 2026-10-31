@@ -22,6 +22,9 @@ import { isBunTestRuntime } from "./test-runtime";
 /** App name (e.g. "omp") */
 export const APP_NAME: string = "omp";
 
+/** The command name shown in help, usage lines and banners (data paths keep using {@link APP_NAME}). */
+export const BIN_NAME: string = "npi";
+
 /** Public homepage that inference gateways (OpenRouter, Vercel AI Gateway) credit omp traffic to. */
 export const APP_URL: string = "https://omp.sh/";
 

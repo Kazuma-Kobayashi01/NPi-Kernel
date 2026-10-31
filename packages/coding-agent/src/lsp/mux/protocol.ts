@@ -27,7 +27,7 @@ export const LSP_MUX_READY_PATTERN = String.raw`omp lsp mux listening on \S+`;
 
 /** Banner printed on stdout once the mux socket accepts connections. */
 export function lspMuxReadyBanner(endpoint: string): string {
-	return `omp lsp mux listening on ${endpoint}`;
+	return `npi lsp mux listening on ${endpoint}`;
 }
 
 // =============================================================================

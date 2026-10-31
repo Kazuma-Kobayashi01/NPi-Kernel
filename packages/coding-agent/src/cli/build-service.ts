@@ -1,7 +1,7 @@
 /**
- * Client for Stencil's build service, the source of omp's standalone binaries.
+ * Client for Stencil's build service, the source of npi's standalone binaries.
  *
- * `omp update` on a standalone binary install, the binary takeover of a
+ * `npi update` on a standalone binary install, the binary takeover of a
  * package-manager install, and the startup update check of a compiled binary
  * all ask the service which build to install ({@link fetchBuild}):
  *
@@ -10,7 +10,7 @@
  * - `GET {origin}/api/products/omp/versions/{version}/{target}` for one exact
  *   version.
  *
- * omp is a public product, so no token is sent. The origin is `PI_BUILD_URL`
+ * npi is a public product, so no token is sent. The origin is `PI_BUILD_URL`
  * ({@link DEFAULT_BUILD_URL} when unset). `{target}` is
  * `{macos|linux|linux-musl|windows}-{arm64|x86_64}` ({@link resolveBuildHost}).
  * Requests carry `User-Agent: omp/<version>`, which the service counts in its
@@ -43,7 +43,7 @@ export type Fetch = (input: string | URL | Request, init?: RequestInit) => Promi
 /** Build service origin used when `PI_BUILD_URL` is unset. */
 export const DEFAULT_BUILD_URL = "https://build.stencil.so";
 
-/** The product omp's builds are published under. */
+/** The product npi's builds are published under. */
 const PRODUCT = "omp";
 
 const BUILD_CHECK_TIMEOUT_MS = 30_000;

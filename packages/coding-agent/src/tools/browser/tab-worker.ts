@@ -551,7 +551,7 @@ function asElementHandle(handle: unknown): ElementHandle | null {
 	return handle ? (handle as ElementHandle) : null;
 }
 
-/** ElementHandle enriched with omp's additional direct interaction and query methods. */
+/** ElementHandle enriched with npi's additional direct interaction and query methods. */
 export type ActionableHandle = InteractionHandle & ElementQueryHelpers & { fill(value: string): Promise<void> };
 
 /**
@@ -951,7 +951,7 @@ class NavigationTimeoutError extends ToolError {}
 /** The page's renderer crashed; every later call on the page stalls until its timeout. */
 class RendererCrashedError extends ToolError {}
 
-/** Chrome ended the debugger attachment the page is driven through (omp browser relay); the page itself lives on. */
+/** Chrome ended the debugger attachment the page is driven through (npi browser relay); the page itself lives on. */
 class DebuggerDetachedError extends ToolError {
 	constructor(
 		readonly reason: string,
@@ -959,7 +959,7 @@ class DebuggerDetachedError extends ToolError {
 		readonly when: "during" | "before",
 	) {
 		super(
-			`Chrome detached omp from this tab (${reason}) ${when === "during" ? "during this call" : "before this call, so its code did not run"}`,
+			`Chrome detached npi from this tab (${reason}) ${when === "during" ? "during this call" : "before this call, so its code did not run"}`,
 		);
 	}
 }
@@ -1237,7 +1237,7 @@ async function createTrackedPage(
 ): Promise<Page> {
 	let targetId: string;
 	if (relay) {
-		// The omp relay has no attachable browser target, so its tab is created over the root connection:
+		// The npi relay has no attachable browser target, so its tab is created over the root connection:
 		// unselected, in the browser of `nearTargetId` (the relay's own parameter) when given.
 		const params: Protocol.Target.CreateTargetRequest & { nearTargetId?: string } = {
 			url: "about:blank",
@@ -1605,7 +1605,7 @@ export class WorkerCore {
 	 * fails or stalls, so this worker runs nothing more and the supervisor re-adopts the tab on a new one.
 	 */
 	#debuggerDetached: string | undefined;
-	/** The omp browser relay's `OMP.debuggerDetached` event, sent to the page's sessions ahead of their detach. */
+	/** The npi browser relay's `OMP.debuggerDetached` event, sent to the page's sessions ahead of their detach. */
 	readonly #onDebuggerDetached = (params: unknown): void => {
 		if (this.#debuggerDetached !== undefined) return;
 		const reason = isRecord(params) && typeof params.reason === "string" ? params.reason : "no reason given";
@@ -1613,7 +1613,7 @@ export class WorkerCore {
 		const run = this.#started ? this.#unanswered : null;
 		if (!run) return;
 		this.#unanswered = null;
-		run.ac.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Chrome detached omp from this tab")));
+		run.ac.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Chrome detached npi from this tab")));
 		const error = new DebuggerDetachedError(reason, run.codeStarted ? "during" : "before");
 		this.#transport.send({ type: "result", id: run.id, ok: false, error: errorPayload(error) });
 	};
@@ -1858,7 +1858,7 @@ export class WorkerCore {
 	}
 
 	/**
-	 * Tell the omp browser relay this worker drives the adopted page, so the
+	 * Tell the npi browser relay this worker drives the adopted page, so the
 	 * relay adds it to the per-window "omp" tab group. Best-effort: plain CDP
 	 * backends (real Chrome, cmux) reject the relay-private method.
 	 */
@@ -1871,7 +1871,7 @@ export class WorkerCore {
 			const raw = session as unknown as { send(method: string): Promise<unknown> };
 			await raw.send("OMP.claimTarget");
 		} catch {
-			// Not the omp relay; nothing to claim.
+			// Not the npi relay; nothing to claim.
 		} finally {
 			await session?.detach().catch(() => undefined);
 		}

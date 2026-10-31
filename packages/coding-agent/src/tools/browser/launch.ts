@@ -129,7 +129,7 @@ export function isPuppeteerTimeout(error: unknown): boolean {
 }
 
 /**
- * Build Puppeteer's `TimeoutError` for a deadline omp enforces in place of one of Puppeteer's waits.
+ * Build Puppeteer's `TimeoutError` for a deadline npi enforces in place of one of Puppeteer's waits.
  * Its `name` stays "TimeoutError" in release builds: back/forward/reload pass this error to the agent's cell as is.
  */
 export function puppeteerTimeoutError(message: string): Error {
@@ -263,7 +263,7 @@ async function debuggerEndpointOf(browserURL: string): Promise<string | undefine
 }
 
 /**
- * The connection's root session, which answers browser-level `Target.*` commands. The omp relay serves
+ * The connection's root session, which answers browser-level `Target.*` commands. The npi relay serves
  * those but exposes no attachable browser target, so `browser.target().createCDPSession()` fails there.
  */
 export function browserConnection(browser: Browser): Connection {
@@ -728,7 +728,7 @@ async function writeOwnedProfilePreferences(file: string): Promise<void> {
  * When the first window of a new Chromium process opens, it reopens every page
  * recorded in `Default/Sessions`, however the previous process exited. On the
  * project-shared browser that resurrects whatever was open when its
- * predecessor stopped or was killed, and no omp process owns those pages:
+ * predecessor stopped or was killed, and no npi process owns those pages:
  * target ownership dies with the browser instance, so neither idle-close nor
  * the orphan reaper ever closes them. Call this before a Chromium process
  * starts on the profile. Best-effort: a failure is logged and never blocks the

@@ -1,5 +1,5 @@
 /**
- * `omp auth-broker` — manage the omp credential vault.
+ * `npi auth-broker` — manage the npi credential vault.
  */
 
 import { Args, Command, Flags, renderCommandHelp } from "@oh-my-pi/pi-utils/cli";
@@ -56,21 +56,21 @@ export default class AuthBroker extends Command {
 	};
 
 	static examples = [
-		"# Boot the broker against the local SQLite store\n  omp auth-broker serve",
-		"# Boot on a non-default port\n  omp auth-broker serve --bind=127.0.0.1:9000",
-		"# Trust client IP headers from a trusted reverse proxy\n  omp auth-broker serve --trust-proxy-headers",
-		"# Print the bearer token\n  omp auth-broker token",
-		"# Rotate the bearer token\n  omp auth-broker token --regenerate",
-		"# List supported OAuth providers\n  omp auth-broker list",
-		"# Local login (run on the broker host)\n  omp auth-broker login anthropic",
-		"# Interactive provider selection\n  omp auth-broker login",
-		"# Remote login over SSH tunnel\n  omp auth-broker login anthropic --via=user@broker",
-		"# Log out of a provider (interactive without provider arg)\n  omp auth-broker logout anthropic",
-		"# Import a CLIProxyAPI auth dump\n  omp auth-broker import ~/.cliproxy/auth",
-		"# Import a single CLIProxyAPI JSON, overriding the provider mapping\n  omp auth-broker import ~/.cliproxy/auth/claude-foo.json --provider anthropic",
-		"# Preview a migration from local store + env vars to the configured broker\n  omp auth-broker migrate --from-local --include-env --dry-run",
-		"# Apply the migration\n  omp auth-broker migrate --from-local --include-env",
-		"# Health-check the configured remote broker\n  omp auth-broker status",
+		"# Boot the broker against the local SQLite store\n  npi auth-broker serve",
+		"# Boot on a non-default port\n  npi auth-broker serve --bind=127.0.0.1:9000",
+		"# Trust client IP headers from a trusted reverse proxy\n  npi auth-broker serve --trust-proxy-headers",
+		"# Print the bearer token\n  npi auth-broker token",
+		"# Rotate the bearer token\n  npi auth-broker token --regenerate",
+		"# List supported OAuth providers\n  npi auth-broker list",
+		"# Local login (run on the broker host)\n  npi auth-broker login anthropic",
+		"# Interactive provider selection\n  npi auth-broker login",
+		"# Remote login over SSH tunnel\n  npi auth-broker login anthropic --via=user@broker",
+		"# Log out of a provider (interactive without provider arg)\n  npi auth-broker logout anthropic",
+		"# Import a CLIProxyAPI auth dump\n  npi auth-broker import ~/.cliproxy/auth",
+		"# Import a single CLIProxyAPI JSON, overriding the provider mapping\n  npi auth-broker import ~/.cliproxy/auth/claude-foo.json --provider anthropic",
+		"# Preview a migration from local store + env vars to the configured broker\n  npi auth-broker migrate --from-local --include-env --dry-run",
+		"# Apply the migration\n  npi auth-broker migrate --from-local --include-env",
+		"# Health-check the configured remote broker\n  npi auth-broker status",
 	];
 
 	async run(): Promise<void> {

@@ -437,7 +437,7 @@ function createPushbulletUploader(config: DestinationRuntimeConfig): BlobUploade
 			if (deviceId) pushForm.set("device_iden", deviceId);
 			pushForm.set("type", "file");
 			pushForm.set("file_url", fileUrl);
-			pushForm.set("body", "Sent via omp");
+			pushForm.set("body", "Sent via npi");
 			pushForm.set("file_type", fileType);
 			const pushResponse = await expectOk(
 				await fetchImpl(`${PUSHBULLET_API}/pushes`, {

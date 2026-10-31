@@ -863,7 +863,7 @@ export interface FindSessionContinuationOptions {
  * went on in other files of the same directory; `undefined` when
  * `sessionPath` itself is the copy to resume.
  *
- * A session that cannot keep writing its file (another live omp process
+ * A session that cannot keep writing its file (another live npi process
  * holds it, or the file changed under it) continues in a sibling whose
  * header names the old session in `continuationOf`, and that sibling can
  * move on the same way. Resuming the

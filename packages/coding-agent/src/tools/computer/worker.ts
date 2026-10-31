@@ -1793,7 +1793,7 @@ export class ComputerWorkerCore {
 							"Open the containing folder with apps.open(folder) instead, which opens it behind the user's app.",
 						);
 					}
-					// A relative path names an item in the session's folder, not the omp process's.
+					// A relative path names an item in the session's folder, not the npi process's.
 					const listed = async (value: string): Promise<boolean> =>
 						(await nativeCall(context.signal, () => session.listApplications())).some(
 							app => app.id === value || app.path === value,

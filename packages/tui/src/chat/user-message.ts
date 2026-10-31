@@ -42,7 +42,7 @@ import { Memo } from "../native/memo";
 // `cursorIsAtPrompt()` permanently true and tags every subsequently painted
 // cell as `.input`. Combined with `cursor-click-to-move = true` (Ghostty's
 // default) that turns every left-click inside the pane into a burst of
-// synthesized arrow keys on omp's pty, slamming the editor caret to column 0
+// synthesized arrow keys on npi's pty, slamming the editor caret to column 0
 // (#8030, #6115).
 //
 // `133;C` is therefore emitted immediately followed by `133;D;0` at the end of
@@ -286,7 +286,7 @@ export class UserMessageComponent extends Container implements ReactionTarget, T
 		return this.#native;
 	}
 
-	/** Hover toolbar clicks: omp's own copy and rewind commands. */
+	/** Hover toolbar clicks: npi's own copy and rewind commands. */
 	handleNativeEvent(event: NativeUiEvent): void {
 		if (event.type !== "action") return;
 		if (event.act === "copy-message") runTranscriptAction({ act: "copy", text: this.#text });

@@ -1,8 +1,8 @@
 /**
  * Update CLI command handler.
  *
- * Handles `omp update` to check for and install updates.
- * Uses the installer that owns the active omp executable when it can be detected.
+ * Handles `npi update` to check for and install updates.
+ * Uses the installer that owns the active npi executable when it can be detected.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -372,7 +372,7 @@ function tryRealpath(p: string): string | undefined {
 }
 
 /**
- * Whether this omp runs from a source checkout (the dev launcher or a `bun link` of
+ * Whether this npi runs from a source checkout (the dev launcher or a `bun link` of
  * `src/cli.ts`) rather than a compiled binary or a package-manager install, which
  * always lives under `node_modules`. Checkouts update through git, so update
  * prompts are noise there.
@@ -382,11 +382,11 @@ export function isSourceCheckout(): boolean {
 }
 
 /**
- * Name of the app that manages the omp at `binaryPath`, or undefined when none does.
+ * Name of the app that manages the npi at `binaryPath`, or undefined when none does.
  *
  * A manager (Tern) keeps `manager.json` (`{"manager": "tern", "name": "Tern"}`) two
  * directories above every binary it installs (`<root>/versions/<version>`,
- * `<root>/bin/omp.exe`) and updates them itself, so `omp update` must leave them alone.
+ * `<root>/bin/omp.exe`) and updates them itself, so `npi update` must leave them alone.
  * A missing or unreadable manifest means unmanaged.
  */
 export async function managedInstallName(binaryPath: string): Promise<string | undefined> {
@@ -437,7 +437,7 @@ function isPathInDirectory(filePath: string, directoryPath: string): boolean {
 	if (isPathInDirectoryLexical(filePath, directoryPath)) return true;
 	// Layer realpath resolution on top of the lexical guard. On Windows, ~/.bun
 	// is a junction when Bun is installed via Scoop, so `bun pm bin -g` and the
-	// PATH-resolved omp path can refer to the same directory through different
+	// PATH-resolved npi path can refer to the same directory through different
 	// strings. path.resolve does not traverse junctions/symlinks; realpath does.
 	// Resolve both the file and its parent directory: the file catches manager
 	// links like Homebrew's `bin/omp -> Cellar/.../bin/omp`; the parent fallback
@@ -483,7 +483,7 @@ interface UpdateMethodResolutionOptions {
 	/** Bun's configured global package directory, independent of its bin directory. */
 	bunGlobalDir?: string;
 	/**
-	 * Whether the resolved omp path is a plain file (the standalone binary)
+	 * Whether the resolved npi path is a plain file (the standalone binary)
 	 * rather than a package-manager symlink. Stops a binary install from being
 	 * misrouted to npm/bun when the global bin dir overlaps the installer's
 	 * target directory.
@@ -1064,7 +1064,7 @@ function resolveOmpPath(): string | undefined {
 }
 
 /**
- * Parse the version a launcher reports from `omp --version` output
+ * Parse the version a launcher reports from `npi --version` output
  * (`omp/X.Y.Z`, or a prerelease such as `omp/X.Y.Z-canary.1`).
  *
  * The prerelease suffix is preserved so a correctly installed canary build
@@ -1142,7 +1142,7 @@ async function validateExistingUpdateTarget(targetPath: string): Promise<void> {
 }
 
 /**
- * Run the PATH-resolved omp binary and check if it reports the expected version.
+ * Run the PATH-resolved npi binary and check if it reports the expected version.
  */
 async function verifyInstalledVersion(expectedVersion: string): Promise<InstalledVersionVerification> {
 	const ompPath = resolveOmpPath();
@@ -1349,7 +1349,7 @@ function buildVersionedPackageInstallArgs(
 }
 
 /**
- * Build the bun argv used to globally install a specific omp version.
+ * Build the bun argv used to globally install a specific npi version.
  *
  * The version is selected by querying the resolved registry in
  * {@link getLatestRelease} ({@link ReleaseInfo.registry}), so the install
@@ -1363,7 +1363,7 @@ function buildVersionedPackageInstallArgs(
  * - `--no-cache` tells bun to ignore its on-disk manifest snapshot so it
  *   re-fetches metadata from that registry on every invocation.
  *
- * Together these two flags make `omp update` produce exactly the registry
+ * Together these two flags make `npi update` produce exactly the registry
  * lookup the version check just performed. See #1686.
  *
  * Also pins {@link NATIVES_PACKAGE} and the platform-specific
@@ -1917,7 +1917,7 @@ export async function updateViaBinaryAt(
 	} = {},
 ): Promise<void> {
 	if (options.validateExistingTarget) await validateExistingUpdateTarget(targetPath);
-	// Unique per attempt so two overlapping `omp update` runs never share a temp
+	// Unique per attempt so two overlapping `npi update` runs never share a temp
 	// or backup path. A fixed temp name (`<binary>.new`) let the second run's
 	// pre-download unlink delete the first run's still-downloading temp file; the
 	// first kept writing to its open fd (size + digest still passed), then chmod
@@ -1932,7 +1932,7 @@ export async function updateViaBinaryAt(
 	await downloadBuild(build, { basePath: targetPath, patchPath: `${targetPath}.${attempt}.patch`, tempPath }, options);
 
 	// Serialize the target swap and stale-artifact sweep per target so two
-	// overlapping `omp update` runs never replace the same binary concurrently
+	// overlapping `npi update` runs never replace the same binary concurrently
 	// or reclaim each other's live backup/temp files. The download above writes
 	// to a unique temp path and is safe to overlap; only the swap is shared.
 	const verification = await withFileLock(targetPath, async () => {
@@ -2112,7 +2112,7 @@ function persistChannel(channel: UpdateChannel): void {
 type BinaryUpdateTarget = Extract<UpdateTarget, { method: "binary" }>;
 type ManagedUpdateTarget = Exclude<UpdateTarget, { method: "binary" }>;
 
-/** What `omp update` was asked to do, after resolving the channel. */
+/** What `npi update` was asked to do, after resolving the channel. */
 interface UpdateRequest {
 	force: boolean;
 	check: boolean;
@@ -2256,7 +2256,7 @@ async function runManagedUpdate(
 		}
 		if (target.method === "nix") {
 			console.log(chalk.yellow("This installation is managed by Nix and cannot update itself."));
-			console.log(chalk.dim("Update the flake input or profile that provides omp, then rebuild."));
+			console.log(chalk.dim("Update the flake input or profile that provides npi, then rebuild."));
 			return;
 		}
 		if (target.method === "brew") {

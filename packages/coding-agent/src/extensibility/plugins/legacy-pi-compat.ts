@@ -571,9 +571,9 @@ function getExtensionParseCacheDb(): Database | null {
 		try {
 			if (fs.statSync(cachePath).size > EXTENSION_PARSE_CACHE_MAX_BYTES) {
 				// Remove the full WAL set, not just the main db. A leftover
-				// `-wal`/`-shm` pair still owned by a concurrent omp process is
+				// `-wal`/`-shm` pair still owned by a concurrent npi process is
 				// adopted by this fresh connection; when that `-wal` has
-				// uncheckpointed frames (the normal case while another omp is
+				// uncheckpointed frames (the normal case while another npi is
 				// writing its own cache entries), `journal_mode=WAL` fails with
 				// SQLITE_IOERR — disabling the parse cache for the whole process
 				// and forcing a reparse of every extension on startup. See #9549.
@@ -590,7 +590,7 @@ function getExtensionParseCacheDb(): Database | null {
 		// `PRAGMA journal_mode=WAL`, which takes an exclusive lock during WAL
 		// recovery). See #2421. WAL + synchronous=NORMAL avoids the per-entry
 		// journal create/delete + fsync churn that serialized this cache behind
-		// concurrent omp startups and blocked the event loop for ~20s (#9549).
+		// concurrent npi startups and blocked the event loop for ~20s (#9549).
 		db.run(`PRAGMA busy_timeout = ${getDbBusyTimeoutMs()}`);
 		db.run("PRAGMA journal_mode=WAL");
 		db.run("PRAGMA synchronous=NORMAL");
@@ -803,7 +803,7 @@ function resolveBundledVirtualSpecifier(
 // Canonical scope for in-process pi packages. Plugins published against any of
 // the aliased scopes below (mariozechner's original publish, earendil-works'
 // fork, or the canonical @oh-my-pi scope itself) are remapped to this scope and
-// resolved against the bundled copy that ships inside the omp binary. This
+// resolved against the bundled copy that ships inside the npi binary. This
 // keeps plugins running against the exact runtime state of the host (single
 // module registry, single tool registry, etc.) regardless of which historical
 // scope name they happened to declare in their peerDependencies.
@@ -815,7 +815,7 @@ const CANONICAL_PI_SCOPE = "@oh-my-pi";
 // path instead of pulling a duplicate copy from plugin node_modules.
 const PI_SCOPE_ALIASES = ["oh-my-pi", "mariozechner", "earendil-works"] as const;
 
-// Internal host package basenames bundled inside the omp binary.
+// Internal host package basenames bundled inside the npi binary.
 const PI_PACKAGE_NAMES = [
 	"pi-agent-core",
 	"pi-ai",

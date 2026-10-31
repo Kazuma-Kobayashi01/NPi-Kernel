@@ -1,9 +1,11 @@
 import { TERMINAL } from "@oh-my-pi/pi-tui";
 import { isNativeRendering } from "@oh-my-pi/pi-tui/native/state";
-import { SETTING_TABS, type SettingsDisplayEntry, type SettingsHost } from "@oh-my-pi/pi-tui/overlays/settings-defs";
+import { SETTING_TABS, TAB_METADATA, type SettingsDisplayEntry, type SettingsHost } from "@oh-my-pi/pi-tui/overlays/settings-defs";
 import { isSettingsInitialized, Settings, settings } from "./settings";
 import { orderedSettings } from "./all-settings";
 import { type AnySetting, lookup } from "./registry";
+import { tierOf } from "./setting-tiers";
+import { cfgSettingsShowMore } from "./tier-settings";
 
 import { cfgPlanAutosave, cfgPlanEnabled } from "../plan-mode/settings";
 import {
@@ -57,19 +59,28 @@ function envNote(setting: AnySetting): string {
  */
 export function createSettingsHost(): SettingsHost {
 	const entries: SettingsDisplayEntry[] = [];
+	const showMore = whenSettings(s => cfgSettingsShowMore.get(s) === true);
+	const tabLabels = TAB_METADATA;
 	for (const tab of SETTING_TABS) {
 		for (const setting of orderedSettings()) {
 			const ui = setting.ui;
-			if (ui?.tab !== tab) continue;
+			if (!ui) continue;
+			// Tier D settings are listed under Advanced, grouped by the tab they came from.
+			const tier = tierOf(setting.id);
+			const placed = tier === "D" && ui.tab !== "advanced" ? { ...ui, tab: "advanced" as const, group: tabLabels[ui.tab]?.label } : ui;
+			if (placed.tab !== tab) continue;
 			const note = envNote(setting);
+			const base = ui.condition ? CONDITIONS[ui.condition] : undefined;
+			// Tier B settings wait for "Show More Options" (and still obey their own condition).
+			const condition = tier === "B" && ui.tab !== "advanced" ? () => showMore() && (base ? base() : true) : base;
 			entries.push({
 				path: setting.id,
 				type: setting.type,
 				defaultValue: setting.default,
-				ui: note ? { ...ui, description: `${ui.description}${note}` } : ui,
+				ui: note ? { ...placed, description: `${placed.description}${note}` } : placed,
 				enumValues: setting.enumValues,
 				credential: setting.isCredential,
-				condition: ui.condition ? CONDITIONS[ui.condition] : undefined,
+				condition,
 			});
 		}
 	}

@@ -290,7 +290,7 @@ export class Loader extends Text {
 		return described;
 	}
 
-	/** A TSP terminal clocks the spinner and timer, but a retry ring's fill is omp's: repaint it while counting down. */
+	/** A TSP terminal clocks the spinner and timer, but a retry ring's fill is npi's: repaint it while counting down. */
 	#startNativeCountdown(): void {
 		if (this.#nativeTimer || !isNativeRendering() || this.#working?.spec().variant?.kind !== "retry") return;
 		this.#nativeTimer = setInterval(() => this.#requestPaint(), RETRY_METER_REPAINT_MS);

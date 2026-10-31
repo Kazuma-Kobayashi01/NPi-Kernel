@@ -44,12 +44,12 @@ export interface SessionSnapshot {
 
 /**
  * The page an attach worker drives. `create`: open a background tab and own it, in the browser of
- * `nearTargetId` (another tab omp drives on the relay) when given. `owned`: a tab omp created, adopted
+ * `nearTargetId` (another tab npi drives on the relay) when given. `owned`: a tab npi created, adopted
  * again after a recycle. `borrowed`: a page the user has open; never closed, never focus-emulated.
  */
 export type AttachPage = { kind: "create"; nearTargetId?: string } | { kind: "owned" | "borrowed"; targetId: string };
 
-/** omp created the payload's page (headless, or a relay tab of its own): closing the tab closes the page. */
+/** npi created the payload's page (headless, or a relay tab of its own): closing the tab closes the page. */
 export function ownsPage(payload: WorkerInitPayload): boolean {
 	return payload.mode === "headless" || payload.page.kind !== "borrowed";
 }
@@ -145,7 +145,7 @@ export interface RunErrorPayload {
 	/** The page's renderer crashed; the worker runs nothing more and must be recycled. */
 	rendererCrashed?: boolean;
 	/**
-	 * Chrome ended the debugger attachment the page is driven through (omp browser relay) `during` this run, after
+	 * Chrome ended the debugger attachment the page is driven through (npi browser relay) `during` this run, after
 	 * its code started, or `before` it, so nothing ran; the worker runs nothing more. `reason` is Chrome's
 	 * (`target_closed`, `canceled_by_user`): after a user cancel the relay hides the tab, otherwise it is re-adopted.
 	 */

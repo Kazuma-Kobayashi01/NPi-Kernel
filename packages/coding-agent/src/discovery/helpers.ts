@@ -439,7 +439,7 @@ export interface ScanSkillsFromDirOptions {
 	includeSelf?: boolean;
 	/**
 	 * Registry/CLI origin of the plugin root supplying these skills, forwarded
-	 * to {@link SourceMeta.origin} so user-scope gating can tell omp's own
+	 * to {@link SourceMeta.origin} so user-scope gating can tell npi's own
 	 * installs (`omp`, `plugin-dir`) from the foreign Claude tree (`claude`).
 	 */
 	origin?: string;

@@ -10,7 +10,7 @@ type TurndownListParent = {
 const INTRAWORD_ESCAPED_UNDERSCORES = /(?<=[\p{L}\p{N}])(?:\\_)+(?=[\p{L}\p{N}])/gu;
 
 /**
- * Build a Turndown instance configured for GFM with the fixes omp relies on:
+ * Build a Turndown instance configured for GFM with the fixes npi relies on:
  * `~~strikethrough~~`, unescaped heading periods, unescaped intraword underscores,
  * and single-space list markers.
  *

@@ -1,11 +1,11 @@
 /**
- * `omp auth-gateway stdio`: the gateway's routes as JSON lines on stdin and
- * stdout (`serveAuthGatewayStdio`), for a parent process that wants omp's
+ * `npi auth-gateway stdio`: the gateway's routes as JSON lines on stdin and
+ * stdout (`serveAuthGatewayStdio`), for a parent process that wants npi's
  * inference without an HTTP listener or a bearer token.
  *
- * Unlike `serve` it runs on this omp's own credentials (the broker when one is
+ * Unlike `serve` it runs on this npi's own credentials (the broker when one is
  * configured, else the local store), models (`models.yml` and extension
- * providers included) and settings. A request's `model` is an omp model
+ * providers included) and settings. A request's `model` is an npi model
  * selector, as `--model` takes it ({@link selectorCandidates}); an attempt
  * that fails before its reply starts moves on to the next candidate. Serving
  * ends when stdin does.

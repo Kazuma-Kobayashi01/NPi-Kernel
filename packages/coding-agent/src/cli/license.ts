@@ -3,7 +3,7 @@ import license from "../../LICENSE" with { type: "text" };
 import cliNotices from "../../THIRD-PARTY-NOTICES.txt" with { type: "text" };
 
 /**
- * `omp --license` output: the OMP license, then the notices of the two components the executable embeds — the CLI
+ * `npi --license` output: the OMP license, then the notices of the two components the executable embeds — the CLI
  * and the native addon.
  */
 export function formatLicenseOutput(): string {

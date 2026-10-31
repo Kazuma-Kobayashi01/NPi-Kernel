@@ -106,7 +106,7 @@ export interface TernGeometry {
 }
 
 /**
- * Methods of `globalThis.__ompTernKit`, called by omp from the isolated world as
+ * Methods of `globalThis.__ompTernKit`, called by npi from the isolated world as
  * `kit[method](...args)`. Every argument and result is JSON; failures throw `Error`s with
  * agent-readable messages (a missing element: `No element matches <JSON selector>`).
  */
@@ -120,7 +120,7 @@ export interface TernKitApi {
 	/** Focus the first match without scrolling. */
 	focus(sel: TernSelector): void;
 	/**
-	 * Prepare a fill: text-like controls are focused with their content selected (`insert`: omp types
+	 * Prepare a fill: text-like controls are focused with their content selected (`insert`: npi types
 	 * the value); selects and date/time/color/range inputs are set directly (`done`).
 	 */
 	prepareFill(sel: TernSelector, value: string): { mode: "insert" } | { mode: "done" };
@@ -1325,7 +1325,7 @@ const kit = {
 
 Object.defineProperty(globalThis, "__ompTernKit", { value: kit, configurable: true });
 
-// Child frames announce their index path so omp can address them by name.
+// Child frames announce their index path so npi can address them by name.
 if (window !== window.parent) {
 	const path = [];
 	try {

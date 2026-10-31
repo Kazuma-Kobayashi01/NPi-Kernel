@@ -135,9 +135,9 @@ export function encodeTspJson(verb: TspVerb, value: unknown, params?: TspParams,
 
 /**
  * The `hello` query; callers follow it with a DA1 sentinel. `features: ["edit"]`
- * tells the terminal that omp applies its `edit` events (Tern SDK,
- * `protocol/input.md`), so it may keep a native selection in omp's editors;
- * without it, every key stays omp's. `"undo"` says omp applies `undo` events,
+ * tells the terminal that npi applies its `edit` events (Tern SDK,
+ * `protocol/input.md`), so it may keep a native selection in npi's editors;
+ * without it, every key stays npi's. `"undo"` says npi applies `undo` events,
  * so the terminal may turn ⌃Z in a field into one.
  * `"send"` accepts an explicit prompt for a live composer without simulating keys.
  */

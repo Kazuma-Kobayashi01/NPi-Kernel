@@ -60,7 +60,7 @@ export interface ScrollOptions {
 	selector?: string;
 }
 
-/** A browser element handle with omp's additional interaction methods. */
+/** A browser element handle with npi's additional interaction methods. */
 export type InteractionHandle = ElementHandle & {
 	dblclick(): Promise<void>;
 	check(): Promise<void>;

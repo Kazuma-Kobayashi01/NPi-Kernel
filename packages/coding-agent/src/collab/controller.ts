@@ -66,7 +66,7 @@ export class CollabController {
 
 	constructor(ctx: InteractiveModeContext) {
 		this.#ctx = ctx;
-		// 64 random bits: unique per process on one machine, short enough for `omp collab link <id>` and socket paths.
+		// 64 random bits: unique per process on one machine, short enough for `npi collab link <id>` and socket paths.
 		this.instanceId = randomBytes(8).toString("hex");
 	}
 
@@ -135,7 +135,7 @@ export class CollabController {
 		this.#unsubscribeSessionChange ??= this.#ctx.session.registerSessionChangeCallback(() =>
 			this.#onSessionChanged(),
 		);
-		// A write that finds the session file open in another omp process (or
+		// A write that finds the session file open in another npi process (or
 		// replaced/contested on disk) moves the session to a sibling file under a
 		// new id without an AgentSession transition; rotate the room for it too.
 		// Moves replayed at subscription predate every room this controller hosts.

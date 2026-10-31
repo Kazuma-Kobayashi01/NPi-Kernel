@@ -30,7 +30,7 @@ export type RelayRpcRequest =
 	| { op: "createTab"; url: string; active?: boolean }
 	| { op: "removeTab"; tabId: number }
 	| { op: "activateTab"; tabId: number }
-	/** Add tabs to the per-window omp group (created/reused by title), remembering prior membership. */
+	/** Add tabs to the per-window npi group (created/reused by title), remembering prior membership. */
 	| { op: "group"; tabIds: number[]; title: string; color: string }
 	/** Return tabs to their pre-omp group (or ungroup); no-op for tabs the relay never grouped. */
 	| { op: "ungroup"; tabIds: number[] };
@@ -48,7 +48,7 @@ export const DISCARDED_TABS_PROTOCOL_VERSION = 1;
 export const EXTENSION_RELOAD_PROTOCOL_VERSION = 1;
 
 /**
- * Whether a relay or extension reported a well-formed omp release version.
+ * Whether a relay or extension reported a well-formed npi release version.
  * Stricter than `Bun.semver.order`, which ranks strings with trailing text;
  * peers supply these and results quote them.
  */
@@ -57,8 +57,8 @@ export function isOmpVersion(version: string): boolean {
 }
 
 /**
- * Whether a reported omp version is provably older than `than`: unreported ("")
- * is older than anything reported; otherwise both must be omp versions, since
+ * Whether a reported npi version is provably older than `than`: unreported ("")
+ * is older than anything reported; otherwise both must be npi versions, since
  * anything else has no known age.
  */
 export function isOlderOmpVersion(version: string, than: string): boolean {
@@ -105,7 +105,7 @@ export type ExtToRelayMessage =
 			 * reuses tab ids: target ids embed it, so an old target id never names a new tab. Absent on older extensions.
 			 */
 			browserSession?: string;
-			/** The omp version that installed the running script ({@link stampRelayExtensionScript}). Absent on builds without the stamp. */
+			/** The npi version that installed the running script ({@link stampRelayExtensionScript}). Absent on builds without the stamp. */
 			ompVersion?: string;
 			/** {@link EXTENSION_RELOAD_PROTOCOL_VERSION} when the extension reloads itself on `reload`. Absent in older extensions. */
 			reloadProtocol?: number;

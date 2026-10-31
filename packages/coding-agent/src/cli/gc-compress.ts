@@ -245,7 +245,7 @@ export async function compressionWorks(dir: string, method: CompressMethod): Pro
 	try {
 		await Bun.write(path.join(scratch, SCRATCH_OWNER_MARKER), "");
 		const probe = path.join(scratch, "probe.txt");
-		await Bun.write(probe, "omp gc compression probe\n".repeat(10_000));
+		await Bun.write(probe, "npi gc compression probe\n".repeat(10_000));
 		const candidate = await compressCandidate(probe);
 		if (!candidate) return false;
 		const batch = await compressFilesInPlace([candidate], method, new Set());
@@ -298,7 +298,7 @@ function unchangedSinceSelection(candidate: CompressCandidate): boolean {
 /**
  * Rename `copyPath` over `candidate.path` if the original is unchanged, checked
  * immediately before the rename. Transcripts swap under the session publish
- * lock, which serializes them against appends from any omp binary.
+ * lock, which serializes them against appends from any npi binary.
  */
 function swapIfUnchanged(
 	storage: FileSessionStorage,
