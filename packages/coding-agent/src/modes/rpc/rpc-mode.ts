@@ -13,7 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import { type AgentMessage, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
@@ -2699,7 +2699,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			// =================================================================
 
 			case "get_messages": {
-				return success(id, "get_messages", { messages: session.messages });
+				if (!command.fullHistory) return success(id, "get_messages", { messages: session.messages });
+				const messages: AgentMessage[] = [];
+				for (const entry of session.sessionManager.getBranchView()) {
+					if (entry.type === "message") messages.push(entry.message);
+				}
+				return success(id, "get_messages", { messages });
 			}
 
 			case "get_messages_page": {

@@ -339,7 +339,8 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 
 	{
 		name: "get_messages",
-		doc: "Every message of the session in one response.",
+		doc: "Current context messages, or all persisted message entries on the active branch when fullHistory is true.",
+		params: { "fullHistory?": "boolean" },
 		result: { messages: "AgentMessage[]" },
 		unwrap: "messages",
 	},

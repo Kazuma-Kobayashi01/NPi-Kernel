@@ -1813,6 +1813,10 @@ export interface HandoffParams {
 	customInstructions?: string;
 }
 
+export interface GetMessagesParams {
+	fullHistory?: boolean;
+}
+
 export interface GetMessagesResult {
 	messages: AgentMessage[];
 }
@@ -1953,7 +1957,7 @@ export interface RpcWireCommands {
 	get_last_assistant_text: { params: undefined; result: GetLastAssistantTextResult };
 	set_session_name: { params: SetSessionNameParams; result: undefined };
 	handoff: { params: HandoffParams; result: HandoffResult | null };
-	get_messages: { params: undefined; result: GetMessagesResult };
+	get_messages: { params: GetMessagesParams; result: GetMessagesResult };
 	get_messages_page: { params: GetMessagesPageParams; result: MessagesPage };
 	get_login_providers: { params: undefined; result: GetLoginProvidersResult };
 	login: { params: LoginParams; result: LoginResult };

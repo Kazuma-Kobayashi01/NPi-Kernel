@@ -973,8 +973,9 @@ class RpcClient(WireClient):
     def clear_todos(self) -> tuple[TodoPhase, ...]:
         return self.set_todos(())
 
-    def get_messages(self) -> tuple[AgentMessage, ...]:
-        if self._protocol_version == 2:
+    def get_messages(self, *, full_history: bool = False) -> tuple[AgentMessage, ...]:
+        """Get context messages, or every persisted message on the active branch."""
+        if not full_history and self._protocol_version == 2:
             try:
                 messages: list[AgentMessage] = []
                 seen_cursors: set[str] = set()
@@ -1012,7 +1013,7 @@ class RpcClient(WireClient):
                     )
                 ):
                     raise
-        data = self._command("get_messages", {})
+        data = self._command("get_messages", {"fullHistory": True} if full_history else {})
         return required(
             expect_object(data, "get_messages"),
             "messages",

@@ -4704,12 +4704,12 @@ func (v *PromptStatus) UnmarshalJSON(data []byte) error {
 // Failure detail of a `prompt_result` with `status: "error"`.
 type PromptError struct {
 	Message string `json:"message"`
-	// Transient: resubmitting later may succeed (omp's own retries are exhausted).
+	// Transient: resubmitting later may succeed (npi's own retries are exhausted).
 	Retryable  bool    `json:"retryable"`
 	Provider   *string `json:"provider,omitempty"`
 	Model      *string `json:"model,omitempty"`
 	HTTPStatus *int64  `json:"httpStatus,omitempty"`
-	// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request.
+	// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request.
 	Code *PromptErrorCode `json:"code,omitempty"`
 }
 
@@ -8331,10 +8331,15 @@ func (c Commands) Handoff(ctx context.Context, p HandoffCommand) (*HandoffResult
 	return out, err
 }
 
-// GetMessages sends "get_messages": Every message of the session in one response.
-func (c Commands) GetMessages(ctx context.Context) ([]AgentMessage, error) {
+// GetMessagesCommand holds the parameters of "get_messages".
+type GetMessagesCommand struct {
+	FullHistory *bool `json:"fullHistory,omitempty"`
+}
+
+// GetMessages sends "get_messages": Current context messages, or all persisted message entries on the active branch when fullHistory is true.
+func (c Commands) GetMessages(ctx context.Context, p GetMessagesCommand) ([]AgentMessage, error) {
 	var out GetMessagesResult
-	err := c.call(ctx, "get_messages", nil, 0, &out)
+	err := c.call(ctx, "get_messages", p, 0, &out)
 	return out.Messages, err
 }
 

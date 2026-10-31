@@ -5,6 +5,7 @@ export type AuthProviderId =
 	| "abliteration"
 	| "aiand"
 	| "aimlapi"
+	| "alibaba-cn"
 	| "alibaba-coding-plan"
 	| "alibaba-token-plan"
 	| "amazon-bedrock"
@@ -105,6 +106,7 @@ export type AuthProviderId =
 export type LoginProviderId =
 	| "abliteration"
 	| "aiand"
+	| "alibaba-cn"
 	| "alibaba-coding-plan"
 	| "alibaba-token-plan"
 	| "anthropic"

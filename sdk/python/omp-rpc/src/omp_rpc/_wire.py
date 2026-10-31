@@ -1253,12 +1253,12 @@ class PromptError:
     """Failure detail of a `prompt_result` with `status: "error"`."""
     message: str
     retryable: bool
-    """Transient: resubmitting later may succeed (omp's own retries are exhausted)."""
+    """Transient: resubmitting later may succeed (npi's own retries are exhausted)."""
     provider: str | None = None
     model: str | None = None
     http_status: int | None = None
     code: Literal["cost_cap"] | None = None
-    """`cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request."""
+    """`cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)

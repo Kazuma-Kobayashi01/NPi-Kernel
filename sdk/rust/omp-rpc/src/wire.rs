@@ -4086,7 +4086,7 @@ impl PromptStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PromptError {
 	pub message: String,
-	/// Transient: resubmitting later may succeed (omp's own retries are exhausted).
+	/// Transient: resubmitting later may succeed (npi's own retries are exhausted).
 	pub retryable: bool,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub provider: Option<String>,
@@ -4094,7 +4094,7 @@ pub struct PromptError {
 	pub model: Option<String>,
 	#[serde(rename = "httpStatus", default, skip_serializing_if = "Option::is_none")]
 	pub http_status: Option<i64>,
-	/// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and omp did not send the next request.
+	/// `cost_cap`: the session reached `session.maxCost` (`--max-cost`) and npi did not send the next request.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub code: Option<LitCostCap>,
 }
@@ -5544,6 +5544,12 @@ pub struct SetSessionNameParams {
 pub struct HandoffParams {
 	#[serde(rename = "customInstructions", default, skip_serializing_if = "Option::is_none")]
 	pub custom_instructions: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetMessagesParams {
+	#[serde(rename = "fullHistory", default, skip_serializing_if = "Option::is_none")]
+	pub full_history: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -7150,9 +7156,12 @@ impl Command for HandoffCommand {
 	}
 }
 
-/// Every message of the session in one response.
+/// Current context messages, or all persisted message entries on the active branch when fullHistory is true.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct GetMessagesCommand {}
+pub struct GetMessagesCommand {
+	#[serde(rename = "fullHistory", default, skip_serializing_if = "Option::is_none")]
+	pub full_history: Option<bool>,
+}
 
 impl Command for GetMessagesCommand {
 	const NAME: &'static str = "get_messages";

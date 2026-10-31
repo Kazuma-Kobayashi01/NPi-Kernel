@@ -3989,6 +3989,36 @@ export function alibabaCodingPlanModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
+// Alibaba (China) — Pay-as-you-go DashScope
+// ---------------------------------------------------------------------------
+
+function isAlibabaCnChatModelId(id: string): boolean {
+	const normalized = id.trim().toLowerCase();
+	return normalized.length > 0 && !isExcludedModel("alibaba-cn", normalized);
+}
+
+export interface AlibabaCnModelManagerConfig {
+	apiKey?: string;
+	baseUrl?: string;
+	fetch?: FetchImpl;
+}
+
+export function alibabaCnModelManagerOptions(
+	config?: AlibabaCnModelManagerConfig,
+): ModelManagerOptions<"openai-completions"> {
+	return createOpenAICompatibleModelManagerOptions({
+		api: "openai-completions",
+		providerId: "alibaba-cn",
+		defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		config,
+		dynamicModelsAuthoritative: true,
+		requireApiKey: true,
+		filterModel: (_entry, model) => isAlibabaCnChatModelId(model.id),
+		mapModel: mapWithBundledReference,
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Alibaba Token Plan
 // ---------------------------------------------------------------------------
 
