@@ -16,6 +16,7 @@ import type { ToolSession } from "../index";
 import { ToolAbortError, toWorkerErrorPayload } from "../tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import {
+	type ComputerActivity,
 	COMPUTER_WORKER_ARG,
 	type ComputerEscapeScope,
 	type ComputerRunOk,
@@ -28,6 +29,28 @@ import {
 	ESCAPE_STOPPED_MESSAGE,
 	type RunErrorPayload,
 } from "./protocol";
+import type { EventBus } from "../../utils/event-bus";
+
+const activityHosts = new WeakSet<EventBus>();
+const pendingActivityAcks = new WeakMap<EventBus, Map<string, (error?: string) => void>>();
+
+/** RPC UI hosts must paint their indicator before a native mutation is sent. */
+export function requireComputerActivityAcknowledgements(bus: EventBus): () => void {
+	activityHosts.add(bus);
+	return () => {
+		activityHosts.delete(bus);
+		for (const reply of pendingActivityAcks.get(bus)?.values() ?? []) reply("Computer activity host disconnected");
+		pendingActivityAcks.delete(bus);
+	};
+}
+
+export function acknowledgeComputerActivity(bus: EventBus, id: string, error?: string): void {
+	const pending = pendingActivityAcks.get(bus);
+	const reply = pending?.get(id);
+	if (!reply) throw new ToolError("No pending computer activity with this id");
+	pending!.delete(id);
+	reply(error);
+}
 
 const START_TIMEOUT_MS = 10_000;
 const CLOSE_TIMEOUT_MS = 1_500;
@@ -49,6 +72,9 @@ function controlPolicy(context: ApprovalContextSource): ApprovalPolicy {
 
 /** Runs desktop scripts and owns their persistent worker session. */
 export interface ComputerController {
+	readonly running?: boolean;
+	/** Cancels computer work only: every run in flight, never the agent turn it belongs to. */
+	cancelWork?(): Promise<void>;
 	run(
 		code: string,
 		timeoutMs: number,
@@ -211,6 +237,24 @@ export class ComputerSupervisor implements ComputerController {
 	#unsubscribeMessage?: () => void;
 	#unsubscribeError?: () => void;
 
+	readonly #activities = new Map<string, ComputerActivity>();
+
+	get running(): boolean {
+		return this.#pending.size > 0 || this.#startingRuns.size > 0;
+	}
+
+	#emitState(): void {
+		this.#session.subagentEventBus?.emit("computer:state", undefined);
+	}
+
+	#finishActivities(): void {
+		const bus = this.#session.subagentEventBus;
+		for (const activity of this.#activities.values()) {
+			if (bus) pendingActivityAcks.get(bus)?.delete(activity.id);
+			bus?.emit("computer:activity", { ...activity, phase: "finished" });
+		}
+		this.#activities.clear();
+	}
 	constructor(
 		session: ToolSession,
 		createWorker: ComputerWorkerFactory = spawnComputerWorker,
@@ -282,6 +326,7 @@ export class ComputerSupervisor implements ComputerController {
 		const session = { ...snapshot };
 		this.#startingRuns.add(session);
 		try {
+			this.#emitState();
 			await this.#start();
 		} finally {
 			this.#startingRuns.delete(session);
@@ -292,6 +337,7 @@ export class ComputerSupervisor implements ComputerController {
 		const { promise, resolve, reject } = Promise.withResolvers<ComputerRunOk>();
 		const pending: PendingRun = { resolve, reject, signal, context, toolCalls: new Map() };
 		this.#pending.set(id, pending);
+		this.#emitState();
 		const abort = (): void => {
 			this.#safeSend({ type: "abort", id });
 			for (const controller of pending.toolCalls.values()) controller.abort(signal?.reason);
@@ -322,6 +368,8 @@ export class ComputerSupervisor implements ComputerController {
 		} finally {
 			signal?.removeEventListener("abort", abort);
 			this.#pending.delete(id);
+			this.#finishActivities();
+			this.#emitState();
 		}
 	}
 
@@ -354,6 +402,19 @@ export class ComputerSupervisor implements ComputerController {
 	}
 
 	#handleMessage(message: ComputerWorkerOutbound): void {
+		if (message.type === "activity") {
+			if (!this.#pending.has(message.runId)) return;
+			const bus = this.#session.subagentEventBus;
+			const activity = { ...message.activity, owner: this.#session.getEvalKernelOwnerId?.() ?? undefined };
+			if (activity.phase === "finished") {
+				this.#activities.delete(activity.id);
+				bus?.emit("computer:activity", activity);
+				return;
+			}
+			this.#activities.set(activity.id, activity);
+			bus?.emit("computer:activity", activity);
+			return;
+		}
 		if (message.type === "ready") {
 			this.#startResolve?.();
 			this.#startResolve = undefined;
@@ -449,8 +510,19 @@ export class ComputerSupervisor implements ComputerController {
 		}
 	}
 
+	/** Stops every run in flight without tearing down control or the worker session. */
+	async cancelWork(): Promise<void> {
+		this.#finishActivities();
+		for (const [id, pending] of this.#pending) {
+			this.#safeSend({ type: "abort", id });
+			for (const controller of pending.toolCalls.values())
+				controller.abort(new ToolAbortError("Computer work stopped"));
+		}
+	}
+
 	async revokeControl(): Promise<void> {
 		this.#controlEpoch += 1;
+		this.#finishActivities();
 		for (const pending of this.#pending.values()) {
 			for (const controller of pending.toolCalls.values()) controller.abort(new ToolAbortError());
 		}
@@ -565,6 +637,7 @@ export class ComputerSupervisor implements ComputerController {
 		this.#unsubscribeMessage = undefined;
 		this.#unsubscribeError?.();
 		this.#unsubscribeError = undefined;
+		this.#finishActivities();
 		for (const pending of this.#pending.values()) {
 			for (const controller of pending.toolCalls.values()) controller.abort(reason);
 			pending.reject(reason);
@@ -572,6 +645,7 @@ export class ComputerSupervisor implements ComputerController {
 		this.#pending.clear();
 		for (const pending of this.#pendingCapabilities.values()) pending.reject(reason);
 		this.#pendingCapabilities.clear();
+		this.#emitState();
 		for (const resolve of this.#revocations.values()) resolve();
 		this.#revocations.clear();
 		await worker?.terminate().catch(() => undefined);

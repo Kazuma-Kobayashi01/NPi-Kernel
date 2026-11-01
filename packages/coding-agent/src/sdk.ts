@@ -299,7 +299,7 @@ import { resolveYieldReportText } from "./tools/yield";
 import { createModelJobWidgetAuthor, type JobWidgetAuthor, JobWidgets, resolveToolCallIntent } from "./job-widgets";
 import { createBrowserPrelude } from "./tools/browser";
 import { isMCPToolName, normalizeToolNames } from "./tools/builtin-names";
-import { createComputerPrelude } from "./tools/computer";
+import { createComputerPrelude, initializeComputerUse } from "./tools/computer";
 import { createRatchetPrelude } from "./ratchet/prelude-definition";
 import { createArchivePrelude } from "./archive/prelude-definition";
 import { ToolContextStore } from "./tools/context";
@@ -2603,6 +2603,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			return getEnabledEvalPreludes(builtins);
 		};
 		toolSession.getEvalPreludes = getEvalPreludes;
+		initializeComputerUse(toolSession, () =>
+			!restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"));
 		// SessionTools owns the advertised snapshot; before it exists the base
 		// prompt is built from, and therefore advertises, the live set.
 		toolSession.getAdvertisedEvalPreludes = () => session?.getAdvertisedEvalPreludes() ?? getEvalPreludes();

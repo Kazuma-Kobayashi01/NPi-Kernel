@@ -85,6 +85,11 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 	},
 
 	{ name: "get_state", doc: "Snapshot the session state.", result: "SessionState" },
+	{ name: "get_computer_use", doc: "Inspect computer use without running a tool or model.", result: "ComputerUseState" },
+	{ name: "set_computer_use", doc: "Enable or disable computer use for this session.", params: { enabled: "boolean" }, result: "ComputerUseState" },
+	{ name: "stop_computer_use", doc: "Cancel only computer work in this session tree.", result: "ComputerUseState" },
+	{ name: "computer_activity_ack", doc: "Acknowledge a painted computer operation indicator.", params: { activityId: "string", "error?": "string" } },
+	{ name: "set_computer_activity_ack", doc: "Hold native input until this host paints each computer operation (opt-in).", params: { enabled: "boolean" } },
 	{
 		name: "set_fast_mode",
 		doc: "Enable or disable fast mode for the session.",

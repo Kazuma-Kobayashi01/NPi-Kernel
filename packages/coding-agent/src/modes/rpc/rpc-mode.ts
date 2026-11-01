@@ -193,6 +193,8 @@ export class RpcWordPredictor {
 }
 
 // Re-export types for consumers
+import { acknowledgeComputerActivity, requireComputerActivityAcknowledgements } from "../../tools/computer/supervisor";
+import type { ComputerActivity } from "../../tools/computer/protocol";
 export type * from "./rpc-types";
 
 export type PendingExtensionRequest = {
@@ -1506,6 +1508,25 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 		}
 	};
 	const subagentRegistry = subagentEventBus ? new RpcSubagentRegistry(subagentEventBus, output) : undefined;
+	// Only a host that says it paints an indicator may hold native input until
+	// it confirms the paint. A client that never asked keeps fire-and-forget
+	// activity, so a newer kernel cannot freeze an older desktop's input.
+	let releaseComputerHost: (() => void) | undefined;
+	const setComputerActivityAckHost = (enabled: boolean): void => {
+		if (!subagentEventBus) throw new Error("Computer activity host is unavailable");
+		if (enabled === (releaseComputerHost !== undefined)) return;
+		if (enabled) releaseComputerHost = requireComputerActivityAcknowledgements(subagentEventBus);
+		else {
+			releaseComputerHost?.();
+			releaseComputerHost = undefined;
+		}
+	};
+	const unsubscribeComputerActivity = subagentEventBus?.on("computer:activity", activity => {
+		output({ type: "computer_activity", activity: activity as ComputerActivity });
+	});
+	const unsubscribeComputerState = subagentEventBus?.on("computer:state", () => {
+		void session.getComputerUseState(false).then(state => output({ type: "computer_use_state", state }));
+	});
 
 	// Shutdown request flag (wrapped in object to allow mutation with const)
 	const shutdownState = { requested: false };
@@ -2248,6 +2269,20 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			// State
 			// =================================================================
 
+			case "get_computer_use":
+				return success(id, command.type, await session.getComputerUseState());
+			case "set_computer_use":
+				return success(id, command.type, await session.setComputerUse(command.enabled));
+			case "stop_computer_use":
+				return success(id, command.type, await session.stopComputerUse());
+			case "computer_activity_ack":
+				if (!subagentEventBus) throw new Error("Computer activity host is unavailable");
+				acknowledgeComputerActivity(subagentEventBus, command.activityId, command.error);
+				return success(id, command.type);
+			case "set_computer_activity_ack":
+				setComputerActivityAckHost(command.enabled);
+				return success(id, command.type);
+
 			case "get_state": {
 				// A goal exit triggered by the last turn restores tools asynchronously; report after it.
 				await goalController.settled();
@@ -2951,6 +2986,9 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	// stdin closed — RPC client is gone. Fail pending side-channel requests
 	// first so active/queued commands can settle, then drain accepted work.
 	pendingExtensionRequests.rejectAll("RPC client disconnected before extension UI response completed");
+	releaseComputerHost?.();
+	unsubscribeComputerActivity?.();
+	unsubscribeComputerState?.();
 	hostToolBridge.close("RPC client disconnected before host tool execution completed");
 	hostUriBridge.clear("RPC client disconnected before host URI request completed");
 	dictationBridge.dispose();

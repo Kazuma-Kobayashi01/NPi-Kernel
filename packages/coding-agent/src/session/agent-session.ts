@@ -518,6 +518,8 @@ import { TtsrCoordinator, type TtsrCoordinatorHost } from "./ttsr-coordinator";
 
 import { cfgAdvisorEnabled, cfgAdvisorMaxNotesPerUpdate } from "../advisor/settings";
 import { cfgBrowserEnabled, cfgBrowserFreezeOnTurnEnd, cfgBrowserIdleCloseSec } from "../tools/browser/settings";
+import { getComputerUseState, setComputerUse, stopComputerUse, reconcileComputerUse } from "../tools/computer";
+import type { ComputerUseState } from "../tools/computer/protocol";
 import {
 	cfgClaudeResets,
 	cfgClaudeResetsAutoRedeem,
@@ -2936,6 +2938,8 @@ export class AgentSession implements SettingsScope {
 		enabled: boolean,
 	): Promise<void> {
 		try {
+			if (path === "computer.enabled" && this.#evalToolSession)
+				await reconcileComputerUse(this.#evalToolSession, enabled);
 			if (path === "browser.enabled" && this.#reconcileBrowserMcpFilter) {
 				const tools = await this.#reconcileBrowserMcpFilter(enabled);
 				await this.refreshMCPTools(tools);
@@ -7178,6 +7182,22 @@ export class AgentSession implements SettingsScope {
 	/** Current enabled eval prelude definitions. */
 	getEvalPreludes(): readonly EvalPreludeDefinition[] {
 		return this.#getEvalPreludes?.() ?? [];
+	}
+
+	/** Host control path, independent of tools and model invocation. */
+	async getComputerUseState(inspect = true): Promise<ComputerUseState> {
+		if (!this.#evalToolSession) return { enabled: false, active: false, running: false };
+		return await getComputerUseState(this.#evalToolSession, inspect);
+	}
+
+	async setComputerUse(enabled: boolean): Promise<ComputerUseState> {
+		if (!this.#evalToolSession) throw new Error("Computer use is unavailable for this session");
+		return await setComputerUse(this.#evalToolSession, enabled);
+	}
+
+	async stopComputerUse(): Promise<ComputerUseState> {
+		if (!this.#evalToolSession) return { enabled: false, active: false, running: false };
+		return await stopComputerUse(this.#evalToolSession);
 	}
 
 	/** Eval preludes frozen into the provider-visible prompt (see {@link SessionTools.advertisedEvalPreludes}). */

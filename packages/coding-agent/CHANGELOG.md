@@ -11,6 +11,8 @@
 - Added opt-in `title.refreshAfterPrompts`: every N operator prompts, the judge model checks whether a generated session title still fits the conversation and regenerates it when it does not; user-set titles are never replaced ([#17443](https://github.com/can1357/oh-my-pi/pull/17443) by [@wolfiesch](https://github.com/wolfiesch))
 - Gateway rows discovered from `/v1/models` now keep the `reasoning_effort_map` and `reasoning_required` facts they advertise: a route that serves only low/high/max routes `medium` to `high` instead of the nearest lower tier, and a thinking-off request still sends a tier the route accepts ([#17395](https://github.com/can1357/oh-my-pi/pull/17395) by [@Maziar123](https://github.com/Maziar123))
 - Computer-use scripts can wait for a window opened by an action and read it in the same call with a window filter's optional `wait` ([#17391](https://github.com/can1357/oh-my-pi/pull/17391) by [@will-bogusz](https://github.com/will-bogusz))
+- Computer Use can be inspected, switched and stopped over RPC without a model call: `get_computer_use`, `set_computer_use` and `stop_computer_use` report and change whether this session may operate the desktop, where `stop_computer_use` cancels only computer work and never the agent turn. `computer_use_state` and `computer_activity` frames report live state and each real native operation with its target bounds and pointer point.
+- RPC UI hosts can paint an operation indicator before native input: `computer_activity` is emitted before the mutation and the agent waits for `computer_activity_ack`, failing the call (within 5 s) rather than acting invisibly when the host cannot paint it.
 
 ### Changed
 
@@ -19,6 +21,7 @@
 
 ### Fixed
 
+- Fixed `--no-tools` sessions inheriting MCP, custom and extension tools instead of remaining limited to their explicitly requested tools.
 - Thinking-level discovery and cycling no longer offer `off` for mandatory-thinking models; setting or restoring `off` resolves to the lowest supported effort. Alibaba(China) menus now follow reviewed model-specific capabilities rather than a generic four-tier ladder.
 - Fixed Ctrl+C clearing input instead of cancelling active CLI work; interrupting now keeps the session available for the next command without arming the idle double-tap exit.
 - Fixed account-policy recovery repeatedly rotating through denied credentials instead of surfacing the error or using the configured model fallback, including unnecessary sibling-unblock waits after the account allowance is spent ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))

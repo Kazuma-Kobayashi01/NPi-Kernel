@@ -396,6 +396,63 @@ export type AgentSource = "bundled" | "user" | "project";
 
 export type SubagentStatus = "pending" | "running" | "completed" | "failed" | "aborted";
 
+export interface DesktopCapabilities {
+	backend: string;
+	capture: boolean;
+	input: boolean;
+	ax: boolean;
+	backgroundWindowInput: boolean;
+	takeover: boolean;
+	applications: boolean;
+	menus: boolean;
+	heldInput: boolean;
+	spaces: boolean;
+	globalEscape: boolean;
+	capturePermission: string;
+	inputPermission: string;
+	axPermission: string;
+	displayCount: number;
+	screenLocked: boolean;
+	displayAsleep: boolean;
+	displayServer?: string;
+}
+
+export interface ComputerUseState {
+	enabled: boolean;
+	active: boolean;
+	running: boolean;
+	capabilities?: DesktopCapabilities;
+}
+
+export interface ComputerBounds {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export interface ComputerPoint {
+	x: number;
+	y: number;
+}
+
+export interface ComputerActivityTarget {
+	kind: "window" | "display";
+	id: string;
+	bounds: ComputerBounds;
+	app?: string;
+	title?: string;
+}
+
+export interface ComputerActivity {
+	id: string;
+	phase: "started" | "updated" | "finished";
+	action: string;
+	target?: ComputerActivityTarget;
+	cursor?: ComputerPoint;
+	owner?: string;
+}
+
 export interface TodoItem {
 	content: string;
 	status: TodoStatus;
@@ -1033,6 +1090,16 @@ export interface QueueUpdateEvent {
 /** A session event, discriminated by `type`; `set_event_filter` selects which are sent. */
 export type RpcAgentEvent = AgentStartEvent | AgentEndEvent | TurnStartEvent | TurnEndEvent | MessageStartEvent | MessageUpdateEvent | MessageEndEvent | ToolExecutionStartEvent | ToolExecutionUpdateEvent | ToolStreamUpdateEvent | ToolExecutionEndEvent | AutoCompactionStartEvent | AutoCompactionEndEvent | ManualCompactionStartEvent | ManualCompactionEndEvent | AutoRetryStartEvent | AutoRetryEndEvent | CacheWarmingStartEvent | CacheWarmingEndEvent | RetryFallbackAppliedEvent | RetryFallbackSucceededEvent | ModelChangedEvent | ConfigWarningsChangedEvent | AdvisorCostChangedEvent | AdvisorYieldedEvent | TtsrTriggeredEvent | TodoReminderEvent | TodoAutoClearEvent | IrcMessageEvent | NoticeEvent | ThinkingLevelChangedEvent | GoalUpdatedEvent | QueueUpdateEvent;
 
+export interface ComputerUseStateEvent {
+	type: "computer_use_state";
+	state: ComputerUseState;
+}
+
+export interface ComputerActivityEvent {
+	type: "computer_activity";
+	activity: ComputerActivity;
+}
+
 /** First frame after startup; transport fields are absent on servers without protocol v2. */
 export interface ReadyEvent {
 	type: "ready";
@@ -1508,7 +1575,7 @@ export interface HostUriSchemeDefinition {
 }
 
 /** Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`. */
-export type RpcNotification = ReadyEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
+export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
 
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
@@ -1563,6 +1630,19 @@ export interface OpenSessionParams {
 	sessionDir: string;
 	provider?: string;
 	modelId?: string;
+}
+
+export interface SetComputerUseParams {
+	enabled: boolean;
+}
+
+export interface ComputerActivityAckParams {
+	activityId: string;
+	error?: string;
+}
+
+export interface SetComputerActivityAckParams {
+	enabled: boolean;
 }
 
 export interface SetFastModeParams {
@@ -1906,6 +1986,11 @@ export interface RpcWireCommands {
 	new_session: { params: NewSessionParams; result: CancellationResult };
 	open_session: { params: OpenSessionParams; result: OpenSessionResult };
 	get_state: { params: undefined; result: SessionState };
+	get_computer_use: { params: undefined; result: ComputerUseState };
+	set_computer_use: { params: SetComputerUseParams; result: ComputerUseState };
+	stop_computer_use: { params: undefined; result: ComputerUseState };
+	computer_activity_ack: { params: ComputerActivityAckParams; result: undefined };
+	set_computer_activity_ack: { params: SetComputerActivityAckParams; result: undefined };
 	set_fast_mode: { params: SetFastModeParams; result: FastModeResult };
 	set_slow_mode: { params: SetSlowModeParams; result: SetSlowModeResult };
 	goal: { params: GoalParams; result: GoalResult };

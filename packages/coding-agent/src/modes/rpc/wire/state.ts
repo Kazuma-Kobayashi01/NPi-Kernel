@@ -30,6 +30,26 @@ export const stateDefs = {
 	AgentSource: "'bundled' | 'user' | 'project'",
 	SubagentStatus: "'pending' | 'running' | 'completed' | 'failed' | 'aborted'",
 
+	DesktopCapabilities: {
+		backend: "string", "displayServer?": "string",
+		capture: "boolean", input: "boolean", ax: "boolean", backgroundWindowInput: "boolean",
+		takeover: "boolean", applications: "boolean", menus: "boolean", heldInput: "boolean",
+		spaces: "boolean", globalEscape: "boolean",
+		capturePermission: "string", inputPermission: "string", axPermission: "string",
+		displayCount: "number", screenLocked: "boolean", displayAsleep: "boolean",
+	},
+	ComputerUseState: {
+		enabled: "boolean", active: "boolean", running: "boolean", "capabilities?": "DesktopCapabilities",
+	},
+	ComputerBounds: { x: "number", y: "number", width: "number", height: "number" },
+	ComputerPoint: { x: "number", y: "number" },
+	ComputerActivityTarget: {
+		kind: "'window' | 'display'", id: "string", "app?": "string", "title?": "string", bounds: "ComputerBounds",
+	},
+	ComputerActivity: {
+		id: "string", phase: "'started' | 'updated' | 'finished'", action: "string",
+		"target?": "ComputerActivityTarget", "cursor?": "ComputerPoint", "owner?": "string",
+	},
 	TodoItem: {
 		content: "string",
 		status: "TodoStatus",

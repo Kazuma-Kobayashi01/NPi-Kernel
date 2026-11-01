@@ -1742,6 +1742,7 @@ export async function buildSessionOptions(
 	// Tools
 	if (parsed.noTools) {
 		options.toolNames = parsed.tools && parsed.tools.length > 0 ? parsed.tools : [];
+		options.restrictToolNames = true;
 	} else if (parsed.tools) {
 		options.toolNames = parsed.tools;
 	}

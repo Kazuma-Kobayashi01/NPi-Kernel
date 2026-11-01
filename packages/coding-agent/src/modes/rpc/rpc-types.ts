@@ -35,6 +35,7 @@ import type { GoalModeState } from "../../goals/state";
 import type { RpcGoalOp, RpcGoalResult } from "./rpc-goal";
 import type { BtwHistoryRecord } from "../../session/btw-history";
 
+import type { ComputerUseState } from "../../tools/computer/protocol";
 // ============================================================================
 // RPC Commands (stdin)
 // ============================================================================
@@ -63,6 +64,11 @@ export type RpcCommand =
 
 	// State
 	| { id?: string; type: "get_state" }
+	| { id?: string; type: "get_computer_use" }
+	| { id?: string; type: "set_computer_use"; enabled: boolean }
+	| { id?: string; type: "stop_computer_use" }
+	| { id?: string; type: "computer_activity_ack"; activityId: string; error?: string }
+	| { id?: string; type: "set_computer_activity_ack"; enabled: boolean }
 	| { id?: string; type: "set_fast_mode"; enabled: boolean }
 	| { id?: string; type: "set_slow_mode"; enabled: boolean }
 	| {
@@ -461,6 +467,11 @@ export type RpcResponse =
 
 	// State
 	| { id?: string; type: "response"; command: "get_state"; success: true; data: RpcSessionState }
+	| { id?: string; type: "response"; command: "get_computer_use"; success: true; data: ComputerUseState }
+	| { id?: string; type: "response"; command: "set_computer_use"; success: true; data: ComputerUseState }
+	| { id?: string; type: "response"; command: "stop_computer_use"; success: true; data: ComputerUseState }
+	| { id?: string; type: "response"; command: "computer_activity_ack"; success: true }
+	| { id?: string; type: "response"; command: "set_computer_activity_ack"; success: true }
 	| {
 			id?: string;
 			type: "response";

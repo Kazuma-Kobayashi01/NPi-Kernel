@@ -9,6 +9,29 @@ import screenStateTemplate from "../../prompts/tools/computer-screen-state.md" w
 
 export { COMPUTER_WORKER_ARG } from "../../cli/worker-selectors";
 
+/** Desktop-space telemetry; never contains screenshot bytes or source code. */
+export interface ComputerActivity {
+	id: string;
+	phase: "started" | "updated" | "finished";
+	action: string;
+	target?: {
+		kind: "window" | "display";
+		id: string;
+		app?: string;
+		title?: string;
+		bounds: { x: number; y: number; width: number; height: number };
+	};
+	cursor?: { x: number; y: number };
+	owner?: string;
+}
+
+export interface ComputerUseState {
+	enabled: boolean;
+	active: boolean;
+	running: boolean;
+	capabilities?: DesktopCapabilities;
+}
+
 /** Frozen run settings transferred from the host session to the worker. */
 export interface ComputerSessionSnapshot {
 	cwd: string;
@@ -55,6 +78,7 @@ export type ComputerWorkerInbound =
 	  }
 	| { type: "capabilities"; id: string; session: ComputerSessionSnapshot; escape: ComputerEscapeScope }
 	| { type: "abort"; id: string }
+	| { type: "activity-ack"; id: string; error?: string }
 	| { type: "revoke-control"; id: string }
 	/** Agent turn `turn` ended: let the display sleep now, keeping every other piece of session state. */
 	| { type: "release-display"; turn: number }
@@ -126,6 +150,7 @@ export interface RunErrorPayload {
 /** Events emitted by the persistent computer worker. */
 export type ComputerWorkerOutbound =
 	| { type: "ready" }
+	| { type: "activity"; runId: string; activity: ComputerActivity }
 	| { type: "control-revoked"; id: string }
 	| { type: "pong"; id: string }
 	| { type: "result"; id: string; ok: true; payload: ComputerRunOk }

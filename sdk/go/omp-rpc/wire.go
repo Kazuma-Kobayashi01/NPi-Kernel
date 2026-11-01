@@ -2132,6 +2132,227 @@ func (v *SubagentStatus) UnmarshalJSON(data []byte) error {
 	return unknownValue("SubagentStatus", s)
 }
 
+type DesktopCapabilities struct {
+	Backend               string  `json:"backend"`
+	Capture               bool    `json:"capture"`
+	Input                 bool    `json:"input"`
+	Ax                    bool    `json:"ax"`
+	BackgroundWindowInput bool    `json:"backgroundWindowInput"`
+	Takeover              bool    `json:"takeover"`
+	Applications          bool    `json:"applications"`
+	Menus                 bool    `json:"menus"`
+	HeldInput             bool    `json:"heldInput"`
+	Spaces                bool    `json:"spaces"`
+	GlobalEscape          bool    `json:"globalEscape"`
+	CapturePermission     string  `json:"capturePermission"`
+	InputPermission       string  `json:"inputPermission"`
+	AxPermission          string  `json:"axPermission"`
+	DisplayCount          float64 `json:"displayCount"`
+	ScreenLocked          bool    `json:"screenLocked"`
+	DisplayAsleep         bool    `json:"displayAsleep"`
+	DisplayServer         *string `json:"displayServer,omitempty"`
+}
+
+func (v *DesktopCapabilities) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "DesktopCapabilities", v.decodeFrom)
+}
+
+func (v *DesktopCapabilities) decodeFrom(raw map[string]json.RawMessage) error {
+	var out DesktopCapabilities
+	d := fieldDecoder{raw: raw, owner: "DesktopCapabilities"}
+	d.required("backend", &out.Backend)
+	d.required("capture", &out.Capture)
+	d.required("input", &out.Input)
+	d.required("ax", &out.Ax)
+	d.required("backgroundWindowInput", &out.BackgroundWindowInput)
+	d.required("takeover", &out.Takeover)
+	d.required("applications", &out.Applications)
+	d.required("menus", &out.Menus)
+	d.required("heldInput", &out.HeldInput)
+	d.required("spaces", &out.Spaces)
+	d.required("globalEscape", &out.GlobalEscape)
+	d.required("capturePermission", &out.CapturePermission)
+	d.required("inputPermission", &out.InputPermission)
+	d.required("axPermission", &out.AxPermission)
+	d.required("displayCount", &out.DisplayCount)
+	d.required("screenLocked", &out.ScreenLocked)
+	d.required("displayAsleep", &out.DisplayAsleep)
+	d.optional("displayServer", &out.DisplayServer)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerUseState struct {
+	Enabled      bool                 `json:"enabled"`
+	Active       bool                 `json:"active"`
+	Running      bool                 `json:"running"`
+	Capabilities *DesktopCapabilities `json:"capabilities,omitempty"`
+}
+
+func (v *ComputerUseState) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerUseState", v.decodeFrom)
+}
+
+func (v *ComputerUseState) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerUseState
+	d := fieldDecoder{raw: raw, owner: "ComputerUseState"}
+	d.required("enabled", &out.Enabled)
+	d.required("active", &out.Active)
+	d.required("running", &out.Running)
+	d.optional("capabilities", &out.Capabilities)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerBounds struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+func (v *ComputerBounds) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerBounds", v.decodeFrom)
+}
+
+func (v *ComputerBounds) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerBounds
+	d := fieldDecoder{raw: raw, owner: "ComputerBounds"}
+	d.required("x", &out.X)
+	d.required("y", &out.Y)
+	d.required("width", &out.Width)
+	d.required("height", &out.Height)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+func (v *ComputerPoint) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerPoint", v.decodeFrom)
+}
+
+func (v *ComputerPoint) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerPoint
+	d := fieldDecoder{raw: raw, owner: "ComputerPoint"}
+	d.required("x", &out.X)
+	d.required("y", &out.Y)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerActivityTarget struct {
+	Kind   ComputerActivityTargetKind `json:"kind"`
+	ID     string                     `json:"id"`
+	Bounds ComputerBounds             `json:"bounds"`
+	App    *string                    `json:"app,omitempty"`
+	Title  *string                    `json:"title,omitempty"`
+}
+
+func (v *ComputerActivityTarget) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerActivityTarget", v.decodeFrom)
+}
+
+func (v *ComputerActivityTarget) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerActivityTarget
+	d := fieldDecoder{raw: raw, owner: "ComputerActivityTarget"}
+	d.required("kind", &out.Kind)
+	d.required("id", &out.ID)
+	d.required("bounds", &out.Bounds)
+	d.optional("app", &out.App)
+	d.optional("title", &out.Title)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerActivityTargetKind string
+
+const (
+	ComputerActivityTargetKindWindow  ComputerActivityTargetKind = "window"
+	ComputerActivityTargetKindDisplay ComputerActivityTargetKind = "display"
+)
+
+func (v *ComputerActivityTargetKind) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ComputerActivityTargetKind")
+	if err != nil {
+		return err
+	}
+	switch value := ComputerActivityTargetKind(s); value {
+	case ComputerActivityTargetKindWindow, ComputerActivityTargetKindDisplay:
+		*v = value
+		return nil
+	}
+	return unknownValue("ComputerActivityTargetKind", s)
+}
+
+type ComputerActivity struct {
+	ID     string                  `json:"id"`
+	Phase  ComputerActivityPhase   `json:"phase"`
+	Action string                  `json:"action"`
+	Target *ComputerActivityTarget `json:"target,omitempty"`
+	Cursor *ComputerPoint          `json:"cursor,omitempty"`
+	Owner  *string                 `json:"owner,omitempty"`
+}
+
+func (v *ComputerActivity) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerActivity", v.decodeFrom)
+}
+
+func (v *ComputerActivity) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerActivity
+	d := fieldDecoder{raw: raw, owner: "ComputerActivity"}
+	d.required("id", &out.ID)
+	d.required("phase", &out.Phase)
+	d.required("action", &out.Action)
+	d.optional("target", &out.Target)
+	d.optional("cursor", &out.Cursor)
+	d.optional("owner", &out.Owner)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ComputerActivityPhase string
+
+const (
+	ComputerActivityPhaseStarted  ComputerActivityPhase = "started"
+	ComputerActivityPhaseUpdated  ComputerActivityPhase = "updated"
+	ComputerActivityPhaseFinished ComputerActivityPhase = "finished"
+)
+
+func (v *ComputerActivityPhase) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ComputerActivityPhase")
+	if err != nil {
+		return err
+	}
+	switch value := ComputerActivityPhase(s); value {
+	case ComputerActivityPhaseStarted, ComputerActivityPhaseUpdated, ComputerActivityPhaseFinished:
+		*v = value
+		return nil
+	}
+	return unknownValue("ComputerActivityPhase", s)
+}
+
 type TodoItem struct {
 	Content string     `json:"content"`
 	Status  TodoStatus `json:"status"`
@@ -4648,6 +4869,56 @@ func (v *RpcAgentEvent) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type ComputerUseStateEvent struct {
+	State ComputerUseState `json:"state"`
+}
+
+func (v *ComputerUseStateEvent) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerUseStateEvent", v.decodeFrom)
+}
+
+func (v *ComputerUseStateEvent) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerUseStateEvent
+	d := fieldDecoder{raw: raw, owner: "ComputerUseStateEvent"}
+	d.constant("type", "computer_use_state")
+	d.required("state", &out.State)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v ComputerUseStateEvent) MarshalJSON() ([]byte, error) {
+	type plain ComputerUseStateEvent
+	return encodeObject(plain(v), `"type":"computer_use_state"`, nil)
+}
+
+type ComputerActivityEvent struct {
+	Activity ComputerActivity `json:"activity"`
+}
+
+func (v *ComputerActivityEvent) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ComputerActivityEvent", v.decodeFrom)
+}
+
+func (v *ComputerActivityEvent) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ComputerActivityEvent
+	d := fieldDecoder{raw: raw, owner: "ComputerActivityEvent"}
+	d.constant("type", "computer_activity")
+	d.required("activity", &out.Activity)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v ComputerActivityEvent) MarshalJSON() ([]byte, error) {
+	type plain ComputerActivityEvent
+	return encodeObject(plain(v), `"type":"computer_activity"`, nil)
+}
+
 // First frame after startup; transport fields are absent on servers without protocol v2.
 type ReadyEvent struct {
 	ProtocolVersion           *int64  `json:"protocolVersion,omitempty"`
@@ -6673,6 +6944,8 @@ type RpcNotificationVariant interface {
 }
 
 func (ReadyEvent) isRpcNotification()                   {}
+func (ComputerUseStateEvent) isRpcNotification()        {}
+func (ComputerActivityEvent) isRpcNotification()        {}
 func (PromptResultEvent) isRpcNotification()            {}
 func (SessionSettledEvent) isRpcNotification()          {}
 func (ExtensionError) isRpcNotification()               {}
@@ -6743,6 +7016,10 @@ func (v *RpcNotification) UnmarshalJSON(data []byte) error {
 	switch tag {
 	case "ready":
 		value, err = decodeVariant[ReadyEvent](raw)
+	case "computer_use_state":
+		value, err = decodeVariant[ComputerUseStateEvent](raw)
+	case "computer_activity":
+		value, err = decodeVariant[ComputerActivityEvent](raw)
 	case "prompt_result":
 		value, err = decodeVariant[PromptResultEvent](raw)
 	case "session_settled":
@@ -6878,6 +7155,8 @@ func (HostToolCancelRequest) isRpcServerFrame()        {}
 func (HostUriRequest) isRpcServerFrame()               {}
 func (HostUriCancelRequest) isRpcServerFrame()         {}
 func (ReadyEvent) isRpcServerFrame()                   {}
+func (ComputerUseStateEvent) isRpcServerFrame()        {}
+func (ComputerActivityEvent) isRpcServerFrame()        {}
 func (PromptResultEvent) isRpcServerFrame()            {}
 func (SessionSettledEvent) isRpcServerFrame()          {}
 func (ExtensionError) isRpcServerFrame()               {}
@@ -6958,6 +7237,10 @@ func (v *RpcServerFrame) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[HostUriCancelRequest](raw)
 	case "ready":
 		value, err = decodeVariant[ReadyEvent](raw)
+	case "computer_use_state":
+		value, err = decodeVariant[ComputerUseStateEvent](raw)
+	case "computer_activity":
+		value, err = decodeVariant[ComputerActivityEvent](raw)
 	case "prompt_result":
 		value, err = decodeVariant[PromptResultEvent](raw)
 	case "session_settled":
@@ -7804,6 +8087,53 @@ func (c Commands) GetState(ctx context.Context) (SessionState, error) {
 	var out SessionState
 	err := c.call(ctx, "get_state", nil, 0, &out)
 	return out, err
+}
+
+// GetComputerUse sends "get_computer_use": Inspect computer use without running a tool or model.
+func (c Commands) GetComputerUse(ctx context.Context) (ComputerUseState, error) {
+	var out ComputerUseState
+	err := c.call(ctx, "get_computer_use", nil, 0, &out)
+	return out, err
+}
+
+// SetComputerUseCommand holds the parameters of "set_computer_use".
+type SetComputerUseCommand struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetComputerUse sends "set_computer_use": Enable or disable computer use for this session.
+func (c Commands) SetComputerUse(ctx context.Context, p SetComputerUseCommand) (ComputerUseState, error) {
+	var out ComputerUseState
+	err := c.call(ctx, "set_computer_use", p, 0, &out)
+	return out, err
+}
+
+// StopComputerUse sends "stop_computer_use": Cancel only computer work in this session tree.
+func (c Commands) StopComputerUse(ctx context.Context) (ComputerUseState, error) {
+	var out ComputerUseState
+	err := c.call(ctx, "stop_computer_use", nil, 0, &out)
+	return out, err
+}
+
+// ComputerActivityAckCommand holds the parameters of "computer_activity_ack".
+type ComputerActivityAckCommand struct {
+	ActivityID string  `json:"activityId"`
+	Error      *string `json:"error,omitempty"`
+}
+
+// ComputerActivityAck sends "computer_activity_ack": Acknowledge a painted computer operation indicator.
+func (c Commands) ComputerActivityAck(ctx context.Context, p ComputerActivityAckCommand) error {
+	return c.call(ctx, "computer_activity_ack", p, 0, nil)
+}
+
+// SetComputerActivityAckCommand holds the parameters of "set_computer_activity_ack".
+type SetComputerActivityAckCommand struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetComputerActivityAck sends "set_computer_activity_ack": Hold native input until this host paints each computer operation (opt-in).
+func (c Commands) SetComputerActivityAck(ctx context.Context, p SetComputerActivityAckCommand) error {
+	return c.call(ctx, "set_computer_activity_ack", p, 0, nil)
 }
 
 // SetFastModeCommand holds the parameters of "set_fast_mode".

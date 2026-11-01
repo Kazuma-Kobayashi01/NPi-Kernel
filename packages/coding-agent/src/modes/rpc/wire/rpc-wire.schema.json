@@ -142,6 +142,61 @@
 				"clientOmit": []
 			},
 			{
+				"name": "get_computer_use",
+				"doc": "Inspect computer use without running a tool or model.",
+				"params": null,
+				"result": "ComputerUseState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "set_computer_use",
+				"doc": "Enable or disable computer use for this session.",
+				"params": "SetComputerUseParams",
+				"result": "ComputerUseState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "stop_computer_use",
+				"doc": "Cancel only computer work in this session tree.",
+				"params": null,
+				"result": "ComputerUseState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "computer_activity_ack",
+				"doc": "Acknowledge a painted computer operation indicator.",
+				"params": "ComputerActivityAckParams",
+				"result": null,
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "set_computer_activity_ack",
+				"doc": "Hold native input until this host paints each computer operation (opt-in).",
+				"params": "SetComputerActivityAckParams",
+				"result": null,
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "set_fast_mode",
 				"doc": "Enable or disable fast mode for the session.",
 				"params": "SetFastModeParams",
@@ -2337,6 +2392,206 @@
 			],
 			"type": "string"
 		},
+		"DesktopCapabilities": {
+			"type": "object",
+			"properties": {
+				"backend": {
+					"type": "string"
+				},
+				"capture": {
+					"type": "boolean"
+				},
+				"input": {
+					"type": "boolean"
+				},
+				"ax": {
+					"type": "boolean"
+				},
+				"backgroundWindowInput": {
+					"type": "boolean"
+				},
+				"takeover": {
+					"type": "boolean"
+				},
+				"applications": {
+					"type": "boolean"
+				},
+				"menus": {
+					"type": "boolean"
+				},
+				"heldInput": {
+					"type": "boolean"
+				},
+				"spaces": {
+					"type": "boolean"
+				},
+				"globalEscape": {
+					"type": "boolean"
+				},
+				"capturePermission": {
+					"type": "string"
+				},
+				"inputPermission": {
+					"type": "string"
+				},
+				"axPermission": {
+					"type": "string"
+				},
+				"displayCount": {
+					"type": "number"
+				},
+				"screenLocked": {
+					"type": "boolean"
+				},
+				"displayAsleep": {
+					"type": "boolean"
+				},
+				"displayServer": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"backend",
+				"capture",
+				"input",
+				"ax",
+				"backgroundWindowInput",
+				"takeover",
+				"applications",
+				"menus",
+				"heldInput",
+				"spaces",
+				"globalEscape",
+				"capturePermission",
+				"inputPermission",
+				"axPermission",
+				"displayCount",
+				"screenLocked",
+				"displayAsleep"
+			]
+		},
+		"ComputerUseState": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"active": {
+					"type": "boolean"
+				},
+				"running": {
+					"type": "boolean"
+				},
+				"capabilities": {
+					"$ref": "#/$defs/DesktopCapabilities"
+				}
+			},
+			"required": [
+				"enabled",
+				"active",
+				"running"
+			]
+		},
+		"ComputerBounds": {
+			"type": "object",
+			"properties": {
+				"x": {
+					"type": "number"
+				},
+				"y": {
+					"type": "number"
+				},
+				"width": {
+					"type": "number"
+				},
+				"height": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"x",
+				"y",
+				"width",
+				"height"
+			]
+		},
+		"ComputerPoint": {
+			"type": "object",
+			"properties": {
+				"x": {
+					"type": "number"
+				},
+				"y": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"x",
+				"y"
+			]
+		},
+		"ComputerActivityTarget": {
+			"type": "object",
+			"properties": {
+				"kind": {
+					"enum": [
+						"window",
+						"display"
+					],
+					"type": "string"
+				},
+				"id": {
+					"type": "string"
+				},
+				"bounds": {
+					"$ref": "#/$defs/ComputerBounds"
+				},
+				"app": {
+					"type": "string"
+				},
+				"title": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"kind",
+				"id",
+				"bounds"
+			]
+		},
+		"ComputerActivity": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"phase": {
+					"enum": [
+						"started",
+						"updated",
+						"finished"
+					],
+					"type": "string"
+				},
+				"action": {
+					"type": "string"
+				},
+				"target": {
+					"$ref": "#/$defs/ComputerActivityTarget"
+				},
+				"cursor": {
+					"$ref": "#/$defs/ComputerPoint"
+				},
+				"owner": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"id",
+				"phase",
+				"action"
+			]
+		},
 		"TodoItem": {
 			"type": "object",
 			"properties": {
@@ -4458,6 +4713,36 @@
 			],
 			"description": "A session event, discriminated by `type`; `set_event_filter` selects which are sent."
 		},
+		"ComputerUseStateEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "computer_use_state"
+				},
+				"state": {
+					"$ref": "#/$defs/ComputerUseState"
+				}
+			},
+			"required": [
+				"type",
+				"state"
+			]
+		},
+		"ComputerActivityEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "computer_activity"
+				},
+				"activity": {
+					"$ref": "#/$defs/ComputerActivity"
+				}
+			},
+			"required": [
+				"type",
+				"activity"
+			]
+		},
 		"ReadyEvent": {
 			"type": "object",
 			"properties": {
@@ -5962,6 +6247,12 @@
 					"$ref": "#/$defs/ReadyEvent"
 				},
 				{
+					"$ref": "#/$defs/ComputerUseStateEvent"
+				},
+				{
+					"$ref": "#/$defs/ComputerActivityEvent"
+				},
+				{
 					"$ref": "#/$defs/PromptResultEvent"
 				},
 				{
@@ -6190,6 +6481,42 @@
 			},
 			"required": [
 				"sessionDir"
+			]
+		},
+		"SetComputerUseParams": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"enabled"
+			]
+		},
+		"ComputerActivityAckParams": {
+			"type": "object",
+			"properties": {
+				"activityId": {
+					"type": "string"
+				},
+				"error": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"activityId"
+			]
+		},
+		"SetComputerActivityAckParams": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"enabled"
 			]
 		},
 		"SetFastModeParams": {

@@ -549,6 +549,69 @@ class ModelInfo:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class DesktopCapabilities:
+    backend: str
+    capture: bool
+    input: bool
+    ax: bool
+    background_window_input: bool
+    takeover: bool
+    applications: bool
+    menus: bool
+    held_input: bool
+    spaces: bool
+    global_escape: bool
+    capture_permission: str
+    input_permission: str
+    ax_permission: str
+    display_count: float
+    screen_locked: bool
+    display_asleep: bool
+    display_server: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerUseState:
+    enabled: bool
+    active: bool
+    running: bool
+    capabilities: DesktopCapabilities | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerBounds:
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerPoint:
+    x: float
+    y: float
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerActivityTarget:
+    kind: Literal["window", "display"]
+    id: str
+    bounds: ComputerBounds
+    app: str | None = None
+    title: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerActivity:
+    id: str
+    phase: Literal["started", "updated", "finished"]
+    action: str
+    target: ComputerActivityTarget | None = None
+    cursor: ComputerPoint | None = None
+    owner: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class TodoItem:
     content: str
     status: TodoStatus
@@ -1239,6 +1302,18 @@ class QueueUpdateEvent:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerUseStateEvent:
+    type: Literal["computer_use_state"] = "computer_use_state"
+    state: ComputerUseState
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ComputerActivityEvent:
+    type: Literal["computer_activity"] = "computer_activity"
+    activity: ComputerActivity
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class ReadyEvent:
     """First frame after startup; transport fields are absent on servers without protocol v2."""
     type: Literal["ready"] = "ready"
@@ -1687,7 +1762,7 @@ RpcAgentEvent: TypeAlias = AgentStartEvent | AgentEndEvent | TurnStartEvent | Tu
 """A session event, discriminated by `type`; `set_event_filter` selects which are sent."""
 
 
-RpcNotification: TypeAlias = ReadyEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
+RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
 """Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`."""
 
 
@@ -1897,6 +1972,81 @@ def parse_model_info(value: object, path: str = "ModelInfo") -> ModelInfo:
         priority=optional(payload, "priority", decode_int, path),
         thinking=optional(payload, "thinking", parse_thinking_config, path),
         compat=optional(payload, "compat", decode_json_object, path),
+    )
+
+
+def parse_desktop_capabilities(value: object, path: str = "DesktopCapabilities") -> DesktopCapabilities:
+    payload = expect_object(value, path)
+    return DesktopCapabilities(
+        backend=required(payload, "backend", decode_str, path),
+        capture=required(payload, "capture", decode_bool, path),
+        input=required(payload, "input", decode_bool, path),
+        ax=required(payload, "ax", decode_bool, path),
+        background_window_input=required(payload, "backgroundWindowInput", decode_bool, path),
+        takeover=required(payload, "takeover", decode_bool, path),
+        applications=required(payload, "applications", decode_bool, path),
+        menus=required(payload, "menus", decode_bool, path),
+        held_input=required(payload, "heldInput", decode_bool, path),
+        spaces=required(payload, "spaces", decode_bool, path),
+        global_escape=required(payload, "globalEscape", decode_bool, path),
+        capture_permission=required(payload, "capturePermission", decode_str, path),
+        input_permission=required(payload, "inputPermission", decode_str, path),
+        ax_permission=required(payload, "axPermission", decode_str, path),
+        display_count=required(payload, "displayCount", decode_float, path),
+        screen_locked=required(payload, "screenLocked", decode_bool, path),
+        display_asleep=required(payload, "displayAsleep", decode_bool, path),
+        display_server=optional(payload, "displayServer", decode_str, path),
+    )
+
+
+def parse_computer_use_state(value: object, path: str = "ComputerUseState") -> ComputerUseState:
+    payload = expect_object(value, path)
+    return ComputerUseState(
+        enabled=required(payload, "enabled", decode_bool, path),
+        active=required(payload, "active", decode_bool, path),
+        running=required(payload, "running", decode_bool, path),
+        capabilities=optional(payload, "capabilities", parse_desktop_capabilities, path),
+    )
+
+
+def parse_computer_bounds(value: object, path: str = "ComputerBounds") -> ComputerBounds:
+    payload = expect_object(value, path)
+    return ComputerBounds(
+        x=required(payload, "x", decode_float, path),
+        y=required(payload, "y", decode_float, path),
+        width=required(payload, "width", decode_float, path),
+        height=required(payload, "height", decode_float, path),
+    )
+
+
+def parse_computer_point(value: object, path: str = "ComputerPoint") -> ComputerPoint:
+    payload = expect_object(value, path)
+    return ComputerPoint(
+        x=required(payload, "x", decode_float, path),
+        y=required(payload, "y", decode_float, path),
+    )
+
+
+def parse_computer_activity_target(value: object, path: str = "ComputerActivityTarget") -> ComputerActivityTarget:
+    payload = expect_object(value, path)
+    return ComputerActivityTarget(
+        kind=required(payload, "kind", cast('Decoder[Literal["window", "display"]]', literal(frozenset({"window", "display"}))), path),
+        id=required(payload, "id", decode_str, path),
+        bounds=required(payload, "bounds", parse_computer_bounds, path),
+        app=optional(payload, "app", decode_str, path),
+        title=optional(payload, "title", decode_str, path),
+    )
+
+
+def parse_computer_activity(value: object, path: str = "ComputerActivity") -> ComputerActivity:
+    payload = expect_object(value, path)
+    return ComputerActivity(
+        id=required(payload, "id", decode_str, path),
+        phase=required(payload, "phase", cast('Decoder[Literal["started", "updated", "finished"]]', literal(frozenset({"started", "updated", "finished"}))), path),
+        action=required(payload, "action", decode_str, path),
+        target=optional(payload, "target", parse_computer_activity_target, path),
+        cursor=optional(payload, "cursor", parse_computer_point, path),
+        owner=optional(payload, "owner", decode_str, path),
     )
 
 
@@ -2669,6 +2819,22 @@ def parse_queue_update_event(value: object, path: str = "QueueUpdateEvent") -> Q
     )
 
 
+def parse_computer_use_state_event(value: object, path: str = "ComputerUseStateEvent") -> ComputerUseStateEvent:
+    payload = expect_object(value, path)
+    required(payload, "type", cast('Decoder[Literal["computer_use_state"]]', literal(frozenset({"computer_use_state"}))), path)
+    return ComputerUseStateEvent(
+        state=required(payload, "state", parse_computer_use_state, path),
+    )
+
+
+def parse_computer_activity_event(value: object, path: str = "ComputerActivityEvent") -> ComputerActivityEvent:
+    payload = expect_object(value, path)
+    required(payload, "type", cast('Decoder[Literal["computer_activity"]]', literal(frozenset({"computer_activity"}))), path)
+    return ComputerActivityEvent(
+        activity=required(payload, "activity", parse_computer_activity, path),
+    )
+
+
 def parse_ready_event(value: object, path: str = "ReadyEvent") -> ReadyEvent:
     payload = expect_object(value, path)
     required(payload, "type", cast('Decoder[Literal["ready"]]', literal(frozenset({"ready"}))), path)
@@ -3219,6 +3385,8 @@ _RPC_AGENT_EVENT_CASES: Final[dict[str, Decoder[RpcAgentEvent]]] = {
 
 _RPC_NOTIFICATION_CASES: Final[dict[str, Decoder[RpcNotification]]] = {
         "ready": parse_ready_event,
+        "computer_use_state": parse_computer_use_state_event,
+        "computer_activity": parse_computer_activity_event,
         "prompt_result": parse_prompt_result_event,
         "session_settled": parse_session_settled_event,
         "extension_error": parse_extension_error,
@@ -3347,6 +3515,36 @@ class WireClient:
         """Snapshot the session state."""
         params: dict[str, object] = {}
         return parse_session_state(self._command("get_state", params), "get_state")
+
+    def get_computer_use(self) -> ComputerUseState:
+        """Inspect computer use without running a tool or model."""
+        params: dict[str, object] = {}
+        return parse_computer_use_state(self._command("get_computer_use", params), "get_computer_use")
+
+    def set_computer_use(self, enabled: bool) -> ComputerUseState:
+        """Enable or disable computer use for this session."""
+        params: dict[str, object] = {}
+        params["enabled"] = enabled
+        return parse_computer_use_state(self._command("set_computer_use", params), "set_computer_use")
+
+    def stop_computer_use(self) -> ComputerUseState:
+        """Cancel only computer work in this session tree."""
+        params: dict[str, object] = {}
+        return parse_computer_use_state(self._command("stop_computer_use", params), "stop_computer_use")
+
+    def computer_activity_ack(self, activity_id: str, *, error: str | None = None) -> None:
+        """Acknowledge a painted computer operation indicator."""
+        params: dict[str, object] = {}
+        params["activityId"] = activity_id
+        if error is not None:
+            params["error"] = error
+        self._command("computer_activity_ack", params)
+
+    def set_computer_activity_ack(self, enabled: bool) -> None:
+        """Hold native input until this host paints each computer operation (opt-in)."""
+        params: dict[str, object] = {}
+        params["enabled"] = enabled
+        self._command("set_computer_activity_ack", params)
 
     def set_fast_mode(self, enabled: bool) -> FastModeResult:
         """Enable or disable fast mode for the session."""
@@ -3731,6 +3929,14 @@ class WireClient:
         """Subscribe to `ready`: First frame after startup; transport fields are absent on servers without protocol v2."""
         return self._listen("ready", listener)
 
+    def on_computer_use_state(self, listener: Callable[[ComputerUseStateEvent], None]) -> Callable[[], None]:
+        """Subscribe to `computer_use_state` frames."""
+        return self._listen("computer_use_state", listener)
+
+    def on_computer_activity(self, listener: Callable[[ComputerActivityEvent], None]) -> Callable[[], None]:
+        """Subscribe to `computer_activity` frames."""
+        return self._listen("computer_activity", listener)
+
     def on_prompt_result(self, listener: Callable[[PromptResultEvent], None]) -> Callable[[], None]:
         """Subscribe to `prompt_result`: Terminal outcome of one accepted `prompt` / `abort_and_prompt`, keyed by request `id`."""
         return self._listen("prompt_result", listener)
@@ -4006,12 +4212,20 @@ __all__ = [
     "CommandOutputEvent",
     "CompactionResult",
     "CompactionSummaryMessage",
+    "ComputerActivity",
+    "ComputerActivityEvent",
+    "ComputerActivityTarget",
+    "ComputerBounds",
+    "ComputerPoint",
+    "ComputerUseState",
+    "ComputerUseStateEvent",
     "ConfigUpdateEvent",
     "ConfigWarningsChangedEvent",
     "ConfiguredThinkingLevel",
     "ConfirmUiRequest",
     "ContextUsage",
     "CustomMessage",
+    "DesktopCapabilities",
     "DeveloperMessage",
     "DictationEndEvent",
     "DictationStateEvent",
@@ -4198,11 +4412,19 @@ __all__ = [
     "parse_command_output_event",
     "parse_compaction_result",
     "parse_compaction_summary_message",
+    "parse_computer_activity",
+    "parse_computer_activity_event",
+    "parse_computer_activity_target",
+    "parse_computer_bounds",
+    "parse_computer_point",
+    "parse_computer_use_state",
+    "parse_computer_use_state_event",
     "parse_config_update_event",
     "parse_config_warnings_changed_event",
     "parse_confirm_ui_request",
     "parse_context_usage",
     "parse_custom_message",
+    "parse_desktop_capabilities",
     "parse_developer_message",
     "parse_dictation_end_event",
     "parse_dictation_state_event",

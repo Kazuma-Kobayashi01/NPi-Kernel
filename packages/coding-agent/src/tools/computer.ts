@@ -9,7 +9,7 @@ import type { EvalPreludeContext, EvalPreludeDefinition } from "../eval/preludes
 import computerUsePrompt from "../prompts/system/computer-use.md" with { type: "text" };
 import { enforceInlineByteCap } from "@oh-my-pi/pi-tui/tools/streaming-output";
 import { type ComputerCallStep, isReadOnlyComputerCall, renderComputerCall } from "./computer/call";
-import { type ComputerScreenshot, type ComputerSessionSnapshot, screenStateNotice } from "./computer/protocol";
+import { type ComputerScreenshot, type ComputerSessionSnapshot, type ComputerUseState, screenStateNotice } from "./computer/protocol";
 import {
 	type ComputerController,
 	ComputerSupervisor,
@@ -21,6 +21,7 @@ import { renderCallChain, renderFunctionRun } from "./run-code";
 import { throwIfAborted } from "./tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import { clampTimeout } from "./tool-timeouts";
+import type { EventBus } from "../utils/event-bus";
 
 import {
 	cfgComputerBackgroundFallback,
@@ -108,6 +109,115 @@ interface ComputerPreludeDetails {
 /** Creates the session-scoped controller used by the computer prelude. */
 export type ComputerControllerFactory = (session: ToolSession) => ComputerController;
 
+interface ComputerRuntime {
+	session: ToolSession;
+	available(): boolean;
+	controller?: ComputerController;
+	unregister?: () => void;
+	closing: Promise<void>;
+	disposed: boolean;
+	capabilities?: DesktopCapabilities;
+	create: ComputerControllerFactory;
+}
+const computerRuntimes = new WeakMap<ToolSession, ComputerRuntime>();
+const computerTrees = new WeakMap<EventBus, Set<ComputerRuntime>>();
+const computerTreeEnabled = new WeakMap<EventBus, boolean>();
+
+/** Initialize control access without loading prelude assets or starting native code. */
+export function initializeComputerUse(
+	session: ToolSession,
+	available: () => boolean,
+	create: ComputerControllerFactory = current => new ComputerSupervisor(current, undefined, undefined, callSessionTool),
+): void {
+	if (computerRuntimes.has(session)) return;
+	const runtime: ComputerRuntime = { session, available, closing: Promise.resolve(), disposed: false, create };
+	computerRuntimes.set(session, runtime);
+	const bus = session.subagentEventBus;
+	if (bus) {
+		const tree = computerTrees.get(bus) ?? new Set<ComputerRuntime>();
+		tree.add(runtime);
+		computerTrees.set(bus, tree);
+		if (!computerTreeEnabled.has(bus)) computerTreeEnabled.set(bus, cfgComputerEnabled.get(session.settings));
+	}
+	session.registerDisposeCallback?.(() => {
+		runtime.disposed = true;
+		if (bus) computerTrees.get(bus)?.delete(runtime);
+		void closeComputerRuntime(runtime);
+	});
+}
+
+async function closeComputerRuntime(runtime: ComputerRuntime): Promise<void> {
+	const controller = runtime.controller;
+	runtime.controller = undefined;
+	runtime.capabilities = undefined;
+	runtime.unregister?.();
+	runtime.unregister = undefined;
+	runtime.closing = Promise.all([runtime.closing, controller?.close()]).then(() => undefined);
+	await runtime.closing;
+}
+
+async function computerController(runtime: ComputerRuntime): Promise<ComputerController> {
+	await runtime.closing;
+	if (runtime.disposed) throw new ToolError("Computer session is disposed");
+	if (!runtime.available() || !cfgComputerEnabled.get(runtime.session.settings) ||
+		(runtime.session.subagentEventBus && computerTreeEnabled.get(runtime.session.subagentEventBus) === false))
+		throw new ToolError("Computer use is disabled for this session");
+	if (!runtime.controller) {
+		runtime.controller = runtime.create(runtime.session);
+		runtime.unregister = registerComputerController(
+			runtime.session.getEvalKernelOwnerId?.() ?? undefined, runtime.controller,
+		);
+	}
+	return runtime.controller;
+}
+
+/** Changes to /computer and RPC share the same live teardown path. */
+export async function reconcileComputerUse(session: ToolSession, enabled: boolean): Promise<void> {
+	const runtime = computerRuntimes.get(session);
+	if (session.subagentEventBus) computerTreeEnabled.set(session.subagentEventBus, enabled);
+	if (!enabled) {
+		const tree = session.subagentEventBus ? computerTrees.get(session.subagentEventBus) : undefined;
+		const runtimes = tree ? Array.from(tree) : runtime ? [runtime] : [];
+		await Promise.all(runtimes.map(current => closeComputerRuntime(current)));
+	}
+	session.subagentEventBus?.emit("computer:state", undefined);
+}
+
+const DISABLED_COMPUTER_USE: ComputerUseState = { enabled: false, active: false, running: false };
+
+/** Inspection never executes a tool or model; disabled/restricted sessions never load native code. */
+export async function getComputerUseState(session: ToolSession, inspect = true): Promise<ComputerUseState> {
+	const runtime = computerRuntimes.get(session);
+	if (!runtime) return DISABLED_COMPUTER_USE;
+	const enabled = runtime.available() && cfgComputerEnabled.get(session.settings) &&
+		(!session.subagentEventBus || computerTreeEnabled.get(session.subagentEventBus) !== false);
+	if (enabled && inspect)
+		runtime.capabilities = await (await computerController(runtime)).capabilities(buildComputerSnapshot(session, true));
+	const tree = session.subagentEventBus ? computerTrees.get(session.subagentEventBus) : undefined;
+	const running = Array.from(tree ?? [runtime]).some(current => current.controller?.running === true);
+	return { enabled, active: enabled && runtime.controller !== undefined, running, ...(enabled && runtime.capabilities ? { capabilities: runtime.capabilities } : {}) };
+}
+
+export async function setComputerUse(session: ToolSession, enabled: boolean): Promise<ComputerUseState> {
+	const runtime = computerRuntimes.get(session);
+	if (!runtime) throw new ToolError("Computer use is unavailable for this session");
+	if (enabled && !runtime.available()) throw new ToolError("Computer use is unavailable in this restricted session");
+	cfgComputerEnabled.override(session.settings, enabled);
+	await reconcileComputerUse(session, enabled);
+	const state = await getComputerUseState(session);
+	session.subagentEventBus?.emit("computer:state", undefined);
+	return state;
+}
+
+/** Stop only computer work, including descendants sharing the root bus. */
+export async function stopComputerUse(session: ToolSession): Promise<ComputerUseState> {
+	const runtime = computerRuntimes.get(session);
+	const tree = session.subagentEventBus ? computerTrees.get(session.subagentEventBus) : undefined;
+	await Promise.all(Array.from(tree ?? (runtime ? [runtime] : []), current => current.controller?.cancelWork?.()));
+	session.subagentEventBus?.emit("computer:state", undefined);
+	return await getComputerUseState(session, false);
+}
+
 /** Capability inspection, explicitly read-only runs, and inspection-only direct calls use read approval. */
 export function computerApproval(args: unknown): ToolApprovalDecision {
 	if (args === null || typeof args !== "object" || Array.isArray(args) || !("action" in args)) return "exec";
@@ -129,25 +239,13 @@ export function createComputerPrelude(
 	createController: ComputerControllerFactory = currentSession =>
 		new ComputerSupervisor(currentSession, undefined, undefined, callSessionTool),
 ): EvalPreludeDefinition {
-	const controller = createController(session);
-	const unregisterOwner = registerComputerController(session.getEvalKernelOwnerId?.() ?? undefined, controller);
-	// Eval-first-use boundary: source/declaration assets stay unloaded until a
-	// JavaScript or Python kernel actually asks for its enabled preludes.
+	initializeComputerUse(session, () => true, createController);
+	const runtime = computerRuntimes.get(session)!;
 	const { computerPreludeAssets } = require("./computer/prelude-definition");
-	let closed = false;
 	const lifetime: ComputerLifetime = {
-		isClosed: () => closed,
-		close: async () => {
-			if (closed) return;
-			closed = true;
-			unregisterOwner();
-			unregisterDisposal?.();
-			await controller.close();
-		},
+		isClosed: () => runtime.disposed,
+		close: () => closeComputerRuntime(runtime),
 	};
-	const unregisterDisposal = session.registerDisposeCallback?.(() => {
-		void lifetime.close();
-	});
 
 	return {
 		name: "computer",
@@ -164,7 +262,11 @@ export function createComputerPrelude(
 			if (parsed instanceof type.errors) {
 				throw new ToolError(`computer received invalid arguments: ${parsed.summary}`);
 			}
-			return await invokeComputer(session, controller, parsed, context, lifetime);
+			if (parsed.action === "close") {
+				await lifetime.close();
+				return { content: [{ type: "text", text: "Closed computer session" }] };
+			}
+			return await invokeComputer(session, await computerController(runtime), parsed, context, lifetime);
 		},
 		status: describeComputerCall,
 	};

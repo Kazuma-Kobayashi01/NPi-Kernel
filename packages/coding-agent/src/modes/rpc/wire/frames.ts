@@ -8,6 +8,8 @@ const JSON_OBJECT = "Record<string, unknown>";
 const UI = "'extension_ui_request'";
 
 export const frameDefs = {
+	ComputerUseStateEvent: { type: "'computer_use_state'", state: "ComputerUseState" },
+	ComputerActivityEvent: { type: "'computer_activity'", activity: "ComputerActivity" },
 	ReadyEvent: doc(
 		{
 			type: "'ready'",

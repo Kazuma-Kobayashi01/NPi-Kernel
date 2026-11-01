@@ -44,6 +44,7 @@ import { ToolAbortError, throwIfAborted } from "../tool-errors";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
 import {
 	type ComputerEscapeScope,
+	type ComputerActivity,
 	type ComputerScreenshot,
 	type ComputerSessionSnapshot,
 	type ComputerWorkerInbound,
@@ -58,6 +59,15 @@ import {
 } from "./protocol";
 import { describeWindowMiss } from "./window-miss";
 
+
+/** A host that must paint before the mutation gets this long before it fails. */
+const ACTIVITY_PAINT_TIMEOUT_MS = 5_000;
+const POINTER_MUTATIONS = new Set(["click", "moveMouse", "drag", "scroll", "holdMouse"]);
+const COMPUTER_MUTATIONS = new Set([
+	...POINTER_MUTATIONS, "typeText", "keyChord", "holdKeys", "raiseWindow", "bringToCurrentSpace",
+	"menuSelect", "openApplication", "acquireControl", "axPerform", "axSetValue", "axSelectText",
+	"axFocus", "axClick", "axType", "axKeyChord",
+]);
 /** A native input call; resolves to its takeover focus report when it took over. */
 type InputCall = Promise<DesktopFocusReturn | null | void>;
 
@@ -1310,6 +1320,9 @@ export class ComputerWorkerCore {
 	#closed = false;
 	/** The latest agent turn whose end was sent here; a run of that turn or earlier, arriving late, holds nothing. */
 	#releasedTurn = 0;
+	readonly #frames = new Map<string, DesktopCapture>();
+	readonly #elementTargets = new Map<string, string>();
+	readonly #activityAcks = new Map<string, PendingTool>();
 
 	constructor(transport: ComputerWorkerTransport, createSession?: NativeDesktopSessionFactory) {
 		this.#transport = transport;
@@ -1333,6 +1346,13 @@ export class ComputerWorkerCore {
 			case "abort":
 				if (this.#active?.id === message.id) this.#active.ac.abort(new ToolAbortError());
 				return;
+			case "activity-ack": {
+				const pending = this.#activityAcks.get(message.id);
+				this.#activityAcks.delete(message.id);
+				if (message.error) pending?.reject(new ToolError(message.error));
+				else pending?.resolve(undefined);
+				return;
+			}
 			case "revoke-control":
 				this.#active?.ac.abort(new ToolAbortError("Computer control revoked"));
 				this.#session?.cancel();
@@ -1528,6 +1548,8 @@ export class ComputerWorkerCore {
 			else if (!nativeCancelled) this.#session?.cancel();
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Computer run ended")));
 			if (this.#active?.id === message.id) this.#active = null;
+			for (const pending of this.#activityAcks.values()) pending.reject(new ToolAbortError("Computer run ended"));
+			this.#activityAcks.clear();
 		}
 		if (failure !== undefined) {
 			this.#transport.send({
@@ -1585,7 +1607,34 @@ export class ComputerWorkerCore {
 				if (typeof value !== "function") return value;
 				return (...args: unknown[]): unknown => {
 					this.#checkEscape();
-					const result = Reflect.apply(value, target, args);
+					const invoke = async (): Promise<unknown> => {
+						const runId = this.#active?.id;
+						const signal = this.#runContexts.getStore()?.signal;
+						const mutation = COMPUTER_MUTATIONS.has(String(property));
+						const activity = mutation && runId && signal
+							? await this.#beginActivity(session, String(property), args, runId, signal) : undefined;
+						try {
+							this.#checkEscape();
+							const context = this.#runContexts.getStore();
+							if (context) throwIfAborted(context.signal);
+							const settled = await Reflect.apply(value, target, args);
+							if (property === "capture" || property === "captureRegion")
+								this.#frames.set(String(args[0]), settled as DesktopCapture);
+							if (property === "observe")
+								this.#frames.set(String(args[0]), (settled as NativeObservation).capture);
+							if (property === "axQuery")
+								for (const node of settled as AxNode[]) this.#elementTargets.set(node.ref, String(args[0]));
+							return settled;
+						} finally {
+							if (activity && runId) {
+								this.#activityAcks.delete(activity.id);
+								this.#transport.send({ type: "activity", runId, activity: { ...activity, phase: "finished" } });
+							}
+						}
+					};
+					const result = COMPUTER_MUTATIONS.has(String(property)) ||
+						["capture", "captureRegion", "observe", "axQuery"].includes(String(property))
+						? invoke() : Reflect.apply(value, target, args);
 					if (!(result instanceof Promise)) return result;
 					return result.then(
 						settled => {
@@ -1601,6 +1650,69 @@ export class ComputerWorkerCore {
 				};
 			},
 		});
+	}
+
+	async #beginActivity(
+		session: NativeDesktopSession,
+		action: string,
+		args: unknown[],
+		runId: string,
+		signal: AbortSignal,
+	): Promise<ComputerActivity> {
+		throwIfAborted(signal);
+		const activity: ComputerActivity = { id: `computer-activity-${crypto.randomUUID()}`, phase: "started", action };
+		let targetId = typeof args[0] === "string" ? args[0] : undefined;
+		const element = action.startsWith("ax");
+		let node: AxNode | undefined;
+		if (element) {
+			node = await session.axNode(targetId!);
+			targetId = this.#elementTargets.get(node.ref);
+		}
+		const frame = targetId ? this.#frames.get(targetId) : undefined;
+		if (targetId === "desktop" || targetId?.startsWith("display:")) {
+			const displays = frame?.displays ?? await session.listDisplays();
+			const point = typeof args[1] === "number" && typeof args[2] === "number" ? { x: args[1], y: args[2] } : undefined;
+			const display = point && frame ? displays.find(d =>
+				point.x >= d.pixelX && point.x < d.pixelX + d.pixelWidth &&
+				point.y >= d.pixelY && point.y < d.pixelY + d.pixelHeight) :
+				displays.find(d => `display:${d.id}` === targetId) ?? displays.find(d => d.isPrimary);
+			if (display) {
+				activity.target = { kind: "display", id: display.id, title: display.name,
+					bounds: { x: display.x, y: display.y, width: display.width, height: display.height } };
+				if (point && frame) activity.cursor = {
+					x: display.x + (point.x - display.pixelX) * display.width / display.pixelWidth,
+					y: display.y + (point.y - display.pixelY) * display.height / display.pixelHeight,
+				};
+			}
+		} else if (targetId && !["openApplication", "acquireControl", "releaseControl"].includes(action)) {
+			const window = (await session.listWindows()).find(w => w.id === targetId);
+			if (window) {
+				activity.target = { kind: "window", id: window.id, app: window.app, title: window.title,
+					bounds: { x: window.x, y: window.y, width: window.width, height: window.height } };
+				if (frame && POINTER_MUTATIONS.has(action)) {
+					const point = action === "drag" ? (args[1] as DesktopPoint[])[0] : { x: args[1] as number, y: args[2] as number };
+					activity.cursor = { x: window.x + point.x * window.width / frame.coordinateWidth,
+						y: window.y + point.y * window.height / frame.coordinateHeight };
+				}
+			}
+		}
+		if (action === "axClick" && node?.x !== undefined && node.y !== undefined &&
+			node.width !== undefined && node.height !== undefined)
+			activity.cursor = { x: node.x + node.width / 2, y: node.y + node.height / 2 };
+		if (!activity.target) {
+			// Launching an app or taking control names no window; mark the
+			// display the action lands on rather than failing the indicator.
+			const displays = await session.listDisplays();
+			const display = displays.find(d => d.isPrimary) ?? displays[0];
+			if (!display)
+				throw new ToolError("Computer Use needs an attached display to show its indicator");
+			activity.target = { kind: "display", id: display.id, title: display.name,
+				bounds: { x: display.x, y: display.y, width: display.width, height: display.height } };
+		}
+		// Fire-and-forget: broadcast telemetry to any host that wants to draw indicators,
+		// but never block the native operation itself on indicator render/ack.
+		this.#transport.send({ type: "activity", runId, activity });
+		return activity;
 	}
 
 	/**
