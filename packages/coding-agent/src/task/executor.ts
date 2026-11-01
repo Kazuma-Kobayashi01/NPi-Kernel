@@ -2062,6 +2062,20 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 					appendRecentOutputTail(assistantEvent.delta);
 					break;
 				}
+				if (assistantEvent?.type === "thinking_start" || assistantEvent?.type === "thinking_delta") {
+					if (!progress.lastIntent?.startsWith("thinking")) {
+						progress.lastIntent = "thinking…";
+						scheduleProgress();
+					}
+					break;
+				}
+				if (assistantEvent?.type === "thinking_end") {
+					if (progress.lastIntent === "thinking…") {
+						progress.lastIntent = undefined;
+						scheduleProgress();
+					}
+					break;
+				}
 				if (assistantEvent && assistantEvent.type !== "text_delta") {
 					break;
 				}

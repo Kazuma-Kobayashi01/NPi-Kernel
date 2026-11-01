@@ -4,12 +4,20 @@ IMPORTANT: If the conversation ends with an unanswered question or a request awa
 
 You MUST use this format (sections can be omitted if not applicable):
 
-## Goal
-[User goals; list multiple if session covers different tasks.]
+## Goal & Original User Intent
+[Preserve the user's primary goal verbatim; list multiple if session covers different tasks. NEVER drop or dilute the original task request.]
+
+## User Directives & Architectural Invariants
+- [Explicit project constraints, branch rules, coding paradigms, forbidden actions, or engineering boundaries specified by the user]
+
+## Key Architectural Decisions
+- **[Decision]**: [Technical choice and exact rationale. Preserve permanent invariants across compactions.]
+
+## Modified Files & Artifacts
+- [Exact file paths modified, created, or tested, including branch state and key exports/APIs]
 
 ## Constraints & Preferences
-- [Constraints or requirements mentioned]
-
+- [Constraints or technical conventions discovered during execution]
 ## Progress
 
 ### Done

@@ -14,12 +14,20 @@ MUST:
 
 Format (omit inapplicable sections):
 
-## Goal
-[Preserve existing goals; add new ones if task expanded]
+## Goal & Original User Intent
+[Preserve the user's primary goal verbatim; add new goals if scope explicitly expanded. NEVER drop earlier root intent.]
+
+## User Directives & Architectural Invariants
+- [Preserve all existing user directives and project invariants; append newly confirmed constraints]
+
+## Key Architectural Decisions
+- **[Decision]**: [Preserve all previous technical decisions; append new rationales. Prevent semantic decay.]
+
+## Modified Files & Artifacts
+- [Cumulative list of exact file paths touched, created, or tested across all turns]
 
 ## Constraints & Preferences
-- [Preserve existing; add new ones discovered]
-
+- [Preserve existing constraints; append newly discovered parameters]
 ## Progress
 
 ### Done
