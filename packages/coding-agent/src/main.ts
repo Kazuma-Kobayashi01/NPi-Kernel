@@ -1745,6 +1745,10 @@ export async function buildSessionOptions(
 	} else if (parsed.tools) {
 		options.toolNames = parsed.tools;
 	}
+	if (parsed.restrictTools) {
+		options.restrictToolNames = true;
+		options.toolNames ??= [];
+	}
 
 	if (parsed.noLsp) {
 		options.enableLsp = false;

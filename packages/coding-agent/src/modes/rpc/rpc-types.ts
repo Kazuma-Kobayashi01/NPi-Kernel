@@ -775,6 +775,22 @@ export interface RpcExtensionUISelectOptionDetail {
 	description?: string;
 }
 
+/** Structured meaning of one tool-approval `select` option, aligned positionally with `options`. */
+export interface RpcApprovalSelectChoice {
+	action: "once" | "session" | "always" | "deny";
+	grant?: "folder" | "target";
+}
+
+/** Present on a `select` request emitted by a tool-approval gate. */
+export interface RpcApprovalSelectMetadata {
+	toolName: string;
+	choices: RpcApprovalSelectChoice[];
+	/** Opaque capability-scoped exact target keys for conversation-local approval reuse. */
+	targetKeys?: string[];
+	/** Core-approved session subject including capability. */
+	sessionKey?: string;
+}
+
 /** One question of an RPC `ask` dialog. Options never include "Other"; hosts always offer free text. */
 export interface RpcAskDialogQuestion {
 	id: string;
@@ -795,6 +811,7 @@ export type RpcExtensionUIRequest =
 			title: string;
 			options: string[];
 			optionDetails?: RpcExtensionUISelectOptionDetail[];
+			approval?: RpcApprovalSelectMetadata;
 			timeout?: number;
 	  }
 	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }

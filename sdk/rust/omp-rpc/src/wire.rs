@@ -4422,6 +4422,68 @@ impl<'de> Deserialize<'de> for SelectOptionDetail {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ApprovalSelectAction {
+	#[serde(rename = "once")]
+	Once,
+	#[serde(rename = "session")]
+	Session,
+	#[serde(rename = "always")]
+	Always,
+	#[serde(rename = "deny")]
+	Deny,
+}
+
+impl ApprovalSelectAction {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Once => "once",
+			Self::Session => "session",
+			Self::Always => "always",
+			Self::Deny => "deny",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ApprovalGrantScope {
+	#[serde(rename = "folder")]
+	Folder,
+	#[serde(rename = "target")]
+	Target,
+}
+
+impl ApprovalGrantScope {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Folder => "folder",
+			Self::Target => "target",
+		}
+	}
+}
+
+/// Structured meaning of one tool-approval `select` option, aligned positionally with `options`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalSelectChoice {
+	pub action: ApprovalSelectAction,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub grant: Option<ApprovalGrantScope>,
+}
+
+/// Present on a `select` request emitted by a tool-approval gate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalSelectMetadata {
+	#[serde(rename = "toolName")]
+	pub tool_name: String,
+	pub choices: Vec<ApprovalSelectChoice>,
+	#[serde(rename = "targetKeys", default, skip_serializing_if = "Option::is_none")]
+	pub target_keys: Option<Vec<String>>,
+	#[serde(rename = "sessionKey", default, skip_serializing_if = "Option::is_none")]
+	pub session_key: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AskOption {
 	pub label: String,
@@ -4453,6 +4515,8 @@ pub struct SelectUiRequest {
 	pub options: Vec<String>,
 	#[serde(rename = "optionDetails", default, skip_serializing_if = "Option::is_none")]
 	pub option_details: Option<Vec<SelectOptionDetail>>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub approval: Option<ApprovalSelectMetadata>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub timeout: Option<i64>,
 }

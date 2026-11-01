@@ -245,6 +245,8 @@ export interface ExtensionUIDialogOptions {
 	markableCount?: number;
 	/** Allow image pastes in rich ask-dialog custom-answer and note prompts. */
 	acceptImages?: boolean;
+	/** Structured tool-approval metadata when this select prompt is a tool approval gate. */
+	approval?: ExtensionApprovalSelectMetadata;
 }
 
 /** Raw terminal input listener for extensions. */
@@ -303,6 +305,22 @@ export type ExtensionApprovalAnswer =
 	| "session"
 	| "deny"
 	| { grant: ExtensionApprovalGrant["scope"]; always: boolean };
+
+/** Structured meaning of one tool-approval `select` option, aligned positionally with `options`. */
+export interface ExtensionApprovalChoiceMetadata {
+	action: "once" | "session" | "always" | "deny";
+	grant?: ExtensionApprovalGrant["scope"];
+}
+
+/** Metadata attached to a `select` dialog emitted by a tool-approval gate. */
+export interface ExtensionApprovalSelectMetadata {
+	toolName: string;
+	choices: ExtensionApprovalChoiceMetadata[];
+	/** Opaque capability-scoped exact target keys; never infer these from display labels. */
+	targetKeys?: string[];
+	/** Core-approved session subject including capability; absent for per-call-only policies. */
+	sessionKey?: string;
+}
 
 /**
  * UI context for extensions to request interactive UI.

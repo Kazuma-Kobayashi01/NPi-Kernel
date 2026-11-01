@@ -5052,6 +5052,65 @@
 			"description": "Presentation metadata aligned positionally with `options`.",
 			"x-open": true
 		},
+		"ApprovalSelectAction": {
+			"enum": [
+				"once",
+				"session",
+				"always",
+				"deny"
+			],
+			"type": "string"
+		},
+		"ApprovalGrantScope": {
+			"enum": [
+				"folder",
+				"target"
+			],
+			"type": "string"
+		},
+		"ApprovalSelectChoice": {
+			"type": "object",
+			"properties": {
+				"action": {
+					"$ref": "#/$defs/ApprovalSelectAction"
+				},
+				"grant": {
+					"$ref": "#/$defs/ApprovalGrantScope"
+				}
+			},
+			"required": [
+				"action"
+			],
+			"description": "Structured meaning of one tool-approval `select` option, aligned positionally with `options`."
+		},
+		"ApprovalSelectMetadata": {
+			"type": "object",
+			"properties": {
+				"toolName": {
+					"type": "string"
+				},
+				"choices": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/ApprovalSelectChoice"
+					}
+				},
+				"targetKeys": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"sessionKey": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"toolName",
+				"choices"
+			],
+			"description": "Present on a `select` request emitted by a tool-approval gate."
+		},
 		"AskOption": {
 			"type": "object",
 			"properties": {
@@ -5129,6 +5188,9 @@
 					"items": {
 						"$ref": "#/$defs/SelectOptionDetail"
 					}
+				},
+				"approval": {
+					"$ref": "#/$defs/ApprovalSelectMetadata"
 				},
 				"timeout": {
 					"type": "integer"

@@ -1236,6 +1236,24 @@ export interface SelectOptionDetail {
 	description?: string;
 }
 
+export type ApprovalSelectAction = "once" | "session" | "always" | "deny";
+
+export type ApprovalGrantScope = "folder" | "target";
+
+/** Structured meaning of one tool-approval `select` option, aligned positionally with `options`. */
+export interface ApprovalSelectChoice {
+	action: ApprovalSelectAction;
+	grant?: ApprovalGrantScope;
+}
+
+/** Present on a `select` request emitted by a tool-approval gate. */
+export interface ApprovalSelectMetadata {
+	toolName: string;
+	choices: ApprovalSelectChoice[];
+	targetKeys?: string[];
+	sessionKey?: string;
+}
+
 export interface AskOption {
 	label: string;
 	description?: string;
@@ -1260,6 +1278,7 @@ export interface SelectUiRequest {
 	title: string;
 	options: string[];
 	optionDetails?: SelectOptionDetail[];
+	approval?: ApprovalSelectMetadata;
 	timeout?: number;
 }
 
