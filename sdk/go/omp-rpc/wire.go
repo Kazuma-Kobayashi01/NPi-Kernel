@@ -8091,7 +8091,7 @@ func (c Commands) CycleThinkingLevel(ctx context.Context) (*ThinkingLevelCycleRe
 	return out, err
 }
 
-// GetAvailableThinkingLevels sends "get_available_thinking_levels": Selectable thinking levels for the live model, `"off"` first.
+// GetAvailableThinkingLevels sends "get_available_thinking_levels": Selectable thinking levels for the live model; `"off"` first when reasoning can be disabled.
 func (c Commands) GetAvailableThinkingLevels(ctx context.Context) ([]ThinkingLevel, error) {
 	var out GetAvailableThinkingLevelsResult
 	err := c.call(ctx, "get_available_thinking_levels", nil, 0, &out)

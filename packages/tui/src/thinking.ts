@@ -117,7 +117,7 @@ export function shouldDisableReasoning(level: ThinkingLevel | undefined): boolea
 }
 
 /**
- * Resolves a selector against the current model while preserving explicit "off".
+ * Resolves a selector against the current model, clamping off for mandatory reasoning.
  */
 export function resolveThinkingLevelForModel(
 	model: Model | undefined,
@@ -127,7 +127,7 @@ export function resolveThinkingLevelForModel(
 		return undefined;
 	}
 	if (level === ThinkingLevel.Off) {
-		return ThinkingLevel.Off;
+		return model?.thinking?.requiresEffort ? clampThinkingLevelForModel(model, Effort.Minimal) : ThinkingLevel.Off;
 	}
 	return clampThinkingLevelForModel(model, level);
 }

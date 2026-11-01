@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import * as path from "node:path";
 import { Agent } from "@oh-my-pi/pi-agent-core";
 import { Effort } from "@oh-my-pi/pi-ai";
+import { buildModel } from "@oh-my-pi/pi-catalog/build";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import * as autoThinkingClassifier from "@oh-my-pi/pi-coding-agent/auto-thinking/classifier";
 import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
@@ -88,6 +89,24 @@ describe("AgentSession role model thinking behavior", () => {
 			modelRegistry,
 		});
 	}
+
+	it("clamps persisted off for mandatory thinking and excludes it from cycling", () => {
+		const model = buildModel({
+			id: "qwen3.8-2.4t-a95b", name: "Qwen", api: "openai-completions", provider: "alibaba-cn",
+			baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", reasoning: false, input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096,
+		});
+		const agent = new Agent({
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [], thinkingLevel: "off" },
+		});
+		session = new AgentSession({
+			agent, sessionManager: SessionManager.inMemory(), settings: Settings.isolated(), modelRegistry, thinkingLevel: "off",
+		});
+		expect(session.thinkingLevel).toBe(Effort.Low);
+		session.setThinkingLevel("off");
+		expect(session.thinkingLevel).toBe(Effort.Low);
+		for (let i = 0; i < 5; i++) expect(session.cycleThinkingLevel()).not.toBe("off");
+	});
 
 	it("re-applies explicit role thinking each time that role is selected", async () => {
 		const defaultModel = getAnthropicModelOrThrow("claude-sonnet-4-5");

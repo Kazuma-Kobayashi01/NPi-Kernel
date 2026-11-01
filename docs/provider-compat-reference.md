@@ -192,6 +192,20 @@ Runtime helpers: `clampThinkingLevelForModel` (clamps a requested effort to what
 | OpenAI Chat Completions (`providers/openai-completions.ts`) | `effort`                                                     | `reasoning_effort` by default; the actual toggle field depends on `thinkingFormat` (see [flag table](#reasoning-wire-format))                                                                                                                                                                                                                                                                                                                                        |
 | Google Gemini / Vertex (`providers/google-shared.ts`)       | `google-level` or `budget`                                   | `thinkingConfig: { includeThoughts, thinkingLevel: MINIMAL…HIGH, thinkingBudget: N }`                                                                                                                                                                                                                                                                                                                                                                                |
 
+Alibaba(China) pay-as-you-go (`alibaba-cn`) has exact-model contracts in
+`compat/rules/providers/alibaba-cn.kdl`, separate from Coding Plan and Token Plan:
+reviewed binary models expose `off` plus `medium` (the single enabled state),
+while reviewed Qwen3.8 text models expose `low`, `medium`, and `xhigh`.
+Binary requests send `enable_thinking`; native-effort requests additionally send
+top-level `reasoning_effort`, without local `chat_template_kwargs` or an invented
+`thinking_budget` mapping. Mandatory-thinking models omit `off` from discovery
+and cycling; an explicit or restored `off` clamps to their lowest supported effort.
+Dynamic discovery re-resolves reviewed capabilities instead of inheriting stale
+bundled thinking metadata. The existing cache materialization policy hashes the
+generated rules, so caches from earlier policy versions are invalidated.
+See the [official thinking guide](https://help.aliyun.com/zh/model-studio/deep-thinking)
+and [Chat Completions parameters](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions).
+
 ### The OpenAI-compat resolution pipeline
 
 `resolveOpenAICompatPolicy` (`providers/openai-shared.ts`) decides per request:

@@ -111,10 +111,9 @@ export class ModelControls {
 				this.#thinkingLevelCeiling,
 			);
 		} else {
-			this.#thinkingLevel = clampThinkingLevelToCeiling(
+			this.#thinkingLevel = resolveThinkingLevelForModel(
 				this.#model,
-				options.thinkingLevel,
-				this.#thinkingLevelCeiling,
+				clampThinkingLevelToCeiling(this.#model, options.thinkingLevel, this.#thinkingLevelCeiling),
 			);
 		}
 		this.#applyThinkingLevelToAgent(this.#thinkingLevel);
@@ -596,8 +595,9 @@ export class ModelControls {
 				? efforts
 				: efforts.filter(level => THINKING_EFFORTS.indexOf(level) <= THINKING_EFFORTS.indexOf(ceiling));
 		// Auto never opts an unverified model into thinking; only a concrete pick does.
-		if (this.#model.thinking?.unverified) return [ThinkingLevel.Off, ...selectable];
-		return [ThinkingLevel.Off, AUTO_THINKING, ...selectable];
+		const off = this.#model.thinking?.requiresEffort ? [] : [ThinkingLevel.Off];
+		if (this.#model.thinking?.unverified) return [...off, ...selectable];
+		return [...off, AUTO_THINKING, ...selectable];
 	}
 
 	/**

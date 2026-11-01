@@ -2,7 +2,7 @@
 
 class "qwen" {
 	// Groq owns its Qwen effort ladder in providers/groq.kdl.
-	on "aiand" "aimlapi" "alibaba-cn" "alibaba-coding-plan" "amazon-bedrock" "coreweave" "huggingface" \
+	on "aiand" "aimlapi" "alibaba-coding-plan" "amazon-bedrock" "coreweave" "huggingface" \
 		"kilo" "nanogpt" "novita" "nvidia" "ollama-cloud" "openrouter" "synthetic" \
 		"together" "venice" "wafer-serverless" "zenmux" {
 		thinking-efforts "minimal" "low" "medium" "high"

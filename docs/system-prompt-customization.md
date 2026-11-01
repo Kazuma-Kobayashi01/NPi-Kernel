@@ -11,6 +11,23 @@ Primary implementation:
 - `packages/coding-agent/src/prompts/system/custom-system-prompt.md` (plain `SYSTEM.md` template)
 - `packages/coding-agent/src/prompts/system/project-prompt.md` (generated `<project-context>` footer)
 
+## Default engineering workflow
+
+The bundled default template guides work through assessment, read-only research,
+proposal and material user decisions, decomposition, implementation, targeted
+verification, and cleanup. Substantial unapproved scope (public APIs/protocols,
+migrations, permission/security boundaries, core workflows, or broad refactors)
+requires explicit user approval before dependent edits. Small, clear, authorized
+fixes proceed without repeated confirmation; existing approvals remain valid.
+Investigation/proposal-only requests end with the requested report or draft.
+Task subagents return unresolved decisions to their parent rather than asking the
+end user independently; the parent owns approval and final verification.
+
+This is model-facing guidance, not a new runtime permission boundary. Custom
+instruction replacements, including a desktop host's separate Chat prompt, do
+not automatically inherit the default template's workflow.
+
+
 ## Block layout and prompt caching
 
 The provider-facing prompt is an ordered block array. Static, cwd-independent blocks come first: block 0 (the default, custom, or template instruction block) and eval-prelude guidance. Every working-directory-derived section follows in one trailing footer block that opens with `<project-context>`: workstation data, context files with their paths (`<repo-rules>`), `<dir-context>` pointers, `<workspace-tree>`, `<workspace-roots>`, active nested-repository context, the final completion requirements, and the append text. Task subagents append their per-spawn role/assignment block after the footer.

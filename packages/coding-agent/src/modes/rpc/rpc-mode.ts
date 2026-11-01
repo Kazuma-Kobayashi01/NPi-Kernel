@@ -2557,12 +2557,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			}
 
 			case "get_available_thinking_levels": {
-				// Pi-compatible discovery: the selectable levels for the live model,
-				// including `off` (which `set_thinking_level` accepts but the
-				// effort-only helper excludes). OMP-only `auto`/`inherit` are
-				// intentionally omitted — that selector stays an OMP dialect.
+				// OMP-only `auto`/`inherit` are intentionally omitted.
 				return success(id, "get_available_thinking_levels", {
-					levels: [ThinkingLevel.Off, ...session.getAvailableThinkingLevels()],
+					levels: [
+						...(session.model?.thinking?.requiresEffort ? [] : [ThinkingLevel.Off]),
+						...session.getAvailableThinkingLevels(),
+					],
 				});
 			}
 

@@ -241,7 +241,7 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 	},
 	{
 		name: "get_available_thinking_levels",
-		doc: 'Selectable thinking levels for the live model, `"off"` first.',
+		doc: 'Selectable thinking levels for the live model; `"off"` first when reasoning can be disabled.',
 		result: { levels: "ThinkingLevel[]" },
 		unwrap: "levels",
 	},

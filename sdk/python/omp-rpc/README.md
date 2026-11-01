@@ -277,7 +277,9 @@ off) raise `RpcCommandError`.
   `on_available_commands_update()` receives the same catalog at startup and
   whenever it changes.
 - `get_available_thinking_levels()` returns the live model's selectable levels,
-  `"off"` first.
+  with `"off"` first only when thinking can be disabled. For mandatory-thinking
+  models, setting `"off"` clamps to the lowest supported effort and cycling
+  skips `"off"`.
 
 ## Subagents
 
