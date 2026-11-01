@@ -11,6 +11,17 @@
    - `packages/tui/src/theme/theme.ts` — checkbox and radio glyphs for TUI rendering
    - `packages/tui/src/tools/ask.ts` — call/result normalization and rendering
 
+
+## Decision workflow
+
+The default prompt uses `ask` for unresolved material tradeoffs and explicit
+approval of substantial implementation scope not already approved. Repository,
+configuration, documentation and history research come first; the assistant
+presents findings, scope, risks and a recommendation before batching the relevant
+questions. Small authorized fixes and decisions already made do not require
+repeated confirmation. A timeout/auto-selected answer is not explicit approval
+of substantial scope, even though the tool can return that selected option.
+
 ## Inputs
 
 | Field       | Type         | Required | Description                                                                             |

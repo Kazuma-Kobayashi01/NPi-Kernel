@@ -171,6 +171,38 @@ describe("OpenAI compat policy", () => {
 		expect(params.reasoning_effort).toBeUndefined();
 	});
 
+	it("sends Model Studio native effort without local template or budget fields", () => {
+		const model = localQwenModel("qwen3.8-max", "alibaba-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+		for (const effort of [Effort.Low, Effort.Medium, Effort.XHigh]) {
+			const params = chatParams();
+			const policy = resolveOpenAICompatPolicy(model, { endpoint: "chat-completions", reasoning: effort });
+			applyChatCompletionsCompatPolicy(params, policy);
+			applyOpenAIExtraBody(params, policy.compat.extraBody);
+			expect(params.enable_thinking).toBe(true);
+			expect(params.reasoning_effort).toBe(effort);
+			expect(params.chat_template_kwargs).toBeUndefined();
+			expect(Reflect.get(params, "thinking_budget")).toBeUndefined();
+		}
+		const params = chatParams();
+		const policy = resolveOpenAICompatPolicy(model, { endpoint: "chat-completions", disableReasoning: true });
+		applyChatCompletionsCompatPolicy(params, policy);
+		applyOpenAIExtraBody(params, policy.compat.extraBody);
+		expect(params.enable_thinking).toBe(false);
+		expect(params.reasoning_effort).toBeUndefined();
+	});
+
+	it("uses only the binary switch for Model Studio Qwen3.6", () => {
+		const model = localQwenModel("qwen3.6-plus", "alibaba-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+		const params = chatParams();
+		const policy = resolveOpenAICompatPolicy(model, { endpoint: "chat-completions", reasoning: Effort.Medium });
+		applyChatCompletionsCompatPolicy(params, policy);
+		applyOpenAIExtraBody(params, policy.compat.extraBody);
+		expect(params.enable_thinking).toBe(true);
+		expect(params.reasoning_effort).toBeUndefined();
+		expect(params.chat_template_kwargs).toBeUndefined();
+		expect(Reflect.get(params, "thinking_budget")).toBeUndefined();
+	});
+
 	function localQwenModel(
 		id: string,
 		provider: string,

@@ -3507,7 +3507,7 @@ class WireClient:
         return None if data is None else parse_thinking_level_cycle_result(data, "cycle_thinking_level")
 
     def get_available_thinking_levels(self) -> tuple[ThinkingLevel, ...]:
-        """Selectable thinking levels for the live model, `"off"` first."""
+        """Selectable thinking levels for the live model; `"off"` first when reasoning can be disabled."""
         params: dict[str, object] = {}
         return required(expect_object(self._command("get_available_thinking_levels", params), "get_available_thinking_levels"), "levels", array(_decode_thinking_level), "get_available_thinking_levels")
 

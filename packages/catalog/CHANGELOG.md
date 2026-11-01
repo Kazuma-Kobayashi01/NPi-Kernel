@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Corrected Alibaba(China) pay-as-you-go thinking capabilities by reviewed model ID: binary models expose one enabled level, native Qwen3.8 text models expose low/medium/xhigh, and mandatory-thinking models declare that thinking cannot be disabled. Dynamic discovery re-resolves these contracts instead of inheriting stale bundled tiers.
 - Fixed Cursor's DeepSeek V4.1 Flash 1017 reporting zero cost; every effort level now bills at Cursor's API rate of $0.30/$1.20 per million tokens, with cache reads at $0.006 ([#17390](https://github.com/can1357/oh-my-pi/pull/17390) by [@eggpeat](https://github.com/eggpeat))
 
 ## [18.14.0] - 2026-10-29

@@ -6752,7 +6752,7 @@ impl Command for CycleThinkingLevelCommand {
 	}
 }
 
-/// Selectable thinking levels for the live model, `"off"` first.
+/// Selectable thinking levels for the live model; `"off"` first when reasoning can be disabled.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GetAvailableThinkingLevelsCommand {}
 

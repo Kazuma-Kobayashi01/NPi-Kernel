@@ -3997,6 +3997,21 @@ function isAlibabaCnChatModelId(id: string): boolean {
 	return normalized.length > 0 && !isExcludedModel("alibaba-cn", normalized);
 }
 
+function mapAlibabaCnModel(
+	entry: OpenAICompatibleModelRecord,
+	defaults: ModelSpec<"openai-completions">,
+	reference: ModelSpec<"openai-completions"> | undefined,
+): ModelSpec<"openai-completions"> {
+	const model = mapWithBundledReference(entry, defaults, reference);
+	const reviewed = hasModelScopedEffortLadder(defaults);
+	if (!reviewed && classifyModel(defaults.provider, defaults.id).class !== "qwen") return model;
+	// A bundled row is already resolved metadata, not an explicit user
+	// override. Re-resolve reviewed contracts; an unreviewed Qwen row has no
+	// published Model Studio thinking capability to inherit from another host.
+	const { thinking: _thinking, compat: _compat, ...neutral } = model;
+	return reviewed ? neutral : { ...neutral, reasoning: false };
+}
+
 export interface AlibabaCnModelManagerConfig {
 	apiKey?: string;
 	baseUrl?: string;
@@ -4006,16 +4021,19 @@ export interface AlibabaCnModelManagerConfig {
 export function alibabaCnModelManagerOptions(
 	config?: AlibabaCnModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	return createOpenAICompatibleModelManagerOptions({
-		api: "openai-completions",
-		providerId: "alibaba-cn",
-		defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		config,
-		dynamicModelsAuthoritative: true,
-		requireApiKey: true,
-		filterModel: (_entry, model) => isAlibabaCnChatModelId(model.id),
-		mapModel: mapWithBundledReference,
-	});
+	return {
+		...createOpenAICompatibleModelManagerOptions({
+			api: "openai-completions",
+			providerId: "alibaba-cn",
+			defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			config,
+			dynamicModelsAuthoritative: true,
+			requireApiKey: true,
+			filterModel: (_entry, model) => isAlibabaCnChatModelId(model.id),
+			mapModel: mapAlibabaCnModel,
+		}),
+		dynamicReasoningAuthoritative: true,
+	};
 }
 
 // ---------------------------------------------------------------------------

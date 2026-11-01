@@ -176,7 +176,7 @@ Important edge behavior from runtime:
 - `{ id?, type: "cycle_thinking_level" }`
 - `{ id?, type: "get_available_thinking_levels" }`
 
-`ThinkingLevel` is `"inherit" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"`. Discovery returns `"off"` followed by the live model's supported efforts, omitting `"inherit"` and the session-only `"auto"` selector.
+`ThinkingLevel` is `"inherit" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"`. Discovery returns the live model's supported efforts, prefixed with `"off"` only when thinking can be disabled. `"inherit"` and the session-only `"auto"` selector are omitted. On a model with mandatory thinking, setting `"off"` resolves to its lowest supported effort; cycling also skips `"off"`.
 
 ### Queue modes
 
@@ -1063,9 +1063,10 @@ durable entry id. An unknown `since` fails explicitly with
 `{ tree, leafId }` straight from `SessionManager`, not a UI projection.
 
 `get_available_thinking_levels` returns `{ levels }`: the selectable levels
-for the live model with `"off"` first (it is accepted by
-`set_thinking_level` but excluded from the effort-only model helper). OMP-only
-`auto`/`inherit` selectors are intentionally omitted from discovery.
+for the live model, with `"off"` first only when thinking can be disabled.
+For mandatory-thinking models, `set_thinking_level("off")` clamps to the lowest
+supported effort and cycling excludes `"off"`. OMP-only `auto`/`inherit`
+selectors are intentionally omitted from discovery.
 
 Lifecycle stays OMP: `agent_end` carries `isTerminal`, `yielded`, and optional
 `awaitingAsyncWork`; `prompt_result` correlates prompt completion and

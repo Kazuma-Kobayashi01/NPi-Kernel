@@ -2254,7 +2254,7 @@ export interface TaskItem {
 	agent?: string;
 	/** Historical source session selected by the bundled consult agent. */
 	sourceSession?: string;
-	/** Optional model selector override for the historical source session. */
+	/** Invocation-local model selector(s), taking precedence over agent settings and defaults. */
 	model?: string | string[];
 	/** Inline instructions; exactly one of task or taskFile is required. */
 	task?: string;
@@ -2286,7 +2286,7 @@ export interface TaskParams {
 	agent?: string;
 	/** Historical source session selected by the bundled consult agent. */
 	sourceSession?: string;
-	/** Optional model selector override for the historical source session. */
+	/** Invocation-local model selector(s) for the flat call form. */
 	model?: string | string[];
 	/** The work (flat form). */
 	task?: string;

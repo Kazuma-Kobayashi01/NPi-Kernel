@@ -44,21 +44,19 @@ export interface SubagentEventPayload {
 
 // Keep this explicit: ArkType serializes `unknown` as a boolean subschema, which llama.cpp grammars reject.
 const outputSchemaInputSchema = type("object | boolean | string | null");
+const modelSelectorInputSchema = type("string | string[]");
 // Coarse per-spawn thinking effort; must stay in sync with TASK_EFFORTS in ../thinking.
 const effortRule = '"lo" | "med" | "hi"' as const;
 
 // Seance-only per-spawn fields the task tool refuses for every other agent.
 // Typed against SeanceTaskSchemaFields so a field added there fails to compile
 // until it is listed here too; a missed key would be dropped on batch items.
-const SEANCE_ITEM_KEY_SET = { sourceSession: true, model: true } as const satisfies Record<SeanceItemKey, true>;
+const SEANCE_ITEM_KEY_SET = { sourceSession: true } as const satisfies Record<SeanceItemKey, true>;
 const SEANCE_ITEM_KEYS = Object.keys(SEANCE_ITEM_KEY_SET);
 
 /**
- * Keep a batch item's seance-only keys through undeclared-key deletion: the
- * item schema declares them only while seance is advertised. Argument
- * validation re-attaches only root keys, so without this a `tasks[].model` pin
- * on an ordinary agent is deleted before execute() and the child silently runs
- * on its own model, while the flat form's root `model` reaches the refusal.
+ * Keep a batch item's historical source selector through undeclared-key
+ * deletion so execution can reject it when seance is not advertised.
  * Other stale item keys are still deleted, and the wire schema is unchanged.
  */
 function keepSeanceItemKeys<T, I>(item: FluentType<T, I>): FluentType<unknown, I> {
@@ -75,6 +73,7 @@ function keepSeanceItemKeys<T, I>(item: FluentType<T, I>): FluentType<unknown, I
 export const taskItemSchema = type({
 	"name?": "string",
 	agent: "string = 'task'",
+	"model?": modelSelectorInputSchema,
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -85,6 +84,7 @@ export const taskItemSchema = type({
 const taskItemSchemaIsolated = type({
 	"name?": "string",
 	agent: "string = 'task'",
+	"model?": modelSelectorInputSchema,
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -98,6 +98,7 @@ export const taskSchema = type({
 	"name?": "string",
 	agent: "string = 'task'",
 	task: "string",
+	"model?": modelSelectorInputSchema,
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
 	"schemaMode?": '"permissive" | "strict"',
@@ -108,6 +109,7 @@ export const taskSchema = type({
 const taskSchemaNoIsolation = type({
 	"name?": "string",
 	agent: "string = 'task'",
+	"model?": modelSelectorInputSchema,
 	task: "string",
 	solutionSpace: "string",
 	"outputSchema?": outputSchemaInputSchema,
@@ -162,7 +164,6 @@ function taskAgentSchemaRule(defaultAgent: string): string {
 /** Seance-only task fields; `seanceTaskSchemaFields` in ./seance must match it exactly. */
 export type SeanceTaskSchemaFields = {
 	"sourceSession?"?: FluentType<string>;
-	"model?"?: FluentType<string | string[]>;
 };
 
 type SeanceItemKey = {
@@ -192,6 +193,7 @@ function createTaskSchema(options: {
 			const item = type.raw({
 				"name?": "string",
 				agent,
+				"model?": modelSelectorInputSchema,
 				...taskFields,
 				solutionSpace: "string",
 				...effortField,
@@ -212,6 +214,7 @@ function createTaskSchema(options: {
 		const item = type.raw({
 			"name?": "string",
 			agent,
+			"model?": modelSelectorInputSchema,
 			...taskFields,
 			solutionSpace: "string",
 			...effortField,
@@ -232,6 +235,7 @@ function createTaskSchema(options: {
 		return type.raw({
 			"name?": "string",
 			agent,
+			"model?": modelSelectorInputSchema,
 			...taskFields,
 			solutionSpace: "string",
 			...effortField,
@@ -245,6 +249,7 @@ function createTaskSchema(options: {
 	return type.raw({
 		"name?": "string",
 		agent,
+		"model?": modelSelectorInputSchema,
 		...taskFields,
 		solutionSpace: "string",
 		...effortField,
@@ -267,7 +272,7 @@ export function getTaskSchema(options: {
 	/** Advertise `taskFile` (`task.file`); default off. */
 	file?: boolean;
 	defaultAgent?: string;
-	/** Advertise historical source/model fields for the bundled seance agent. */
+	/** Advertise the historical source field for the bundled seance agent. */
 	seanceFields?: SeanceTaskSchemaFields;
 }): TaskToolSchemaInstance {
 	const defaultAgent = options.defaultAgent ?? "task";

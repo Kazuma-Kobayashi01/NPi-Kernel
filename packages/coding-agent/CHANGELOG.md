@@ -4,6 +4,7 @@
 
 ### Added
 
+- Task calls can select a model per ordinary subagent with `model` (a selector or prioritized selector array), overriding agent settings and defaults in both flat and batch calls, including plan mode.
 - RPC clients can request `get_messages` with `fullHistory: true` to display the active branch's complete message history, including messages from before compaction, without changing the model context.
 - Added queueable compaction: `/compact` sent with the follow-up key (Ctrl+Q) while the agent works now runs when it yields instead of interrupting it ([#17397](https://github.com/can1357/oh-my-pi/pull/17397) by [@H4vC](https://github.com/H4vC))
 - Added `omp session lease [--json] -- <session-id>...` and the RPC command `get_session_lease`, which report which sessions a running omp owns (`{"held": [...], "unknown": [...]}`) without taking ownership, so another program can check a session without forking it ([#17428](https://github.com/can1357/oh-my-pi/pull/17428) by [@andrebrait](https://github.com/andrebrait))
@@ -13,10 +14,12 @@
 
 ### Changed
 
+- Default engineering guidance now assesses scope, researches before deciding, and explicitly resolves material user decisions before substantial unapproved changes. Investigation/proposal requests remain read-only; subagents escalate decisions to the parent, and required approval waits are valid stopping points.
 - `read` of a web page keeps the title, description, author and dates of its `<meta>` tags and lists the others by name only, so pages cost about 6% fewer tokens ([#17393](https://github.com/can1357/oh-my-pi/pull/17393) by [@will-bogusz](https://github.com/will-bogusz))
 
 ### Fixed
 
+- Thinking-level discovery and cycling no longer offer `off` for mandatory-thinking models; setting or restoring `off` resolves to the lowest supported effort. Alibaba(China) menus now follow reviewed model-specific capabilities rather than a generic four-tier ladder.
 - Fixed Ctrl+C clearing input instead of cancelling active CLI work; interrupting now keeps the session available for the next command without arming the idle double-tap exit.
 - Fixed account-policy recovery repeatedly rotating through denied credentials instead of surfacing the error or using the configured model fallback, including unnecessary sibling-unblock waits after the account allowance is spent ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))
 - Startup prewalk now arms a later fallback candidate of the role named by prewalk.into when its first candidate is unavailable, matching /prewalk and /new ([#17373](https://github.com/can1357/oh-my-pi/pull/17373)).
