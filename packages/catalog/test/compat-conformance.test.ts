@@ -11,6 +11,7 @@ const RUNTIME_ONLY_PROVIDERS = new Set([
 	"kimi-search",
 	"ollama",
 	"siliconflow",
+	"alibaba-cn",
 	"zai-search",
 	"synthetic-search",
 	"llama.cpp",
