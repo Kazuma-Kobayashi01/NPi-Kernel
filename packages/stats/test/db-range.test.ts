@@ -60,6 +60,20 @@ describe("getDashboardStats time range", () => {
 		expect(allStats.overall.totalRequests).toBe(2);
 	});
 
+	it("includes only the last 30 days, while all includes older history", async () => {
+		await initDb();
+
+		const now = Date.now();
+		const day = 24 * 60 * 60 * 1000;
+		insertMessageStats([
+			makeMessage(now - 29 * day, "within-30d"),
+			makeMessage(now - 31 * day, "outside-30d"),
+		]);
+
+		expect((await getDashboardStats("30d")).overall.totalRequests).toBe(1);
+		expect((await getDashboardStats("all")).overall.totalRequests).toBe(2);
+	});
+
 	it("falls back to 24h for unknown range", async () => {
 		await initDb();
 

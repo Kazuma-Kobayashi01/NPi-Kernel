@@ -3,8 +3,11 @@ import { serializeConversation } from "@oh-my-pi/pi-agent-core/compaction/utils"
 import type { Message } from "@oh-my-pi/pi-ai";
 
 describe("serializeConversation", () => {
-	it("truncates long tool results in serialized summaries", () => {
-		const longContent = "x".repeat(5000);
+	it("truncates long tool results in serialized summaries preserving head and tail", () => {
+		const headPrefix = "HEAD_START_" + "a".repeat(1189); // 1200 chars
+		const middle = "m".repeat(3000);
+		const tailSuffix = "b".repeat(785) + "_TAIL_ERROR_END"; // 800 chars
+		const longContent = headPrefix + middle + tailSuffix; // 5000 chars
 		const messages: Message[] = [
 			{
 				role: "toolResult",
@@ -19,9 +22,10 @@ describe("serializeConversation", () => {
 		const result = serializeConversation(messages);
 
 		expect(result).toContain("[Tool Result]:");
-		expect(result).toContain("[... 3000 more characters truncated]");
-		expect(result).toContain("x".repeat(2000));
-		expect(result).not.toContain("x".repeat(3000));
+		expect(result).toContain("[... 3000 characters truncated ...]");
+		expect(result).toContain("HEAD_START_");
+		expect(result).toContain("_TAIL_ERROR_END");
+		expect(result).not.toContain(middle);
 	});
 
 	it("does not truncate short tool results", () => {

@@ -207,14 +207,19 @@ export function upsertFileOperations(
 
 /** Maximum characters for a tool result in serialized summaries. */
 const TOOL_RESULT_MAX_CHARS = 2000;
+const TOOL_RESULT_HEAD_CHARS = 1200;
+const TOOL_RESULT_TAIL_CHARS = 800;
 
 /**
  * Truncate tool results to the same representation used in summarization prompts.
+ * Preserves head and tail content to retain both initial output and trailing error stacks.
  */
 export function truncateToolResultForSummary(text: string): string {
 	if (text.length <= TOOL_RESULT_MAX_CHARS) return text;
-	const truncatedChars = text.length - TOOL_RESULT_MAX_CHARS;
-	return `${text.slice(0, TOOL_RESULT_MAX_CHARS)}\n\n[... ${truncatedChars} more characters truncated]`;
+	const truncatedChars = text.length - (TOOL_RESULT_HEAD_CHARS + TOOL_RESULT_TAIL_CHARS);
+	const head = text.slice(0, TOOL_RESULT_HEAD_CHARS);
+	const tail = text.slice(-TOOL_RESULT_TAIL_CHARS);
+	return `${head}\n\n[... ${truncatedChars} characters truncated ...]\n\n${tail}`;
 }
 
 const SUMMARY_BOUNDARY_TAG_RE = /<\s*\/?\s*(?:conversation|previous-summary)\s*>/gi;

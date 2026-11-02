@@ -14,6 +14,10 @@ export default class Stats extends Command {
 		port: Flags.integer({ char: "p", description: "Port for the dashboard server", default: 3847 }),
 		host: Flags.string({ description: "Host to bind", default: "127.0.0.1" }),
 		json: Flags.boolean({ char: "j", description: "Output stats as JSON", default: false }),
+		range: Flags.string({
+			description: "Time range for JSON output (default: 24h)",
+			options: ["24h", "7d", "30d", "all"],
+		}),
 		summary: Flags.boolean({ char: "s", description: "Print summary to console", default: false }),
 	};
 
@@ -24,6 +28,7 @@ export default class Stats extends Command {
 			port: flags.port,
 			host: flags.host ?? "127.0.0.1",
 			json: flags.json,
+			range: flags.range,
 			summary: flags.summary,
 		};
 

@@ -1,9 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.1] - 2026-11-02
 
 ### Added
 
+- Enhanced summarization prompts (`compaction-summary.md`, `compaction-update-summary.md`, `handoff-document.md`) with explicit verbatim preservation directives for LaTeX formulas (`$...$` and `$$...$$`), academic citations (`\cite{...}`, authors, ArXiv IDs), and critical code state.
+- Compaction toolResult truncation now uses a Head + Tail strategy (1200 head chars + 800 tail chars) instead of head-only slicing, preserving critical error and failure diagnostics situated at the end of outputs.
+
+
+### Added
+
+- `npi stats --json` accepts `--range 24h|7d|30d|all` to select the reporting window; the default remains 24 hours.
 - Task calls can select a model per ordinary subagent with `model` (a selector or prioritized selector array), overriding agent settings and defaults in both flat and batch calls, including plan mode.
 - RPC clients can request `get_messages` with `fullHistory: true` to display the active branch's complete message history, including messages from before compaction, without changing the model context.
 - Added queueable compaction: `/compact` sent with the follow-up key (Ctrl+Q) while the agent works now runs when it yields instead of interrupting it ([#17397](https://github.com/can1357/oh-my-pi/pull/17397) by [@H4vC](https://github.com/H4vC))
