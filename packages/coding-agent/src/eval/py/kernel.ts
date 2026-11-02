@@ -23,10 +23,14 @@ import type { ShadowPlan } from "../speculation/types";
 import { PYTHON_PRELUDE } from "./prelude";
 import RUNNER_SCRIPT from "./runner.py" with { type: "text" };
 import {
+	ensureNpiPythonEnv,
 	enumeratePythonRuntimes,
 	filterEnv,
+	isNpiPythonHostConfigured,
+	NPI_PYTHON_HOST_UNAVAILABLE_HINT,
 	type PythonRuntime,
 	resolveExplicitPythonRuntime,
+	resolveNpiManagedPythonRuntime,
 	resolvePythonRuntime,
 } from "./runtime";
 import { hostHasInheritableConsole, shouldDetachKernel, shouldHideKernelWindow } from "./spawn-options";
@@ -114,6 +118,18 @@ interface PythonKernelExecuteOptions extends KernelExecuteOptions {
 // installing Python mid-session remains discoverable without restarting.
 const availabilityCache = new Map<string, PythonKernelAvailability>();
 
+/**
+ * `python.interpreter` is only an override in Code mode under the desktop host.
+ * Chat and Academic sessions run inside the managed environment; silently
+ * ignoring a configured project interpreter there is deliberate.
+ */
+function desktopExplicitInterpreter(interpreter: string | undefined): string | undefined {
+	if (!interpreter) return undefined;
+	if (!isNpiPythonHostConfigured()) return interpreter;
+	const mode = process.env.NPI_APP_MODE?.trim();
+	return mode === undefined || mode === "code" ? interpreter : undefined;
+}
+
 function availabilityKey(cwd: string, interpreter?: string): string {
 	return [
 		path.resolve(cwd),
@@ -122,6 +138,7 @@ function availabilityKey(cwd: string, interpreter?: string): string {
 		$env.VIRTUAL_ENV,
 		$env.CONDA_PREFIX,
 		$env.HOME,
+		$env.NPI_ENV_DIR,
 		$env.PYTHONPATH,
 		$env.LD_LIBRARY_PATH,
 	].join("\0");
@@ -140,16 +157,17 @@ export async function checkPythonKernelAvailability(
 	interpreter?: string,
 	options?: { forceProbe?: boolean } & BackendProbeOptions,
 ): Promise<PythonKernelAvailability> {
+	const explicitInterpreter = desktopExplicitInterpreter(interpreter);
 	if (!options?.forceProbe && (isBunTestRuntime() || $flag("PI_PYTHON_SKIP_CHECK"))) {
 		return { ok: true };
 	}
 	const resolvedCwd = path.resolve(cwd);
-	const key = availabilityKey(resolvedCwd, interpreter);
+	const key = availabilityKey(resolvedCwd, explicitInterpreter);
 	const cached = availabilityCache.get(key);
 	if (!options?.forceProbe && cached?.ok) return cached;
 	// Probe controls belong to one caller. Do not share an in-flight promise:
 	// aborting one eval must not cancel a concurrent session's availability check.
-	const result = await probePythonKernelAvailability(resolvedCwd, interpreter, options);
+	const result = await probePythonKernelAvailability(resolvedCwd, explicitInterpreter, options);
 	if (!result.transient && !options?.signal?.aborted) availabilityCache.set(key, result);
 	return result;
 }
@@ -163,15 +181,26 @@ async function probePythonKernelAvailability(
 		const settings = await Settings.init();
 		const { env } = settings.getShellConfig();
 		const baseEnv = filterEnv(env);
-		const runtimes = interpreter
-			? [resolveExplicitPythonRuntime(interpreter, cwd, baseEnv)]
-			: enumeratePythonRuntimes(cwd, baseEnv);
+		const managed = isNpiPythonHostConfigured();
+		let runtimes: PythonRuntime[];
+		if (interpreter) {
+			runtimes = [resolveExplicitPythonRuntime(interpreter, cwd, baseEnv)];
+		} else if (managed) {
+			const runtime = resolveNpiManagedPythonRuntime(cwd, baseEnv);
+			runtimes = runtime ? [runtime] : [];
+		} else {
+			runtimes = enumeratePythonRuntimes(cwd, baseEnv);
+		}
 		if (runtimes.length === 0) {
+			// Desktop-managed mode provisions the environment through the Rust host
+			// on the first actual invocation. The availability check must stay cheap:
+			// it runs at session startup and must never unpack or build anything.
+			if (managed) return { ok: true };
 			return { ok: false, reason: "Python executable not found on PATH" };
 		}
 		const result = await probeCandidates(
 			runtimes.map(runtime => ({
-				command: [runtime.pythonPath, "-c", "import sys;sys.exit(0)"],
+				command: [runtime.pythonPath, "-I", "-B", "-c", "import sys;sys.exit(0)"],
 				env: runtime.env,
 				label: runtime.pythonPath,
 			})),
@@ -305,11 +334,12 @@ export class PythonKernel extends BaseKernel<PythonKernelExecuteOptions> {
 	}
 
 	static async start(options: KernelStartOptions): Promise<PythonKernel> {
+		const requestedInterpreter = desktopExplicitInterpreter(options.interpreter);
 		const availability = await logger.time(
 			"PythonKernel.start:availabilityCheck",
 			checkPythonKernelAvailability,
 			options.cwd,
-			options.interpreter,
+			requestedInterpreter,
 		);
 		if (!availability.ok) {
 			throw new Error(availability.reason ?? "Python kernel unavailable");
@@ -318,9 +348,18 @@ export class PythonKernel extends BaseKernel<PythonKernelExecuteOptions> {
 		let runtime = availability.runtime;
 		if (!runtime) {
 			const { env: shellEnv } = (await Settings.init()).getShellConfig();
-			runtime = options.interpreter
-				? resolveExplicitPythonRuntime(options.interpreter, options.cwd, filterEnv(shellEnv))
-				: resolvePythonRuntime(options.cwd, filterEnv(shellEnv));
+			const baseEnv = filterEnv(shellEnv);
+			if (requestedInterpreter) {
+				runtime = resolveExplicitPythonRuntime(requestedInterpreter, options.cwd, baseEnv);
+			} else if (isNpiPythonHostConfigured()) {
+				// First actual invocation: provisioning happens here, never in the
+				// startup availability check.
+				const managed = await ensureNpiPythonEnv({ signal: options.signal });
+				if (!managed) throw new Error(NPI_PYTHON_HOST_UNAVAILABLE_HINT);
+				runtime = resolveExplicitPythonRuntime(managed, options.cwd, baseEnv);
+			} else {
+				runtime = resolvePythonRuntime(options.cwd, baseEnv);
+			}
 		}
 		const spawnEnv: Record<string, string> = {};
 		for (const [key, value] of Object.entries(runtime.env)) {
@@ -335,7 +374,7 @@ export class PythonKernel extends BaseKernel<PythonKernelExecuteOptions> {
 		const scriptPath = await stageRunnerScript("omp-python-runner", "py", RUNNER_SCRIPT);
 		const kernel = new PythonKernel(Snowflake.next(), runtime.pythonPath);
 
-		const proc = Bun.spawn([runtime.pythonPath, "-u", scriptPath], {
+		const proc = Bun.spawn([runtime.pythonPath, "-I", "-B", "-u", scriptPath], {
 			cwd: options.cwd,
 			detached: shouldDetachKernel(process.platform),
 			env: spawnEnv,

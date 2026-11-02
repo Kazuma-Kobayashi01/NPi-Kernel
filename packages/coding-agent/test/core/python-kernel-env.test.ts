@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -27,7 +27,7 @@ describe("Python gateway environment filtering", () => {
 
 		expect(filtered.PATH).toBe("/bin");
 		expect(filtered.HOME).toBe("/home/test");
-		expect(filtered.PI_CUSTOM).toBe("1");
+		expect(filtered.PI_CUSTOM).toBeUndefined();
 		expect(filtered.LC_ALL).toBe("en_US.UTF-8");
 		expect(filtered.LD_LIBRARY_PATH).toBe("/opt/conda/lib");
 		expect(filtered.OPENAI_API_KEY).toBeUndefined();
@@ -53,8 +53,19 @@ describe("Python gateway environment filtering", () => {
 });
 
 describe("enumeratePythonRuntimes", () => {
+	let savedHost: string | undefined;
+
+	beforeEach(() => {
+		// These cases cover the CLI's discovery; the desktop host mode deliberately
+		// enumerates only the managed interpreter (covered in npi-python-runtime).
+		savedHost = process.env.NPI_PYTHON_HOST;
+		delete process.env.NPI_PYTHON_HOST;
+	});
+
 	afterEach(() => {
 		vi.restoreAllMocks();
+		if (savedHost === undefined) delete process.env.NPI_PYTHON_HOST;
+		else process.env.NPI_PYTHON_HOST = savedHost;
 	});
 
 	const managedDir = path.join(path.sep, "fake", ".omp", "python-env");

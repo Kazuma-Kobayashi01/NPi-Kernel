@@ -2941,7 +2941,8 @@
 						"waiting_input",
 						"submitted",
 						"cancelled",
-						"expired"
+						"expired",
+						"rendered"
 					],
 					"type": "string"
 				},

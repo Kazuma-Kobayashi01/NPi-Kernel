@@ -15,6 +15,7 @@ const component = type.or(
 	{ type: "'timeline'", id: "string", "title?": "string", items: type({ time: "string", title: "string", "description?": "string", "status?": "'pending' | 'current' | 'done' | 'failed'" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'bar-chart' | 'line-chart' | 'pie-chart'", id: "string", "title?": "string", "unit?": "string", data: type({ label: "string", value: "number", "color?": "string" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'divider'", id: "string", "label?": "string", "visibleWhen?": visibleWhen },
+	{ type: "'image'", id: "string", src: "string", "thumbnail?": "string", "alt?": "string", "title?": "string", "sourceUrl?": "string", "attribution?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'button'", id: "string", label: "string" },
 	{ type: "'input'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'textarea'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "rows?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
@@ -63,6 +64,7 @@ export type UiComponent =
 	| { type: "timeline"; id: string; title?: string; items: UiTimelineItem[]; visibleWhen?: UiVisibleWhen }
 	| { type: "bar-chart" | "line-chart" | "pie-chart"; id: string; title?: string; unit?: string; data: UiChartDataPoint[]; visibleWhen?: UiVisibleWhen }
 	| { type: "divider"; id: string; label?: string; visibleWhen?: UiVisibleWhen }
+	| { type: "image"; id: string; src: string; thumbnail?: string; alt?: string; title?: string; sourceUrl?: string; attribution?: string; visibleWhen?: UiVisibleWhen }
 	// Interactive components
 	| { type: "button"; id: string; label: string }
 	| { type: "input" | "textarea"; id: string; label: string; default: string; required: boolean; minLength: number; maxLength: number; rows?: number; placeholder?: string; visibleWhen?: UiVisibleWhen }
@@ -73,6 +75,17 @@ export type UiComponent =
 	| { type: "checkbox-group" | "multiselect"; id: string; label: string; options: UiOption[]; default: string[]; minItems: number; maxItems: number; visibleWhen?: UiVisibleWhen }
 	| { type: "select" | "radio" | "segmented-control" | "searchable-select"; id: string; label: string; options: UiOption[]; default: string; required: boolean; visibleWhen?: UiVisibleWhen }
 	| { type: "option-cards"; id: string; label: string; cards: UiOptionCard[]; default: string; required: boolean; visibleWhen?: UiVisibleWhen };
+
+/** Components that collect or submit input; every non-button member carries a `default` for hidden values. */
+export type UiInteractiveComponent = Extract<UiComponent, {
+	type: "button" | "input" | "textarea" | "number-input" | "slider" | "number" |
+	"date" | "date-picker" | "time-picker" | "checkbox" | "switch" |
+	"checkbox-group" | "multiselect" | "select" | "radio" |
+	"segmented-control" | "searchable-select" | "option-cards";
+}>;
+
+/** Interactive components that hold a value; `button` only submits the form. */
+export type UiControl = Exclude<UiInteractiveComponent, { type: "button" }>;
 
 export interface UiSchema {
 	version: 1;
@@ -94,6 +107,59 @@ function keys(value: Record<string, unknown>, allowed: string[]): void {
 function string(value: unknown, max: number, name: string): string {
 	if (typeof value !== "string" || value.length > max) throw new Error(`Invalid ${name} (maximum ${max} characters)`);
 	return value;
+}
+
+/** Image references stay compact: the host renders them, the model context only keeps the metadata. */
+const MAX_IMAGE_REF = 2048;
+
+/** Loopback, private, link-local and other non-public hosts that an image reference must never target. */
+function localHostname(hostname: string): boolean {
+	const host = hostname.toLowerCase().replace(/\.$/, "");
+	if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+	const address = host.startsWith("[") ? host.slice(1, -1) : host;
+	// IPv4-mapped IPv6 hides an arbitrary IPv4 address behind a hex suffix.
+	if (address.startsWith("::ffff:")) return true;
+	if (address === "::1" || address === "::") return true;
+	if (/^f[cd][0-9a-f]{2}:/.test(address) || /^fe[89ab][0-9a-f]:/.test(address)) return true;
+	const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(address);
+	if (!v4) return false;
+	const [a, b] = [Number(v4[1]), Number(v4[2])];
+	return a === 0 || a === 127 || a === 10 || (a === 169 && b === 254) ||
+		(a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0)) ||
+		(a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+}
+
+/** Public HTTPS reference; DNS, redirects and content are still validated by the trusted backend. */
+function imageUrl(value: unknown, name: string): string {
+	const s = string(value, MAX_IMAGE_REF, name);
+	if (/\s/.test(s)) throw new Error(`Invalid ${name} (whitespace is not allowed)`);
+	let url: URL;
+	try {
+		url = new URL(s);
+	} catch {
+		throw new Error(`Invalid ${name} (absolute https URL required)`);
+	}
+	if (url.protocol !== "https:") throw new Error(`${name} must use https`);
+	if (url.username !== "" || url.password !== "") throw new Error(`${name} must not embed credentials`);
+	if (localHostname(url.hostname)) throw new Error(`${name} must not target a local host`);
+	// Persist the canonical spelling: the desktop loader classifies remotes by a literal `https://` prefix.
+	// Percent-encoding can expand a raw ≤2048 reference, so the bound applies to the persisted form too.
+	const canonical = url.toString();
+	if (canonical.length > MAX_IMAGE_REF) throw new Error(`Invalid ${name} (canonical URL exceeds ${MAX_IMAGE_REF} characters)`);
+	return canonical;
+}
+
+/** Image source: a project-contained relative path or a public HTTPS URL, never a data/blob URI. */
+function imageSource(value: unknown): string {
+	const s = string(value, MAX_IMAGE_REF, "image.src");
+	if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(s)) return imageUrl(s, "image.src");
+	if (s.startsWith("/") || s.startsWith("\\") || s.startsWith("~")) throw new Error("image.src must be project-relative");
+	const segments = s.split(/[\\/]/);
+	if (segments.some(segment => segment === "" || segment === "." || segment === "..")) {
+		throw new Error("image.src must be a normalized project-relative path");
+	}
+	// The contract and the host's file reader are `/`-separated; a literal backslash is a filename on macOS.
+	return segments.join("/");
 }
 
 function number(value: unknown): number {
@@ -140,6 +206,13 @@ function timeString(value: unknown, name: string): string {
 	return s;
 }
 
+/** Optional literal from untrusted input: absent stays absent, anything else must be one of `allowed`. */
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], name: string): T | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || !(allowed as readonly string[]).includes(value)) throw new Error(`Invalid ${name}`);
+	return value as T;
+}
+
 function parseVisibleWhen(value: unknown): UiVisibleWhen | undefined {
 	if (value === undefined) return undefined;
 	const raw = object(value);
@@ -159,13 +232,17 @@ export function isUiComponentVisible(component: UiComponent, values: Record<stri
 	return Array.isArray(target) ? target.includes(component.visibleWhen.equals) : target === component.visibleWhen.equals;
 }
 
-export function isInteractiveComponent(c: UiComponent): boolean {
+export function isInteractiveComponent(c: UiComponent): c is UiInteractiveComponent {
 	return [
 		"button", "input", "textarea", "number-input", "slider", "number",
 		"date", "date-picker", "time-picker", "checkbox", "switch",
 		"checkbox-group", "multiselect", "select", "radio",
 		"segmented-control", "searchable-select", "option-cards",
 	].includes(c.type);
+}
+
+export function isUiControl(c: UiComponent): c is UiControl {
+	return isInteractiveComponent(c) && c.type !== "button";
 }
 
 export function normalizeUiSchema(value: unknown): UiSchema {
@@ -196,8 +273,10 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 		ids.add(id);
 		const cond = c.type === "button" ? undefined : parseVisibleWhen(c.visibleWhen);
 		const condProp = cond === undefined ? {} : { visibleWhen: cond };
+		// A validated string lets every case narrow `kind` to its exact component type.
+		const kind = typeof c.type === "string" ? c.type : "";
 
-		switch (c.type) {
+		switch (kind) {
 			case "text": {
 				keys(c, ["type", "id", "text", "label", "visibleWhen"]);
 				return { type: "text", id, text: text(c.text, 4096, "text"), ...(c.label === undefined ? {} : { label: text(c.label, 120, "label") }), ...condProp };
@@ -215,8 +294,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 			}
 			case "stat": {
 				keys(c, ["type", "id", "label", "value", "diff", "trend", "unit", "visibleWhen"]);
-				const trend = c.trend;
-				if (trend !== undefined && trend !== "up" && trend !== "down" && trend !== "neutral") throw new Error("Invalid stat trend");
+				const trend = oneOf(c.trend, ["up", "down", "neutral"] as const, "stat trend");
 				return {
 					type: "stat", id,
 					label: text(c.label, 120, "stat.label"),
@@ -229,14 +307,12 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 			}
 			case "badge": {
 				keys(c, ["type", "id", "text", "variant", "visibleWhen"]);
-				const variant = c.variant;
-				if (variant !== undefined && variant !== "default" && variant !== "success" && variant !== "warning" && variant !== "danger" && variant !== "info") throw new Error("Invalid badge variant");
+				const variant = oneOf(c.variant, ["default", "success", "warning", "danger", "info"] as const, "badge variant");
 				return { type: "badge", id, text: text(c.text, 60, "badge.text"), ...(variant === undefined ? {} : { variant }), ...condProp };
 			}
 			case "alert": {
 				keys(c, ["type", "id", "message", "title", "level", "visibleWhen"]);
-				const level = c.level;
-				if (level !== undefined && level !== "info" && level !== "success" && level !== "warning" && level !== "danger") throw new Error("Invalid alert level");
+				const level = oneOf(c.level, ["info", "success", "warning", "danger"] as const, "alert level");
 				return {
 					type: "alert", id,
 					message: text(c.message, 2048, "alert.message"),
@@ -264,8 +340,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				if (!Array.isArray(c.rows) || c.rows.length > 50) throw new Error("Table requires at most 50 rows");
 				const cols = c.columns.map(rawCol => {
 					const col = object(rawCol); keys(col, ["key", "label", "align"]);
-					const align = col.align;
-					if (align !== undefined && align !== "left" && align !== "center" && align !== "right") throw new Error("Invalid table column align");
+					const align = oneOf(col.align, ["left", "center", "right"] as const, "table column align");
 					return { key: text(col.key, 64, "col.key"), label: text(col.label, 120, "col.label"), ...(align === undefined ? {} : { align }) };
 				});
 				const rows = c.rows.map(rawRow => {
@@ -321,8 +396,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				if (!Array.isArray(c.items) || c.items.length < 1 || c.items.length > 20) throw new Error("Timeline requires 1–20 items");
 				const items = c.items.map(rawItem => {
 					const item = object(rawItem); keys(item, ["time", "title", "description", "status"]);
-					const status = item.status;
-					if (status !== undefined && status !== "pending" && status !== "current" && status !== "done" && status !== "failed") throw new Error("Invalid timeline status");
+					const status = oneOf(item.status, ["pending", "current", "done", "failed"] as const, "timeline status");
 					return {
 						time: text(item.time, 60, "timeline.time"),
 						title: text(item.title, 120, "timeline.title"),
@@ -343,11 +417,29 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 					if (c.type === "pie-chart" && val < 0) throw new Error("Pie chart values must be non-negative");
 					return { label: text(pt.label, 80, "chart.label"), value: val, ...(pt.color === undefined ? {} : { color: text(pt.color, 40, "chart.color") }) };
 				});
-				return { type: c.type, id, ...(c.title === undefined ? {} : { title: text(c.title, 160, "chart.title") }), ...(c.unit === undefined ? {} : { unit: text(c.unit, 30, "chart.unit") }), data, ...condProp };
+				return { type: kind, id, ...(c.title === undefined ? {} : { title: text(c.title, 160, "chart.title") }), ...(c.unit === undefined ? {} : { unit: text(c.unit, 30, "chart.unit") }), data, ...condProp };
 			}
 			case "divider": {
 				keys(c, ["type", "id", "label", "visibleWhen"]);
 				return { type: "divider", id, ...(c.label === undefined ? {} : { label: text(c.label, 120, "divider.label") }), ...condProp };
+			}
+			case "image": {
+				keys(c, ["type", "id", "src", "thumbnail", "alt", "title", "sourceUrl", "attribution", "visibleWhen"]);
+				const src = imageSource(c.src);
+				const thumbnail = c.thumbnail === undefined ? undefined : imageUrl(c.thumbnail, "image.thumbnail");
+				const sourceUrl = c.sourceUrl === undefined ? undefined : imageUrl(c.sourceUrl, "image.sourceUrl");
+				// The frontend counts references in its own text budget; both sides must agree.
+				textLength += src.length + (thumbnail?.length ?? 0) + (sourceUrl?.length ?? 0);
+				return {
+					type: "image", id,
+					src,
+					...(thumbnail === undefined ? {} : { thumbnail }),
+					...(c.alt === undefined ? {} : { alt: text(c.alt, 300, "image.alt") }),
+					...(c.title === undefined ? {} : { title: text(c.title, 160, "image.title") }),
+					...(sourceUrl === undefined ? {} : { sourceUrl }),
+					...(c.attribution === undefined ? {} : { attribution: text(c.attribution, 200, "image.attribution") }),
+					...condProp,
+				};
 			}
 			case "button": {
 				keys(c, ["type", "id", "label"]);
@@ -362,7 +454,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				if (minLength > maxLength || initial.length > maxLength || (initial !== "" && initial.length < minLength)) throw new Error("Invalid input default or limits");
 				const rows = c.type === "textarea" ? c.rows === undefined ? 4 : integer(c.rows, 20) : undefined;
 				if (rows === 0) throw new Error("Textarea requires 1–20 rows");
-				return { type: c.type, id, label, default: initial, required, minLength, maxLength, ...(rows === undefined ? {} : { rows }), ...(c.placeholder === undefined ? {} : { placeholder: text(c.placeholder, 120, "placeholder") }), ...condProp };
+				return { type: kind, id, label, default: initial, required, minLength, maxLength, ...(rows === undefined ? {} : { rows }), ...(c.placeholder === undefined ? {} : { placeholder: text(c.placeholder, 120, "placeholder") }), ...condProp };
 			}
 			case "date":
 			case "date-picker": {
@@ -374,7 +466,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				if (min !== undefined && max !== undefined && min > max) throw new Error("Invalid date range");
 				const initial = c.default === undefined || c.default === "" ? "" : isoDate(c.default, "date default");
 				if (initial !== "" && ((min !== undefined && initial < min) || (max !== undefined && initial > max))) throw new Error("Invalid date default");
-				return { type: c.type, id, label, default: initial, required, ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }), ...condProp };
+				return { type: kind, id, label, default: initial, required, ...(min === undefined ? {} : { min }), ...(max === undefined ? {} : { max }), ...condProp };
 			}
 			case "time-picker": {
 				keys(c, ["type", "id", "label", "default", "required", "visibleWhen"]);
@@ -390,13 +482,13 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				const label = text(c.label, 120, "label");
 				const min = number(c.min), max = number(c.max), step = c.step === undefined ? 1 : number(c.step);
 				if (min >= max || step <= 0 || !Number.isFinite((max - min) / step)) throw new Error("Invalid numeric range or step");
-				return { type: c.type, id, label, min, max, step, default: numericValue(c.default, { min, max, step }), ...(c.unit === undefined ? {} : { unit: text(c.unit, 30, "unit") }), ...condProp };
+				return { type: kind, id, label, min, max, step, default: numericValue(c.default, { min, max, step }), ...(c.unit === undefined ? {} : { unit: text(c.unit, 30, "unit") }), ...condProp };
 			}
 			case "checkbox":
 			case "switch": {
 				keys(c, ["type", "id", "label", "default", "visibleWhen"]);
 				const label = text(c.label, 120, "label");
-				return { type: c.type, id, label, default: c.default === undefined ? false : boolean(c.default), ...condProp };
+				return { type: kind, id, label, default: c.default === undefined ? false : boolean(c.default), ...condProp };
 			}
 			case "checkbox-group":
 			case "multiselect": {
@@ -413,7 +505,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				});
 				const minItems = c.minItems === undefined ? 0 : integer(c.minItems, options.length), maxItems = c.maxItems === undefined ? options.length : integer(c.maxItems, options.length);
 				if (minItems > maxItems) throw new Error("Invalid multiselect limits");
-				return { type: c.type, id, label, options, minItems, maxItems, default: selections(c.default === undefined ? [] : c.default, options, 0, maxItems), ...condProp };
+				return { type: kind, id, label, options, minItems, maxItems, default: selections(c.default === undefined ? [] : c.default, options, 0, maxItems), ...condProp };
 			}
 			case "select":
 			case "radio":
@@ -432,7 +524,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				});
 				const required = c.required === undefined ? false : boolean(c.required), initial = c.default === undefined ? options[0].value : text(c.default, 128, "default");
 				if (!seen.has(initial) && !(initial === "" && !required)) throw new Error("Invalid option default");
-				return { type: c.type, id, label, options, default: initial, required, ...condProp };
+				return { type: kind, id, label, options, default: initial, required, ...condProp };
 			}
 			case "option-cards": {
 				keys(c, ["type", "id", "label", "cards", "default", "required", "visibleWhen"]);
@@ -477,14 +569,14 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 	if (mode === "display") {
 		if (buttonCount > 0) throw new Error("Display UI must not contain submit buttons");
 		// Also ensure no purely input controls without submit
-		const interactiveControls = components.filter(c => isInteractiveComponent(c) && c.type !== "button");
+		const interactiveControls = components.filter(isUiControl);
 		if (interactiveControls.length > 0) throw new Error("Display UI must not contain interactive input controls");
 	} else {
 		// Interactive mode requires exactly one submit button
 		if (buttonCount !== 1) throw new Error("Interactive UI requires exactly one submit button");
 	}
 
-	const controlIds = new Set(components.filter(c => isInteractiveComponent(c) && c.type !== "button").map(c => c.id));
+	const controlIds = new Set(components.filter(isUiControl).map(c => c.id));
 	for (const c of components) {
 		if (c.type !== "button" && c.visibleWhen && (c.visibleWhen.id === c.id || !controlIds.has(c.visibleWhen.id))) {
 			throw new Error(`Invalid visibleWhen target: ${c.visibleWhen.id}`);
@@ -492,12 +584,12 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 	}
 
 	if (textLength > 32768) throw new Error("UI text exceeds 32768 characters");
-	return { version: 1, mode, ...(title === undefined ? {} : { title }), layout: schema.layout ?? "stack", components };
+	return { version: 1, mode, ...(title === undefined ? {} : { title }), layout, components };
 }
 
 export function validateUiValues(schema: UiSchema, value: unknown): Record<string, UiValue> {
 	const values = object(value), result: Record<string, UiValue> = {};
-	const controls = schema.components.filter(c => isInteractiveComponent(c) && c.type !== "button");
+	const controls = schema.components.filter(isUiControl);
 	keys(values, controls.map(c => c.id));
 	for (const c of controls) {
 		if (!isUiComponentVisible(c, values)) {

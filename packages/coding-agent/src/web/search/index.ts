@@ -9,7 +9,7 @@ import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import type { Api, AuthStorage, Model } from "@oh-my-pi/pi-ai";
 import { modelKind } from "@oh-my-pi/pi-catalog/types";
-import { formatAge, formatCount, prompt, truncate } from "@oh-my-pi/pi-utils";
+import { formatAge, formatCount, logger, prompt, truncate } from "@oh-my-pi/pi-utils";
 import { ModelRegistry } from "../../config/model-registry";
 import { type RoleChainCandidate, resolveModelRoleValue, resolveRoleChain } from "../../config/model-resolver";
 import { roleCandidatePool } from "../../config/model-roles";
@@ -185,7 +185,7 @@ function preferXAI(chain: RoleChainCandidate[], modelRegistry: ModelRegistry): R
 }
 
 /** Execute web search */
-async function executeSearch(
+async function runSearch(
 	_toolCallId: string,
 	params: SearchQueryParams,
 	options: ExecuteSearchOptions,
@@ -355,6 +355,31 @@ async function executeSearch(
 			error: message,
 		},
 	};
+}
+
+/** Search entry point: one debug timing per run, with no query text, URLs or credentials. */
+async function executeSearch(
+	_toolCallId: string,
+	params: SearchQueryParams,
+	options: ExecuteSearchOptions,
+): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchResultDetails }> {
+	const startedAt = performance.now();
+	try {
+		const result = await runSearch(_toolCallId, params, options);
+		logger.debug("web search finished", {
+			elapsedMs: Math.round(performance.now() - startedAt),
+			provider: result.details.response.provider,
+			sources: result.details.response.sources.length,
+			failed: result.details.error !== undefined,
+		});
+		return result;
+	} catch (error) {
+		logger.debug("web search failed", {
+			elapsedMs: Math.round(performance.now() - startedAt),
+			errorName: error instanceof Error ? error.name : typeof error,
+		});
+		throw error;
+	}
 }
 
 /**

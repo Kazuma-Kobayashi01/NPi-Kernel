@@ -2762,6 +2762,7 @@ const (
 	UiStateStatusSubmitted    UiStateStatus = "submitted"
 	UiStateStatusCancelled    UiStateStatus = "cancelled"
 	UiStateStatusExpired      UiStateStatus = "expired"
+	UiStateStatusRendered     UiStateStatus = "rendered"
 )
 
 func (v *UiStateStatus) UnmarshalJSON(data []byte) error {
@@ -2770,7 +2771,7 @@ func (v *UiStateStatus) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	switch value := UiStateStatus(s); value {
-	case UiStateStatusWaitingInput, UiStateStatusSubmitted, UiStateStatusCancelled, UiStateStatusExpired:
+	case UiStateStatusWaitingInput, UiStateStatusSubmitted, UiStateStatusCancelled, UiStateStatusExpired, UiStateStatusRendered:
 		*v = value
 		return nil
 	}

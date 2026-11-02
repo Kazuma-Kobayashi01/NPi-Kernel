@@ -6119,6 +6119,8 @@ pub enum UiStateStatus {
 	Cancelled,
 	#[serde(rename = "expired")]
 	Expired,
+	#[serde(rename = "rendered")]
+	Rendered,
 }
 
 impl UiStateStatus {
@@ -6129,6 +6131,7 @@ impl UiStateStatus {
 			Self::Submitted => "submitted",
 			Self::Cancelled => "cancelled",
 			Self::Expired => "expired",
+			Self::Rendered => "rendered",
 		}
 	}
 }

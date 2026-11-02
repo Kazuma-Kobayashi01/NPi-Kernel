@@ -2,9 +2,20 @@
 
 ## [Unreleased]
 
+## [2.0.10] - 2026-11-02
+
+Bundled with Desktop 2.0.0.378: managed Python execution through the Rust host,
+image references in Generative UI, and synchronized RPC SDK types.
+
 ### Added
 
 - Opt-in desktop Generative UI (`ui.present`) stage 2: 11 bounded controls (`text`, `input`, `textarea`, `number`, `slider`, `checkbox`, `switch`, `select`, `radio`, `multiselect`, `button`), task/message binding (`task_id`, `message_id`), graceful turn yield + pre-model gate while waiting for input, `render_ui` display acknowledgement, `cancel_ui` without model invocation, automatic expiry on new user tasks or branch switches, interrupted-continuation recovery, and model-independent `set_interaction_policy` (`standard` | `aggressive` | `minimal`).
+- `python` tool with `execute`, `environment`, and `packages` (`list`/`install`) actions against the desktop-managed interpreter and environment, with per-call session/execution identity, filtered child environment, bounded output, timeout and abort cleanup. Package installs keep the existing exec approval.
+- `ui.present` accepts an additive display-only `image` component: `src` is a project-relative path or direct public HTTPS image URL, with optional `thumbnail`, `alt`, `title`, `sourceUrl` and `attribution` (references capped at 2048 characters raw and after canonicalization). It renders a placeholder immediately without a submit or model wait and persists reference metadata only — no inline base64 or fetched bytes. Accepted URLs are stored canonically (`URL.toString()`), project separators normalize to `/`, and references count with `alt`/`title`/`attribution` toward the same 32 KB text budget the client enforces. The schema rejects `data:`/`blob:`/`file:`/`javascript:` schemes, embedded credentials, loopback/private/link-local hosts and non-HTTPS `thumbnail`/`sourceUrl`, while DNS, redirect, byte-sniffing and content validation stay with the trusted backend. `web_search` and `read` descriptions now separate discovery from fetching and state that no image-search or web-fetch tool exists.
+
+### Changed
+
+- Desktop-managed Python: `eval` and `python` use the absolute interpreter reported by the Rust `--npi-python-host` protocol. When that host is configured, omp never unpacks a runtime, creates a virtualenv, or falls back to a system/project interpreter. `PI_*` variables no longer pass to Python children.
 
 ### Fixed
 

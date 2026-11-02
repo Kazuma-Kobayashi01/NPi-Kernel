@@ -25,6 +25,7 @@ The tool accepts `{schema:{version:1,title?,layout?:"stack"|"row",components:[]}
 | type | Fields besides `type,id` |
 | --- | --- |
 | `text` | `text`, optional `label` |
+| `image` | `src`, optional `thumbnail`, `alt`, `title`, `sourceUrl`, `attribution` |
 | `input` | `label`, optional `default`, `required`, `minLength`, `maxLength` |
 | `textarea` | `label`, optional `default`, `required`, `minLength`, `maxLength`, `rows` (1–20, default 4) |
 | `number`, `slider` | `label,min,max,default`, optional `step` |
@@ -34,6 +35,8 @@ The tool accepts `{schema:{version:1,title?,layout?:"stack"|"row",components:[]}
 | `button` | `label` (submission only) |
 
 Exactly one button is required; there are at most 24 components. IDs are unique 1–64-character ASCII letters/digits/underscore/hyphen, excluding `__proto__`, `constructor`, and `prototype`. Unknown fields/types/versions are errors. Text is plain text, never HTML or code. Limits: title 160, labels 120, one text 4096, combined text 16384 characters, 1–32 unique nonempty option values of at most 128 characters. Inputs default to `""`, `required:false`, `minLength:0`, `maxLength:1024` (maximum 4096). Empty optional input is allowed; nonempty input must meet its minimum. Selections default to the first option and `required:false`; explicit empty selection is allowed only when optional. Layout defaults to stack. Slider step defaults to 1; all numbers are finite, absolute value ≤1e6, min < max, step > 0, and values must match the range and step.
+
+`image` is display-only and additive to `version:1`: the host renders a placeholder immediately, the component never waits for a submit, and only the bounded reference metadata (`src`, `thumbnail`, `alt`, `title`, `sourceUrl`, `attribution`) is persisted — never inline base64 or fetched bytes. `src` is a project-relative path (no leading `/`, `~`, `..`, or empty segments; spaces are allowed and `\` is normalized to `/`) or a direct public `https` image URL (not a web page; remote SVG is unsupported); `thumbnail` and `sourceUrl` must be public `https` URLs. Accepted URLs are persisted in canonical `URL.toString()` form so a remote source is never mistaken for a local path. Each reference is at most 2048 characters before and after canonicalization, and `src`/`thumbnail`/`sourceUrl` plus `alt` 300, `title` 160 and `attribution` 200 count toward the combined text limit. `data:`, `blob:`, `file:`, `javascript:`, embedded credentials, loopback/private/link-local hosts and non-HTTPS `thumbnail`/`sourceUrl` are rejected. Scheme, DNS, redirect, byte-sniffing and content checks stay with the trusted host/backend; the schema only rejects obvious hazards.
 
 Example tool arguments (model-generated, not a client `ui.present` command):
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeUiSchema, uiPresentParameters, validateUiValues } from "../src/modes/rpc/generative-ui-schema";
+import { normalizeUiSchema, uiPresentParameters, validateUiValues, type UiComponent } from "../src/modes/rpc/generative-ui-schema";
 import { validateToolArguments } from "@oh-my-pi/pi-ai";
 
 const options = [{ label: "A", value: "a" }, { label: "B", value: "b" }, { label: "C", value: "c" }];
@@ -85,5 +85,60 @@ describe("Generative UI additive controls", () => {
 		}
 		const zero = { version: 1, components: [{ type: "input", id: "x", label: "X", minLength: 0 }, button] };
 		expect(normalizeUiSchema(zero).components[0]).toMatchObject({ minLength: 0 });
+	});
+});
+describe("Generative UI image references", () => {
+	const remote = {
+		type: "image", id: "shot", src: "https://cdn.example.com/shot.png", thumbnail: "https://cdn.example.com/thumb.png",
+		alt: "Screenshot of the build", title: "Build", sourceUrl: "https://example.com/build", attribution: "Example",
+	} satisfies UiComponent;
+	const local = { type: "image", id: "logo", src: "assets/logo.png", alt: "Logo" } satisfies UiComponent;
+	const image = (src: unknown, extra: Record<string, unknown> = {}) => ({ version: 1, components: [{ type: "image", id: "x", src, ...extra }] });
+
+	it("normalizes remote and project-relative references as a display component that never waits for a submit", () => {
+		const host = normalizeUiSchema({ version: 1, components: [remote, local] });
+		expect(host.mode).toBe("display");
+		expect(host.components).toEqual([remote, local]);
+		expect(normalizeUiSchema({ version: 1, mode: "display", components: [local] }).components[0]).toEqual(local);
+		const interactive = normalizeUiSchema({ version: 1, mode: "interactive", components: [local, { type: "input", id: "note", label: "Note" }, { type: "button", id: "send", label: "Send" }] });
+		expect(interactive.mode).toBe("interactive");
+		expect(() => normalizeUiSchema({ version: 1, mode: "display", components: [local, { type: "button", id: "send", label: "Send" }] })).toThrow();
+	});
+	it("rejects dangerous schemes, credentials, local hosts, non-project paths and unknown image fields", () => {
+		for (const src of [
+			"data:image/png;base64,AAAA", "javascript:alert(1)", "blob:https://example.com/x", "file:///etc/passwd",
+			"http://example.com/x.png", "//example.com/x.png", "/etc/passwd", "../secret.png", "a//b.png", "assets/./x.png", "~/x.png",
+			"https://user:pw@example.com/x.png", "https://localhost/x.png", "https://127.0.0.1/x.png", "https://10.0.0.1/x.png",
+			"https://172.16.0.1/x.png", "https://192.168.1.1/x.png", "https://169.254.1.1/x.png", "https://[::1]/x.png", "https://[fd00::1]/x.png",
+			"https://example.com/a b.png", "",
+		]) {
+			expect(() => normalizeUiSchema(image(src))).toThrow();
+		}
+		for (const field of ["thumbnail", "sourceUrl"]) {
+			expect(() => normalizeUiSchema(image("assets/x.png", { [field]: "http://example.com/x.png" }))).toThrow();
+			expect(() => normalizeUiSchema(image("assets/x.png", { [field]: "https://localhost/x.png" }))).toThrow();
+		}
+		expect(() => normalizeUiSchema(image("assets/x.png", { caption: "Unknown" }))).toThrow();
+		expect(() => normalizeUiSchema(image("assets/x.png", { alt: "a".repeat(301) }))).toThrow();
+	});
+	it("accepts the 2048-character reference bound and stays stable when a persisted schema is re-normalized", () => {
+		const bounded = `https://example.com/${"a".repeat(2048 - "https://example.com/".length)}`;
+		expect(bounded).toHaveLength(2048);
+		const host = normalizeUiSchema(image(bounded, { alt: "a".repeat(300) }));
+		expect(host.components[0]).toMatchObject({ src: bounded });
+		expect(() => normalizeUiSchema(image(`${bounded}a`))).toThrow();
+		const once = normalizeUiSchema({ version: 1, title: "Media", components: [remote, local] });
+		expect(normalizeUiSchema(JSON.parse(JSON.stringify(once)))).toEqual(once);
+	});
+	it("canonicalizes remote URLs, preserves spaced project paths, normalizes separators and counts references in the text budget", () => {
+		expect(normalizeUiSchema(image("HTTPS://cdn.example.com/Shot.png")).components[0]).toMatchObject({ src: "https://cdn.example.com/Shot.png" });
+		expect(normalizeUiSchema(image("assets\\images\\my image.png")).components[0]).toMatchObject({ src: "assets/images/my image.png" });
+		const bounded = `https://example.com/${"a".repeat(2048 - "https://example.com/".length)}`;
+		const many = { version: 1, components: Array.from({ length: 17 }, (_, index) => ({ type: "image", id: `i${index}`, src: bounded })) };
+		expect(() => normalizeUiSchema(many)).toThrow();
+		// Raw 250 characters, but percent-encoding each CJK character triples it past the canonical bound.
+		const unicode = `https://example.com/${"图".repeat(230)}`;
+		expect(unicode.length).toBeLessThanOrEqual(2048);
+		expect(() => normalizeUiSchema(image(unicode))).toThrow();
 	});
 });

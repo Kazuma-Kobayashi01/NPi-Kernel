@@ -17,7 +17,7 @@ import * as path from "node:path";
 import { expandWindowsLongPath } from "@oh-my-pi/pi-natives/path";
 import { engines, version } from "../package.json" with { type: "json" };
 
-const NPI_VERSION = "2.0.6";
+const NPI_VERSION = "2.0.10";
 import { isEnoent, isEnotdir } from "./fs-error";
 import { isBunTestRuntime } from "./test-runtime";
 
@@ -797,6 +797,27 @@ export function getRemoteHostDir(): string {
 /** Get the managed Python venv directory (~/.omp/python-env). */
 export function getPythonEnvDir(): string {
 	return dirs.rootSubdir("python-env", "data");
+}
+
+/**
+ * Get the NPi managed environment root (`~/.local/share/npi/env`), or the
+ * `NPI_ENV_DIR` override. Shared by the embedded CPython runtime, the managed
+ * virtualenvs, package caches, and per-session workspaces. Deliberately not an
+ * XDG/profile path: the desktop app's Rust runtime manager owns this tree and
+ * resolves the same fixed location.
+ */
+export function getNpiEnvDir(): string {
+	const configured = process.env.NPI_ENV_DIR?.trim();
+	if (configured) return path.resolve(configured);
+	// Same order as the desktop runtime manager (`python_runtime::paths`):
+	// HOME, then USERPROFILE, then a working-directory-relative fallback.
+	const home = process.env.HOME?.trim() || process.env.USERPROFILE?.trim();
+	return home ? path.join(home, ".local", "share", "npi", "env") : path.resolve(".npi-env");
+}
+
+/** Get the mutable default NPi managed virtualenv (`<NPI_ENV_DIR>/environments/default`). */
+export function getNpiManagedPythonEnvDir(): string {
+	return path.join(getNpiEnvDir(), "environments", "default");
 }
 
 /** Get the shared Python gateway state directory (~/.omp/agent/python-gateway; XDG default: $XDG_STATE_HOME/omp/python-gateway). */

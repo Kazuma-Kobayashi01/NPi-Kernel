@@ -5,7 +5,8 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 
 ## Scope and Key Files
 
-- Tool surface: `src/tools/eval.ts`
+- Eval tool surface: `src/tools/eval.ts`
+- Managed `python` tool: `src/tools/python.ts`
 - Session/per-call kernel orchestration: `src/eval/py/executor.ts`
 - Subprocess kernel client: `src/eval/py/kernel.ts`
 - Shared IPC/cancellation client: `src/eval/kernel-base.ts`
@@ -18,6 +19,80 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 - Shared output capture: `packages/tui/src/tools/streaming-output.ts`
 - Interactive-mode renderer for user-triggered Python runs: `packages/tui/src/chat/eval-execution.ts`
 - Runtime/env filtering and Python resolution: `src/eval/py/runtime.ts`
+- NPi Desktop runtime host (archive, install, environment): `desktop/docs/architecture/python-runtime.md` in the NPi root repository
+
+## Managed Python runtime and the desktop host
+
+Two surfaces share one managed environment:
+
+- the `python` tool runs one program per call in a fresh supervised subprocess;
+- the `eval` tool with `language: "py"` keeps a kernel per session for stateful
+  cells.
+
+The NPi Desktop app owns that environment. It sets
+`NPI_PYTHON_HOST=<absolute app executable>` on every `omp` it spawns.
+`ensureNpiPythonEnv()` then runs
+
+```text
+$NPI_PYTHON_HOST --npi-python-host
+```
+
+with exactly one JSON request on stdin and reads exactly one JSON value from
+stdout:
+
+```json
+{"action": "ensure"}
+{"action": "ensure", "resourceDir": "/abs/path/to/Resources"}
+{"action": "environment"}
+{"action": "packages", "operation": "list"}
+{"action": "packages", "operation": "install", "packages": ["numpy>=2"]}
+```
+
+`ensure` installs the bundled runtime and default environment if needed and
+returns health. `environment` is read-only and still exits 0 when health is
+`false`. `packages` lists or installs distributions; `operation` defaults to
+`list`, and there is no separate `install` action. Unknown fields are rejected.
+Health returns the absolute managed interpreter:
+
+```json
+{
+  "ok": true,
+  "pythonVersion": "3.12.16",
+  "uvVersion": "0.13.6",
+  "pythonPath": "<base>/environments/default/versions/py.../bin/python",
+  "envPath": "<base>/environments/default",
+  "runtimePath": "<base>/runtimes/python/3.12.16-aarch64-apple-darwin-<sha12>",
+  "message": null
+}
+```
+
+Errors exit 1 with empty stdout and one `npi-python-error: <message>` line on
+stderr. `npi-python-progress {json}` lines on stderr are informational only.
+
+The `python` tool exposes `execute`, `environment` and `packages` actions.
+`execute` delegates to the eval Python backend with `kernelMode: "per-call"`:
+a fresh `<python> -I -B -u runner.py` process per call, a per-session working
+directory (`<base>/workspaces/<sanitized-session-id>`) unless `cwd` is
+supplied, a filtered environment, bounded/truncated output, and the normal
+SIGINT → SIGTERM → SIGKILL cancellation ladder. `packages install` delegates
+to the host and may require approval; the base runtime is never modified.
+
+`<base>` is `NPI_ENV_DIR` when set, otherwise `~/.local/share/npi/env` in the
+desktop app. The host creates a content-addressed runtime under `runtimes/`,
+an offline `venv` under `environments/default/versions/`, and atomically points
+`environments/default/current` at the active version. Both install and
+environment creation serialize on `<base>/state/install.lock`. Old runtime
+versions are not deleted while sessions may still use them.
+
+When `NPI_PYTHON_HOST` is configured, `omp` does not unpack the archive, does
+not create the virtualenv and does not fall back to a system, Homebrew, pyenv,
+Conda or project `.venv` interpreter. The default interpreter is the absolute
+`pythonPath` returned by the host; an explicit `interpreter` (or
+`python.interpreter`) is honored only in Code mode. Chat and Academic
+sessions stay on the managed interpreter. Without a host (standalone
+CLI/source checkout), `ensureNpiPythonEnv()` returns `undefined`; the managed
+environment is simply unavailable, and a discovered system interpreter is not
+presented as managed.
 
 ## What eval's Python backend is
 
@@ -140,10 +215,24 @@ Cells support top-level `await`, `async for`, and `async with` on a persistent a
 Environment is filtered before launching the runner:
 
 - Allowlist includes core vars like `PATH`, `HOME`, locale vars, `VIRTUAL_ENV`, `PYTHONPATH`, etc.
-- Allow-prefixes: `LC_`, `XDG_`, `PI_`
+- Allow-prefixes: `LC_`, `XDG_`
 - Denylist strips common API keys (OpenAI/Anthropic/Gemini/etc.)
+- Eval injects its own `PI_SESSION_FILE`/bridge variables explicitly after
+  filtering; ambient `PI_*` values are not forwarded
 
-Runtime selection order (skipped entirely when the `python.interpreter` setting names an explicit executable):
+When `NPI_PYTHON_HOST` is configured, the desktop host is the default runtime
+for Python execution. The availability probe stays cheap: it considers only
+the managed interpreter and never runs the host, unpacks the archive or builds
+an environment at session startup. `PythonKernel.start` calls
+`ensureNpiPythonEnv()` on the first actual invocation, and the absolute
+`pythonPath` it returns is used directly. The host's managed environment wins
+over any local venv or `PATH` interpreter; a system/project interpreter is not
+substituted when the host fails. `python.interpreter` is an explicit override
+only in Code mode.
+
+For a standalone CLI or source checkout without a host, runtime selection order
+is (skipped entirely when the `python.interpreter` setting names an explicit
+executable):
 
 1. Active/located venv (`VIRTUAL_ENV`, then `CONDA_PREFIX`, then `<cwd>/.venv`, `<cwd>/venv`)
 2. Managed venv at `~/.omp/python-env`
@@ -151,7 +240,7 @@ Runtime selection order (skipped entirely when the `python.interpreter` setting 
 
 Candidates are probed in order until one runs; a broken venv does not automatically shadow a working later candidate. The selected working runtime is cached for that cwd/interpreter key. An explicit interpreter is a path (with `~` expansion and relative paths resolved against session cwd), not a PATH-search command name.
 
-When a venv is selected, its bin/Scripts path is prepended to `PATH`. The managed venv path follows the configured OMP data root; `~/.omp/python-env` is the default.
+When a venv is selected, its bin/Scripts path is prepended to `PATH`. The managed venv path follows the configured OMP data root; `~/.omp/python-env` is the standalone default. Under the desktop host, the environment instead comes from the host's `<base>/environments/default/versions/` path.
 
 The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-8` so streamed output reaches the host promptly.
 
@@ -244,14 +333,18 @@ Output is streamed through `OutputSink` in `packages/tui/src/tools/streaming-out
 
 ## Operational troubleshooting
 
-- **Python backend not available** — Check `eval.py`, `PI_PY`, and that `python`/`python3` is on PATH. If another backend is enabled, use its advertised language token.
-- **No working Python** — Install a modern Python 3 interpreter, configure `python.interpreter`, or place a compatible venv at the managed Python path (default `~/.omp/python-env`). `omp setup python --check` reports the resolved interpreter.
+- **Python backend not available** — In the desktop app, check that `NPI_PYTHON_HOST` points at the app executable and that the first `ensure` succeeded. In a standalone CLI, check `eval.py`, `PI_PY`, and that `python`/`python3` is on PATH. If another backend is enabled, use its advertised language token.
+- **No working Python** — In the desktop app the runtime is installed by the host on the first action; a configured host that cannot provision exits it with `npi-python-error` and no system interpreter is substituted. In a standalone CLI, install a modern Python 3, configure `python.interpreter`, or place a compatible venv at the managed Python path (default `~/.omp/python-env`). `omp setup python --check` reports the resolved interpreter.
+- **Host provisioning fails** — Read the `npi-python-error` message. In a source checkout set `NPI_PYTHON_RESOURCE_DIR` to the directory holding `python-runtime-manifest.json` and the archive; the default resource directory is the app's `../Resources`. Digest mismatch or an unsupported platform requires rebuilding the bundle, not forcing an interpreter.
 - **Execution hangs then times out** — Increase `timeout` for legitimate work or set it to `0` to disable the watchdog. For stuck native code, cancellation sends `SIGINT` first and then escalates; session mode recreates the kernel on the next request if it had to be killed.
 - **stdin/input prompts in Python code** — `input()` is not supported; pass data programmatically.
 - **Working directory errors** — Python starts each cell in the session cwd. Use `%cd` or `os.chdir()` within the cell when needed; the next call starts back in the host session cwd.
 
 ## Relevant environment variables
 
+- `NPI_PYTHON_HOST` — absolute NPi Desktop executable; set by the app for every spawned `omp`, enables the managed runtime host
+- `NPI_PYTHON_RESOURCE_DIR` — directory holding the bundled manifest/archive for a host launched from a source checkout
+- `NPI_ENV_DIR` — overrides the host runtime/environment base (default `~/.local/share/npi/env`)
 - `PI_PY` / `PI_JS` — per-backend exposure overrides
 - `PI_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks
 - `PI_PYTHON_INTEGRATION=1` — enable gated integration tests that spawn a real Python

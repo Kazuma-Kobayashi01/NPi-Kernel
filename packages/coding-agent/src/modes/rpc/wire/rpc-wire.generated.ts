@@ -541,7 +541,7 @@ export type UsageLimitState = UsageLimitLowPriority | UsageLimitWrapUp;
 export interface UiState {
 	ui_id: string;
 	session_id: string;
-	status: "waiting_input" | "submitted" | "cancelled" | "expired";
+	status: "waiting_input" | "submitted" | "cancelled" | "expired" | "rendered";
 	rendered: boolean;
 	task_id?: string;
 	message_id?: string;

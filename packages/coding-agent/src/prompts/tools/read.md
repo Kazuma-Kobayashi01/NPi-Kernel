@@ -1,4 +1,4 @@
-Use `read` for static web; browser only if needed.
+`read` fetches one known URL or local path; it is not web search. Discover links with `web_search` first, then `read` the URL you actually need. Web pages return as reader text/markdown; images are decoded only when the image itself is the target, never bulk-downloaded from page markup. Browser automation exists only through the eval `browser` prelude when the session enables it, and there is no `web.fetch` or `web.image` tool.
 
 Put line ranges in `path`, never a separate range/offset/limit parameter: `{"path":"notes.txt:450-455"}` reads lines 450-455; `{"path":"notes.txt:-5"}` reads the last 5. Include the selector on every ranged call; repeating a bare path does not advance through the file.
 

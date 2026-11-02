@@ -1,4 +1,10 @@
-import type { AgentOptions, AgentTelemetryConfig, AgentTool, AgentToolContext, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import type {
+	AgentOptions,
+	AgentTelemetryConfig,
+	AgentTool,
+	AgentToolContext,
+	ThinkingLevel,
+} from "@oh-my-pi/pi-agent-core";
 import type { EditStore } from "@oh-my-pi/pi-natives";
 import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@oh-my-pi/pi-ai";
 import { logger } from "@oh-my-pi/pi-utils";
@@ -68,6 +74,7 @@ import { MemoryRecallTool } from "./memory-recall";
 import { MemoryReflectTool } from "./memory-reflect";
 import { MemoryRetainTool } from "./memory-retain";
 import { wrapToolWithMetaNotice } from "./output-meta";
+import { PythonTool } from "./python";
 import { ReadTool } from "./read";
 import type { PlanProposalHandler } from "./resolve";
 import { SecurityScanTool } from "./security-scan";
@@ -145,6 +152,7 @@ export * from "./memory-edit";
 export * from "./memory-recall";
 export * from "./memory-reflect";
 export * from "./memory-retain";
+export * from "./python";
 export * from "./read";
 export * from "./report-tool-issue";
 export * from "./resolve";
@@ -580,6 +588,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
 	debug: DebugTool.createIf,
 	ida: IdaTool.createIf,
 	eval: s => new EvalTool(s),
+	python: s => new PythonTool(s),
 	github: GithubTool.createIf,
 	glob: s => new GlobTool(s, { rootPathAlias: true }),
 	grep: s => new GrepTool(s),

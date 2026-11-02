@@ -704,7 +704,7 @@ class UsageLimitWrapUp:
 class UiState:
     ui_id: str
     session_id: str
-    status: Literal["waiting_input", "submitted", "cancelled", "expired"]
+    status: Literal["waiting_input", "submitted", "cancelled", "expired", "rendered"]
     rendered: bool
     task_id: str | None = None
     message_id: str | None = None
@@ -2186,7 +2186,7 @@ def parse_ui_state(value: object, path: str = "UiState") -> UiState:
     return UiState(
         ui_id=required(payload, "ui_id", decode_str, path),
         session_id=required(payload, "session_id", decode_str, path),
-        status=required(payload, "status", cast('Decoder[Literal["waiting_input", "submitted", "cancelled", "expired"]]', literal(frozenset({"waiting_input", "submitted", "cancelled", "expired"}))), path),
+        status=required(payload, "status", cast('Decoder[Literal["waiting_input", "submitted", "cancelled", "expired", "rendered"]]', literal(frozenset({"waiting_input", "submitted", "cancelled", "expired", "rendered"}))), path),
         rendered=required(payload, "rendered", decode_bool, path),
         task_id=optional(payload, "task_id", decode_str, path),
         message_id=optional(payload, "message_id", decode_str, path),

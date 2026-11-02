@@ -168,6 +168,7 @@ export class GenerativeUiController {
 		await this.#session.waitForMessagePersistence();
 		const origin = this.#session.sessionManager.getBranchView().findLast(entry => entry.type === "message" && entry.message.role === "assistant" &&
 			entry.message.content.some(block => block.type === "toolCall" && block.id === toolCallId && block.name === "ui.present"));
+		if (!toolCallId || !origin) throw new Error("ui.present requires an assistant tool call in the current branch");
 		const existing = [...this.#interactions().values()].find(({ presentation }) =>
 			presentation.task_id === toolCallId && presentation.message_id === origin.id);
 		if (existing) return existing.state;
@@ -194,7 +195,7 @@ export class GenerativeUiController {
 		return interaction;
 	}
 	async rendered(ui_id: unknown, session_id: unknown): Promise<UiStateDetails> {
-		const { state, presentation } = this.#lookup(ui_id, session_id);
+		const { state } = this.#lookup(ui_id, session_id);
 		if (state.rendered || state.status !== "waiting_input") return state;
 		return this.#recordState({ ...state, rendered: true });
 	}

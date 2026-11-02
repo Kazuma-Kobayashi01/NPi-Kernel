@@ -127,7 +127,7 @@ export const stateDefs = {
 		session_id: "string",
 		"task_id?": "string",
 		"message_id?": "string",
-		status: "'waiting_input' | 'submitted' | 'cancelled' | 'expired'",
+		status: "'waiting_input' | 'submitted' | 'cancelled' | 'expired' | 'rendered'",
 		rendered: "boolean",
 		"reason?": "string",
 		"continuation?": "'pending' | 'admitted'",
