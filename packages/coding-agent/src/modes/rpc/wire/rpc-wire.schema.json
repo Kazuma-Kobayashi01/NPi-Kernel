@@ -296,6 +296,61 @@
 				"clientOmit": []
 			},
 			{
+				"name": "set_generative_ui",
+				"doc": "Enable the host-validated ui.present tool for a Generative UI client.",
+				"params": "SetGenerativeUiParams",
+				"result": "SetGenerativeUiResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "submit_ui",
+				"doc": "Durably receive values and resume the originating task. Identical values may retry pending admission only.",
+				"params": "SubmitUiParams",
+				"result": "UiState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": "prompt_result",
+				"clientOmit": []
+			},
+			{
+				"name": "render_ui",
+				"doc": "Idempotently acknowledge an actual frontend form mount, not tool completion.",
+				"params": "RenderUiParams",
+				"result": "UiState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "cancel_ui",
+				"doc": "Persist cancellation without invoking the model.",
+				"params": "CancelUiParams",
+				"result": "UiState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "set_interaction_policy",
+				"doc": "Set this session's interaction policy and refresh its base prompt.",
+				"params": "SetInteractionPolicyParams",
+				"result": "SetInteractionPolicyResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "set_host_uri_schemes",
 				"doc": "Replace the host-owned URI schemes.",
 				"params": "SetHostUriSchemesParams",
@@ -2872,6 +2927,85 @@
 			],
 			"description": "Provider-neutral state of an account past its usage limit, discriminated by `stage`."
 		},
+		"UiState": {
+			"type": "object",
+			"properties": {
+				"ui_id": {
+					"type": "string"
+				},
+				"session_id": {
+					"type": "string"
+				},
+				"status": {
+					"enum": [
+						"waiting_input",
+						"submitted",
+						"cancelled",
+						"expired"
+					],
+					"type": "string"
+				},
+				"rendered": {
+					"type": "boolean"
+				},
+				"task_id": {
+					"type": "string"
+				},
+				"message_id": {
+					"type": "string"
+				},
+				"reason": {
+					"type": "string"
+				},
+				"continuation": {
+					"enum": [
+						"pending",
+						"admitted"
+					],
+					"type": "string"
+				},
+				"continuation_error": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"ui_id",
+				"session_id",
+				"status",
+				"rendered"
+			]
+		},
+		"PendingUi": {
+			"type": "object",
+			"properties": {
+				"ui_id": {
+					"type": "string"
+				},
+				"session_id": {
+					"type": "string"
+				},
+				"task_id": {
+					"type": "string"
+				},
+				"message_id": {
+					"type": "string"
+				},
+				"status": {
+					"const": "waiting_input"
+				},
+				"rendered": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"ui_id",
+				"session_id",
+				"task_id",
+				"message_id",
+				"status",
+				"rendered"
+			]
+		},
 		"SessionState": {
 			"type": "object",
 			"properties": {
@@ -2909,6 +3043,17 @@
 				},
 				"sessionName": {
 					"type": "string"
+				},
+				"pendingUi": {
+					"anyOf": [
+						{
+							"$ref": "#/$defs/PendingUi"
+						},
+						{
+							"type": "null"
+						}
+					],
+					"default": null
 				},
 				"autoCompactionEnabled": {
 					"type": "boolean",
@@ -6678,6 +6823,129 @@
 			},
 			"required": [
 				"toolNames"
+			]
+		},
+		"SetGenerativeUiParams": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"enabled"
+			]
+		},
+		"SetGenerativeUiResult": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"enabled"
+			]
+		},
+		"SubmitUiParams": {
+			"type": "object",
+			"properties": {
+				"ui_id": {
+					"type": "string"
+				},
+				"session_id": {
+					"type": "string"
+				},
+				"values": {
+					"type": "object",
+					"properties": {},
+					"additionalProperties": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "number"
+							},
+							{
+								"type": "boolean"
+							},
+							{
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							}
+						]
+					}
+				}
+			},
+			"required": [
+				"ui_id",
+				"session_id",
+				"values"
+			]
+		},
+		"RenderUiParams": {
+			"type": "object",
+			"properties": {
+				"ui_id": {
+					"type": "string"
+				},
+				"session_id": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"ui_id",
+				"session_id"
+			]
+		},
+		"CancelUiParams": {
+			"type": "object",
+			"properties": {
+				"ui_id": {
+					"type": "string"
+				},
+				"session_id": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"ui_id",
+				"session_id"
+			]
+		},
+		"SetInteractionPolicyParams": {
+			"type": "object",
+			"properties": {
+				"policy": {
+					"enum": [
+						"standard",
+						"aggressive",
+						"minimal"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"policy"
+			]
+		},
+		"SetInteractionPolicyResult": {
+			"type": "object",
+			"properties": {
+				"policy": {
+					"enum": [
+						"standard",
+						"aggressive",
+						"minimal"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"policy"
 			]
 		},
 		"SetHostUriSchemesParams": {

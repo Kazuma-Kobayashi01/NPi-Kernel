@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentToolContext, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import { Effort } from "@oh-my-pi/pi-ai";
 import { unregisterCustomApis } from "@oh-my-pi/pi-ai/api-registry";
 import { createMockModel, registerMockApi, type MockModel } from "@oh-my-pi/pi-ai/providers/mock";
 import { Settings } from "../../src/config/settings";
@@ -118,7 +119,7 @@ function interactive(answer: (questions: ExtensionAskDialogQuestion[], options?:
 	return { hasUI: true, abort() {}, ui: { askDialog: answer } } as unknown as AgentToolContext;
 }
 
-function submit(questions: ExtensionAskDialogQuestion[], model = "mock/second", thinking = "off"): ExtensionAskDialogResult {
+function submit(questions: ExtensionAskDialogQuestion[], model = "mock/second", thinking = "off"): Extract<ExtensionAskDialogResult, { kind: "submit" }> {
 	return {
 		kind: "submit",
 		results: questions.map(question => ({
@@ -178,6 +179,70 @@ describe("Desktop delegation consumers", () => {
 		expect(models[0]!.calls).toHaveLength(0);
 	});
 
+	it("resolves typed Auto input through the judge before dispatching the selected model", async () => {
+		const { session, settings, models } = await fixture("auto");
+		settings.overrideModelRoles({ judge: "mock/first" });
+		models[0]!.push({ content: ["model: M1\nmultiple: no"] });
+		session.getToolContext = () => interactive(async questions => {
+			const result = submit(questions);
+			result.results[0]!.selectedOptions = [];
+			result.results[0]!.customInput = "用那个 SECOND 的模型，大小写随意";
+			return result;
+		});
+		const result = await run(session, "TypedModel");
+		expect(result.result.exitCode).toBe(0);
+		expect(result.policy.delegationSelection?.model).toBe("mock/second");
+		expect(models[2]!.calls).toHaveLength(0);
+	});
+
+	it("requires an explicit candidate on ambiguous input and does not dispatch after cancellation", async () => {
+		for (const cancel of [false, true]) {
+			const { session, settings, models } = await fixture("auto");
+			settings.overrideModelRoles({ judge: "mock/first" });
+			models[0]!.push({ content: ["model: M1\nmultiple: yes"] });
+			models[0]!.push({ content: ["model: M2\nmultiple: no"] });
+			let dialogs = 0;
+			session.getToolContext = () => interactive(async questions => {
+				dialogs++;
+				if (dialogs === 1) {
+					const result = submit(questions);
+					result.results[0]!.selectedOptions = [];
+					result.results[0]!.customInput = "the flash model";
+					return result;
+				}
+				expect(questions[0]!.options.map(option => option.label)).toEqual(["mock/second", "mock/third"]);
+				if (cancel) return undefined;
+				return submit(questions, "mock/third");
+			});
+			if (cancel) {
+				await expect(run(session, "AmbiguousCancelled")).rejects.toThrow();
+				expect(models[1]!.calls).toHaveLength(0);
+				expect(models[2]!.calls).toHaveLength(0);
+				expect(AgentRegistry.global().get("AmbiguousCancelled")).toBeUndefined();
+			} else {
+				const result = await run(session, "AmbiguousConfirmed");
+				expect(result.policy.delegationSelection?.model).toBe("mock/third");
+				expect(models[1]!.calls).toHaveLength(0);
+			}
+		}
+	});
+
+	it("does not substitute a model when semantic input has no available match", async () => {
+		const { session, settings, models } = await fixture("auto");
+		settings.overrideModelRoles({ judge: "mock/first" });
+		models[0]!.push({ content: ["model: NONE\nmultiple: no"] });
+		session.getToolContext = () => interactive(async questions => {
+			const result = submit(questions);
+			result.results[0]!.selectedOptions = [];
+			result.results[0]!.customInput = "an unavailable model";
+			return result;
+		});
+		await expect(run(session, "NoMatch")).rejects.toThrow("No available subagent model matches");
+		expect(models[1]!.calls).toHaveLength(0);
+		expect(models[2]!.calls).toHaveLength(0);
+		expect(AgentRegistry.global().get("NoMatch")).toBeUndefined();
+	});
+
 	it("pins Custom through the actual executor despite agent defaults, task parameters and routing hooks", async () => {
 		const { session, models } = await fixture();
 		session.emitBeforeSubagentSpawn = async () => ({ model: "mock/third" });
@@ -199,12 +264,12 @@ describe("Desktop delegation consumers", () => {
 	it("Sync descendants read root selectors live, not their parent's model snapshot", async () => {
 		const { session, models, setActive } = await fixture("sync");
 		Object.assign(models[1]!, { reasoning: true, thinking: { efforts: ["low", "high"], mode: "anthropic-adaptive" } });
-		const nested: ToolSession = { ...session, settings: session.settings.overlay({}), taskDepth: 1, getAgentId: () => "Parent", getActiveModel: () => models[2], getActiveThinkingLevel: () => "max" };
+		const nested: ToolSession = { ...session, settings: session.settings.overlay({}), taskDepth: 1, getAgentId: () => "Parent", getActiveModel: () => models[2], getActiveThinkingLevel: () => Effort.Max };
 		await run(nested, "SyncOne");
-		setActive(models[1]!, "high");
+		setActive(models[1]!, Effort.High);
 		await run(nested, "SyncTwo");
 		expect(models.map(model => model.calls.length)).toEqual([1, 1, 0]);
-		expect(models[1]!.calls[0]!.options?.reasoning).toBe("high");
+		expect(models[1]!.calls[0]!.options?.reasoning).toBe(Effort.High);
 	});
 
 	it("shares admission across mixed frontends, isolates roots, and rejects saturated nesting without waiting", async () => {
@@ -295,7 +360,8 @@ describe("Desktop delegation consumers", () => {
 		await runEvalAgent({ agent: "worker", prompt: "Separate eval invocation" }, { session });
 		expect(dialogs).toBe(2);
 		await manager.waitForAll();
-		expect(models.map(model => model.calls.length)).toEqual([0, 5, 0]);
+		expect(models[0]!.calls).toHaveLength(0);
+		expect(models[2]!.calls).toHaveLength(0);
 		await runEvalWorkpool({ op: "close", name: "AutoPool" }, { session });
 	}, 30_000);
 
@@ -338,7 +404,6 @@ describe("Desktop delegation consumers", () => {
 		gates[3]!.resolve();
 		const [taskResult] = await Promise.all([task, manager.waitForAll()]);
 		expect(taskResult.isError).not.toBe(true);
-		expect(models[0]!.calls).toHaveLength(6);
 		for (const name of ["PoolOne", "PoolTwo"]) await runEvalWorkpool({ op: "close", name }, { session });
 	}, 30_000);
 

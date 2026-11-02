@@ -13,7 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type AgentMessage, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import { type AgentMessage, type AgentTool, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import type { ImageContent } from "@oh-my-pi/pi-ai";
@@ -82,8 +82,9 @@ import {
 	formatPersistenceNotice,
 } from "../persistence-failure";
 import { initializeExtensions } from "../runtime-init";
-import { cfgSpellingAutocomplete } from "../settings";
+import { cfgInteractionPolicy, cfgSpellingAutocomplete } from "../settings";
 import { isRpcHostToolResult, isRpcHostToolUpdate, RpcHostToolBridge } from "./host-tools";
+import { UiContinuationAdmissionError, UiPresentTool, generativeUiHistoryMessage, uiContinuationMessage } from "./generative-ui";
 import { isRpcHostUriResult, RpcHostUriBridge } from "./host-uris";
 import { MAX_RPC_FRAME_BYTES, MAX_RPC_REASSEMBLED_BYTES, RpcFrameEncoder } from "./rpc-frame";
 import { claimRpcInput, readRpcInputFrames } from "./rpc-input";
@@ -501,6 +502,7 @@ export function dispatchRpcInputFrame(parsed: unknown, deps: RpcInputFrameDeps):
 		command.type === "steer" ||
 		command.type === "dictation_start" ||
 		command.type === "follow_up" ||
+		command.type === "submit_ui" ||
 		command.type === "steer_subagent"
 	) {
 		const task = (async () => {
@@ -1478,6 +1480,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 	const pendingExtensionRequests = new RpcPendingExtensionRequests();
 	const hostToolBridge = new RpcHostToolBridge(output);
+	let generativeUiEnabled = false;
+	let externalHostTools: AgentTool[] = [];
+	const generativeUi = session.generativeUi;
+	generativeUi.setAvailable(() => generativeUiEnabled && sessionChangesInProgress === 0 && !shutdownState.requested);
+	const uiPresentTool = new UiPresentTool(generativeUi);
+	const refreshHostTools = (uiEnabled = generativeUiEnabled) => session.refreshRpcHostTools([...externalHostTools, ...(uiEnabled ? [uiPresentTool] : [])]);
 	const hostUriBridge = new RpcHostUriBridge(output);
 	// Live frames go straight to `output`, so `set_event_filter` (session events only) never drops them.
 	const liveBridge = new RpcLiveBridge(session, output, createLiveSession);
@@ -2308,6 +2316,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					sessionFile: session.sessionFile,
 					sessionId: session.sessionId,
 					sessionName: session.sessionName,
+					pendingUi: generativeUi.pendingUi,
 					autoCompactionEnabled: session.autoCompactionEnabled,
 					queuedMessageCount: session.queuedMessageCount,
 					hasPendingAsyncWork: session.hasPendingAsyncWork(),
@@ -2435,9 +2444,62 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "set_host_tools": {
 				const tools = normalizeHostToolDefinitions(command.tools);
-				const rpcTools = hostToolBridge.setTools(tools);
-				await session.refreshRpcHostTools(rpcTools);
+				if (tools.some(tool => tool.name === "ui.present")) throw new Error("ui.present is reserved for Generative UI");
+				externalHostTools = hostToolBridge.setTools(tools);
+				await refreshHostTools();
 				return success(id, "set_host_tools", { toolNames: tools.map(tool => tool.name) });
+			}
+
+			case "set_generative_ui": {
+				if (typeof command.enabled !== "boolean") throw new Error("enabled must be a boolean");
+				await refreshHostTools(command.enabled);
+				generativeUiEnabled = command.enabled;
+				return success(id, command.type, { enabled: generativeUiEnabled });
+			}
+
+			case "set_interaction_policy": {
+				if (command.policy !== "standard" && command.policy !== "aggressive" && command.policy !== "minimal")
+					throw new Error("Invalid interaction policy");
+				cfgInteractionPolicy.override(session, command.policy);
+				await session.refreshBaseSystemPrompt();
+				return success(id, command.type, { policy: command.policy });
+			}
+
+			case "render_ui":
+				return success(id, command.type, await generativeUi.rendered(command.ui_id, command.session_id));
+			case "cancel_ui":
+				return success(id, command.type, await generativeUi.cancel(command.ui_id, command.session_id));
+
+			case "submit_ui": {
+				const details = await generativeUi.recordSubmission(command.ui_id, command.session_id, command.values);
+				if (session.sessionId !== details.session_id || sessionChangesInProgress > 0 || shutdownState.requested)
+					throw new Error("Session changed before UI continuation admission");
+				const ticket = promptResults.begin(id);
+				let admissionError: Error | undefined;
+				let admitted = false;
+				await watchAndReportPromptResult({
+					ticket,
+					startPrompt: onPromptAdmitted => generativeUi.continueSubmission(details, () => session.promptCustomMessage(
+						{ ...uiContinuationMessage, details: { ui_id: details.ui_id, task_id: details.task_id, message_id: details.message_id } },
+						{
+							streamingBehavior: "followUp",
+							onPromptAdmitted: () => { admitted = true; onPromptAdmitted(); },
+						},
+					)),
+					results: promptResults,
+					onError: promptError => {
+						if (admitted) onPromptError(id, "submit_ui")(promptError);
+						else admissionError = promptError;
+					},
+					extensionUserMessageTracker,
+				});
+				if (admissionError instanceof UiContinuationAdmissionError) throw admissionError;
+				// The durable receipt is authoritative even if admission was interrupted.
+				// A pending continuation can be retried with exactly the same values.
+				return success(id, command.type, {
+					...generativeUi.getState(details.ui_id),
+					...(admissionError ? { continuation_error: admissionError.message } : {}),
+				});
 			}
 
 			case "live_start":
@@ -2773,7 +2835,12 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 				const messages: AgentMessage[] = [];
 				for (const entry of session.sessionManager.getBranchView()) {
 					if (entry.type === "message") messages.push(entry.message);
+					else {
+						const message = generativeUiHistoryMessage(entry);
+						if (message) messages.push(message);
+					}
 				}
+				messages.push(...generativeUi.historyStates());
 				return success(id, "get_messages", { messages });
 			}
 

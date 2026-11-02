@@ -144,6 +144,37 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 		unwrap: "toolNames",
 	},
 	{
+		name: "set_generative_ui",
+		doc: "Enable the host-validated ui.present tool for a Generative UI client.",
+		params: { enabled: "boolean" },
+		result: { enabled: "boolean" },
+	},
+	{
+		name: "submit_ui",
+		doc: "Durably receive values and resume the originating task. Identical values may retry pending admission only.",
+		params: { ui_id: "string", session_id: "string", values: "Record<string, string | number | boolean | string[]>" },
+		result: "UiState",
+		completion: "prompt_result",
+	},
+	{
+		name: "render_ui",
+		doc: "Idempotently acknowledge an actual frontend form mount, not tool completion.",
+		params: { ui_id: "string", session_id: "string" },
+		result: "UiState",
+	},
+	{
+		name: "cancel_ui",
+		doc: "Persist cancellation without invoking the model.",
+		params: { ui_id: "string", session_id: "string" },
+		result: "UiState",
+	},
+	{
+		name: "set_interaction_policy",
+		doc: "Set this session's interaction policy and refresh its base prompt.",
+		params: { policy: "'standard' | 'aggressive' | 'minimal'" },
+		result: { policy: "'standard' | 'aggressive' | 'minimal'" },
+	},
+	{
 		name: "set_host_uri_schemes",
 		doc: "Replace the host-owned URI schemes.",
 		params: { schemes: "HostUriSchemeDefinition[]" },

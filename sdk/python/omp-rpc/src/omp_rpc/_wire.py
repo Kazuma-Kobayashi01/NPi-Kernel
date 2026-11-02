@@ -701,6 +701,29 @@ class UsageLimitWrapUp:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class UiState:
+    ui_id: str
+    session_id: str
+    status: Literal["waiting_input", "submitted", "cancelled", "expired"]
+    rendered: bool
+    task_id: str | None = None
+    message_id: str | None = None
+    reason: str | None = None
+    continuation: Literal["pending", "admitted"] | None = None
+    continuation_error: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class PendingUi:
+    ui_id: str
+    session_id: str
+    task_id: str
+    message_id: str
+    status: Literal["waiting_input"] = "waiting_input"
+    rendered: bool
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class SessionState:
     session_id: str
     model: ModelInfo | None = None
@@ -712,6 +735,7 @@ class SessionState:
     interrupt_mode: InterruptMode = "immediate"
     session_file: str | None = None
     session_name: str | None = None
+    pending_ui: PendingUi | None = None
     auto_compaction_enabled: bool = False
     fast_mode_enabled: bool = False
     fast_mode_active: bool = False
@@ -1724,6 +1748,16 @@ class NegotiateProtocolResult:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class SetGenerativeUiResult:
+    enabled: bool
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class SetInteractionPolicyResult:
+    policy: Literal["standard", "aggressive", "minimal"]
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class LiveConnectResult:
     voice: str
     sdp_answer: str
@@ -2147,6 +2181,33 @@ def parse_usage_limit_wrap_up(value: object, path: str = "UsageLimitWrapUp") -> 
     )
 
 
+def parse_ui_state(value: object, path: str = "UiState") -> UiState:
+    payload = expect_object(value, path)
+    return UiState(
+        ui_id=required(payload, "ui_id", decode_str, path),
+        session_id=required(payload, "session_id", decode_str, path),
+        status=required(payload, "status", cast('Decoder[Literal["waiting_input", "submitted", "cancelled", "expired"]]', literal(frozenset({"waiting_input", "submitted", "cancelled", "expired"}))), path),
+        rendered=required(payload, "rendered", decode_bool, path),
+        task_id=optional(payload, "task_id", decode_str, path),
+        message_id=optional(payload, "message_id", decode_str, path),
+        reason=optional(payload, "reason", decode_str, path),
+        continuation=optional(payload, "continuation", cast('Decoder[Literal["pending", "admitted"]]', literal(frozenset({"pending", "admitted"}))), path),
+        continuation_error=optional(payload, "continuation_error", decode_str, path),
+    )
+
+
+def parse_pending_ui(value: object, path: str = "PendingUi") -> PendingUi:
+    payload = expect_object(value, path)
+    required(payload, "status", cast('Decoder[Literal["waiting_input"]]', literal(frozenset({"waiting_input"}))), path)
+    return PendingUi(
+        ui_id=required(payload, "ui_id", decode_str, path),
+        session_id=required(payload, "session_id", decode_str, path),
+        task_id=required(payload, "task_id", decode_str, path),
+        message_id=required(payload, "message_id", decode_str, path),
+        rendered=required(payload, "rendered", decode_bool, path),
+    )
+
+
 def parse_session_state(value: object, path: str = "SessionState") -> SessionState:
     payload = expect_object(value, path)
     return SessionState(
@@ -2160,6 +2221,7 @@ def parse_session_state(value: object, path: str = "SessionState") -> SessionSta
         interrupt_mode=defaulted(payload, "interruptMode", _decode_interrupt_mode, path, "immediate"),
         session_file=optional(payload, "sessionFile", decode_str, path),
         session_name=optional(payload, "sessionName", decode_str, path),
+        pending_ui=defaulted(payload, "pendingUi", nullable(parse_pending_ui), path, None),
         auto_compaction_enabled=defaulted(payload, "autoCompactionEnabled", decode_bool, path, False),
         fast_mode_enabled=defaulted(payload, "fastModeEnabled", decode_bool, path, False),
         fast_mode_active=defaulted(payload, "fastModeActive", decode_bool, path, False),
@@ -3300,6 +3362,20 @@ def parse_negotiate_protocol_result(value: object, path: str = "NegotiateProtoco
     )
 
 
+def parse_set_generative_ui_result(value: object, path: str = "SetGenerativeUiResult") -> SetGenerativeUiResult:
+    payload = expect_object(value, path)
+    return SetGenerativeUiResult(
+        enabled=required(payload, "enabled", decode_bool, path),
+    )
+
+
+def parse_set_interaction_policy_result(value: object, path: str = "SetInteractionPolicyResult") -> SetInteractionPolicyResult:
+    payload = expect_object(value, path)
+    return SetInteractionPolicyResult(
+        policy=required(payload, "policy", cast('Decoder[Literal["standard", "aggressive", "minimal"]]', literal(frozenset({"standard", "aggressive", "minimal"}))), path),
+    )
+
+
 def parse_live_connect_result(value: object, path: str = "LiveConnectResult") -> LiveConnectResult:
     payload = expect_object(value, path)
     return LiveConnectResult(
@@ -3590,6 +3666,40 @@ class WireClient:
         """Read the raw session tree."""
         params: dict[str, object] = {}
         return parse_session_tree(self._command("get_tree", params), "get_tree")
+
+    def set_generative_ui(self, enabled: bool) -> SetGenerativeUiResult:
+        """Enable the host-validated ui.present tool for a Generative UI client."""
+        params: dict[str, object] = {}
+        params["enabled"] = enabled
+        return parse_set_generative_ui_result(self._command("set_generative_ui", params), "set_generative_ui")
+
+    def submit_ui(self, ui_id: str, session_id: str, values: dict[str, str | float | bool | tuple[str, ...]]) -> UiState:
+        """Durably receive values and resume the originating task. Identical values may retry pending admission only."""
+        params: dict[str, object] = {}
+        params["ui_id"] = ui_id
+        params["session_id"] = session_id
+        params["values"] = values
+        return parse_ui_state(self._command("submit_ui", params), "submit_ui")
+
+    def render_ui(self, ui_id: str, session_id: str) -> UiState:
+        """Idempotently acknowledge an actual frontend form mount, not tool completion."""
+        params: dict[str, object] = {}
+        params["ui_id"] = ui_id
+        params["session_id"] = session_id
+        return parse_ui_state(self._command("render_ui", params), "render_ui")
+
+    def cancel_ui(self, ui_id: str, session_id: str) -> UiState:
+        """Persist cancellation without invoking the model."""
+        params: dict[str, object] = {}
+        params["ui_id"] = ui_id
+        params["session_id"] = session_id
+        return parse_ui_state(self._command("cancel_ui", params), "cancel_ui")
+
+    def set_interaction_policy(self, policy: Literal["standard", "aggressive", "minimal"]) -> SetInteractionPolicyResult:
+        """Set this session's interaction policy and refresh its base prompt."""
+        params: dict[str, object] = {}
+        params["policy"] = policy
+        return parse_set_interaction_policy_result(self._command("set_interaction_policy", params), "set_interaction_policy")
 
     def set_subagent_subscription(self, level: SubagentSubscriptionLevel) -> SubagentSubscriptionLevel:
         """Select which subagent frames are forwarded."""
@@ -4292,6 +4402,7 @@ __all__ = [
     "NotifyUiRequest",
     "OpenSessionResult",
     "OpenUrlUiRequest",
+    "PendingUi",
     "PromoteQueuedMessageResult",
     "PromptAck",
     "PromptError",
@@ -4321,6 +4432,8 @@ __all__ = [
     "SessionStats",
     "SessionTree",
     "SetEditorTextUiRequest",
+    "SetGenerativeUiResult",
+    "SetInteractionPolicyResult",
     "SetStatusUiRequest",
     "SetTitleUiRequest",
     "SetWidgetUiRequest",
@@ -4364,6 +4477,7 @@ __all__ = [
     "TtsrTriggeredEvent",
     "TurnEndEvent",
     "TurnStartEvent",
+    "UiState",
     "Usage",
     "UsageCost",
     "UsageLimitLowPriority",
@@ -4482,6 +4596,7 @@ __all__ = [
     "parse_notify_ui_request",
     "parse_open_session_result",
     "parse_open_url_ui_request",
+    "parse_pending_ui",
     "parse_promote_queued_message_result",
     "parse_prompt_ack",
     "parse_prompt_error",
@@ -4507,6 +4622,8 @@ __all__ = [
     "parse_session_stats",
     "parse_session_tree",
     "parse_set_editor_text_ui_request",
+    "parse_set_generative_ui_result",
+    "parse_set_interaction_policy_result",
     "parse_set_status_ui_request",
     "parse_set_title_ui_request",
     "parse_set_widget_ui_request",
@@ -4540,6 +4657,7 @@ __all__ = [
     "parse_ttsr_triggered_event",
     "parse_turn_end_event",
     "parse_turn_start_event",
+    "parse_ui_state",
     "parse_usage",
     "parse_usage_cost",
     "parse_usage_limit_low_priority",

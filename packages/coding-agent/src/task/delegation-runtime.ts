@@ -1,8 +1,10 @@
 import type { AgentToolContext, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
+import { judgeQuestions, type Model } from "@oh-my-pi/pi-ai";
 import { resolveThinkingLevelForModel } from "@oh-my-pi/pi-tui/thinking";
 import { formatModelStringWithRouting, resolveModelOverride } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
+import { journalJudgmentUsage, resolveJudge } from "../judgment";
+import modelQuestions from "../prompts/judge/subagent-model.json" with { type: "json" };
 import { cfgRetryModelFallback, cfgRetryUsageAwareFallback } from "../session/settings";
 import type { ToolSession } from "../tools";
 import { AskTool } from "../tools/ask";
@@ -143,14 +145,14 @@ const thinkingLevels = SUBAGENT_THINKING_LEVELS;
 
 export function validateDelegationSelection(session: ToolSession, selection: DelegationSelection): Model {
 	const owner = delegationOwner(session);
-	const resolved = resolveModelOverride([selection.model], owner.modelRegistry!, owner.settings);
-	if (!resolved.model || formatModelStringWithRouting(resolved.model) !== selection.model || !owner.modelRegistry!.hasConfiguredAuth(resolved.model)) {
+	const resolved = resolveModelOverride([selection.model], owner.modelRegistry!, owner.settings).model;
+	if (!resolved || formatModelStringWithRouting(resolved) !== selection.model || !owner.modelRegistry!.hasConfiguredAuth(resolved)) {
 		throw new Error(`Subagent model is unavailable: ${selection.model || "(empty Custom model)"}`);
 	}
 	if (!thinkingLevels.includes(selection.thinking)) throw new Error(`Invalid subagent thinking level: ${selection.thinking}`);
-	const supported = resolveThinkingLevelForModel(resolved.model, selection.thinking) ?? "off";
+	const supported = resolveThinkingLevelForModel(resolved, selection.thinking) ?? "off";
 	if (supported !== selection.thinking) throw new Error(`Thinking level ${selection.thinking} is not supported by ${selection.model}.`);
-	return resolved.model;
+	return resolved;
 }
 
 function fixedSelection(owner: ToolSession, preferences: SubagentPreferences): DelegationSelection {
@@ -159,6 +161,69 @@ function fixedSelection(owner: ToolSession, preferences: SubagentPreferences): D
 	const thinking = owner.getActiveThinkingLevel?.() ?? "off";
 	if (!thinkingLevels.includes(thinking as SubagentPreferences["thinking"])) throw new Error(`Invalid root thinking level: ${thinking}`);
 	return { model: model ? formatModelStringWithRouting(model) : "", thinking: thinking as SubagentPreferences["thinking"] };
+}
+
+const selectionQuestions = judgeQuestions(modelQuestions);
+
+/** Only free-text Auto answers need semantic interpretation; persisted selectors stay exact. */
+async function resolveTypedModel(
+	owner: ToolSession,
+	request: string,
+	signal: AbortSignal | undefined,
+	toolContext: AgentToolContext | undefined,
+): Promise<string> {
+	const registry = owner.modelRegistry!;
+	const available = registry.getAvailable().filter(model => registry.hasConfiguredAuth(model));
+	const remaining = new Map(available.map((model, index) => [`M${index}`, model]));
+	const matches: Model[] = [];
+	const judge = resolveJudge({
+		settings: owner.settings,
+		registry,
+		sessionModel: owner.getActiveModel?.(),
+		sessionId: owner.getSessionId?.() ?? undefined,
+		purpose: "subagent-model-selection",
+		onUsage: journalJudgmentUsage(owner.sessionManager),
+		costGate: owner.costGate,
+	});
+	while (remaining.size > 0) {
+		signal?.throwIfAborted();
+		const criteria: Record<string, string | null> = { NONE: null };
+		const candidates = Array.from(remaining, ([key, model]) => {
+			criteria[key] = null;
+			return { key, selector: formatModelStringWithRouting(model), name: model.name, provider: model.provider };
+		});
+		const { answers } = await judge.judge({
+			state: { request, candidates },
+			questions: {
+				model: { ...selectionQuestions.model, criteria },
+				multiple: selectionQuestions.multiple,
+			},
+		}, { signal });
+		const key = answers.model.choice;
+		if (key === "NONE") break;
+		const model = remaining.get(key);
+		if (!model) throw new Error(`Model judgment returned an unknown candidate: ${key}`);
+		matches.push(model);
+		remaining.delete(key);
+		if (answers.multiple.noul < 0.5) break;
+	}
+	signal?.throwIfAborted();
+	if (matches.length === 0) throw new Error(`No available subagent model matches: ${request}`);
+	if (matches.length === 1) return formatModelStringWithRouting(matches[0]!);
+	const selectors = matches.map(formatModelStringWithRouting);
+	const result = await new AskTool(owner, { disableTimeout: true }).execute("subagent-model-confirm", {
+		questions: [{
+			id: "model",
+			question: `Multiple available models match “${request}”. Which provider/model should this batch use?`,
+			options: matches.map((model, index) => ({ label: selectors[index]!, description: model.name })),
+		}],
+	}, signal, undefined, toolContext ?? owner.getToolContext?.());
+	const answer = result.details;
+	const selector = answer?.customInput ?? answer?.selectedOptions?.[0];
+	if (answer?.timedOut || !selector || !selectors.includes(selector)) {
+		throw new Error("Choose an explicit model candidate; no agents were started.");
+	}
+	return selector;
 }
 
 /** No UI work occurs during preflight; a caller explicitly resolves one selection per dispatch batch. */
@@ -196,7 +261,12 @@ export async function selectDelegationModel(
 		const thinkingValue = thinking?.customInput ?? thinking?.selectedOptions[0];
 		if (!modelValue || !thinkingValue || model?.timedOut || thinking?.timedOut) throw new Error("Subagent selection was cancelled; no agents were started.");
 		if (!thinkingLevels.includes(thinkingValue as SubagentPreferences["thinking"])) throw new Error(`Invalid subagent thinking level: ${thinkingValue}`);
-		selection = { model: modelValue.trim(), thinking: thinkingValue as SubagentPreferences["thinking"] };
+		selection = {
+			model: model?.customInput
+				? await resolveTypedModel(owner, modelValue.trim(), signal, toolContext)
+				: modelValue.trim(),
+			thinking: thinkingValue as SubagentPreferences["thinking"],
+		};
 		} finally {
 			ask.release();
 		}

@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Opt-in desktop Generative UI (`ui.present`) stage 2: 11 bounded controls (`text`, `input`, `textarea`, `number`, `slider`, `checkbox`, `switch`, `select`, `radio`, `multiselect`, `button`), task/message binding (`task_id`, `message_id`), graceful turn yield + pre-model gate while waiting for input, `render_ui` display acknowledgement, `cancel_ui` without model invocation, automatic expiry on new user tasks or branch switches, interrupted-continuation recovery, and model-independent `set_interaction_policy` (`standard` | `aggressive` | `minimal`).
+
+### Fixed
+
+- Auto subagent model selection interprets free-text names through the existing judge role instead of Slug/name guessing. Ambiguous providers/routes require explicit confirmation; no match, cancellation and judgment failure admit no agents. Explicit choices, Sync and saved Custom selectors retain exact model and thinking validation.
+
 ## [2.0.5] - 2026-11-02
 
 ### Added

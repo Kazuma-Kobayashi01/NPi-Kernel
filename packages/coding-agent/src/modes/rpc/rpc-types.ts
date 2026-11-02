@@ -31,6 +31,7 @@ import type { SubagentPreferences } from "../../task/delegation-preferences";
 import type { TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
 import type { LogoutAccount } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import type { LivePhase } from "@oh-my-pi/pi-tui/apps/live-visualizer";
+import type { PendingUi, UiStateDetails } from "./generative-ui";
 import type { RpcMessagesPage } from "./rpc-messages";
 import type { GoalModeState } from "../../goals/state";
 import type { RpcGoalOp, RpcGoalResult } from "./rpc-goal";
@@ -85,6 +86,11 @@ export type RpcCommand =
 	| { id?: string; type: "get_tree" }
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
 	| { id?: string; type: "set_host_tools"; tools: RpcHostToolDefinition[] }
+	| { id?: string; type: "set_generative_ui"; enabled: boolean }
+	| { id?: string; type: "submit_ui"; ui_id: string; session_id: string; values: Record<string, string | number | boolean | string[]> }
+	| { id?: string; type: "render_ui"; ui_id: string; session_id: string }
+	| { id?: string; type: "cancel_ui"; ui_id: string; session_id: string }
+	| { id?: string; type: "set_interaction_policy"; policy: "standard" | "aggressive" | "minimal" }
 	| { id?: string; type: "set_host_uri_schemes"; schemes: RpcHostUriSchemeDefinition[] }
 	| { id?: string; type: "set_subagent_subscription"; level: RpcSubagentSubscriptionLevel }
 	| ({ id?: string; type: "set_subagent_preferences" } & SubagentPreferences)
@@ -189,6 +195,7 @@ export interface RpcSessionState {
 	sessionFile?: string;
 	sessionId: string;
 	sessionName?: string;
+	pendingUi: PendingUi | null;
 	autoCompactionEnabled: boolean;
 	fastModeEnabled: boolean;
 	fastModeActive: boolean;
@@ -507,6 +514,11 @@ export type RpcResponse =
 	  }
 	| { id?: string; type: "response"; command: "set_todos"; success: true; data: { todoPhases: TodoPhase[] } }
 	| { id?: string; type: "response"; command: "set_host_tools"; success: true; data: { toolNames: string[] } }
+	| { id?: string; type: "response"; command: "set_generative_ui"; success: true; data: { enabled: boolean } }
+	| { id?: string; type: "response"; command: "submit_ui"; success: true; data: UiStateDetails }
+	| { id?: string; type: "response"; command: "render_ui"; success: true; data: UiStateDetails }
+	| { id?: string; type: "response"; command: "cancel_ui"; success: true; data: UiStateDetails }
+	| { id?: string; type: "response"; command: "set_interaction_policy"; success: true; data: { policy: "standard" | "aggressive" | "minimal" } }
 	| { id?: string; type: "response"; command: "set_host_uri_schemes"; success: true; data: { schemes: string[] } }
 	| {
 			id?: string;

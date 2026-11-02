@@ -16,6 +16,43 @@ Primary implementation:
 - `packages/agent/src/agent.ts`
 - `packages/agent/src/agent-loop.ts`
 
+## Generative UI (opt-in desktop hosts)
+
+Send `{"id":"ui-enable","type":"set_generative_ui","enabled":true}` only when the host renders and submits interactive cards. This advertises the host-owned logical tool `ui.present`; ordinary CLI sessions do not expose it. `set_host_tools` and this capability retain each other's tools. `ui.present` is reserved and cannot be replaced with a host callback.
+
+The tool accepts `{schema:{version:1,title?,layout?:"stack"|"row",components:[]}}`. Components are flat tagged objects:
+
+| type | Fields besides `type,id` |
+| --- | --- |
+| `text` | `text`, optional `label` |
+| `input` | `label`, optional `default`, `required`, `minLength`, `maxLength` |
+| `textarea` | `label`, optional `default`, `required`, `minLength`, `maxLength`, `rows` (1–20, default 4) |
+| `number`, `slider` | `label,min,max,default`, optional `step` |
+| `checkbox`, `switch` | `label`, optional boolean `default` (default `false`) |
+| `select`, `radio` | `label,options:[{label,value}]`, optional `default,required` |
+| `multiselect` | `label,options:[{label,value}]`, optional `default:string[]`, `minItems`, `maxItems` |
+| `button` | `label` (submission only) |
+
+Exactly one button is required; there are at most 24 components. IDs are unique 1–64-character ASCII letters/digits/underscore/hyphen, excluding `__proto__`, `constructor`, and `prototype`. Unknown fields/types/versions are errors. Text is plain text, never HTML or code. Limits: title 160, labels 120, one text 4096, combined text 16384 characters, 1–32 unique nonempty option values of at most 128 characters. Inputs default to `""`, `required:false`, `minLength:0`, `maxLength:1024` (maximum 4096). Empty optional input is allowed; nonempty input must meet its minimum. Selections default to the first option and `required:false`; explicit empty selection is allowed only when optional. Layout defaults to stack. Slider step defaults to 1; all numbers are finite, absolute value ≤1e6, min < max, step > 0, and values must match the range and step.
+
+Example tool arguments (model-generated, not a client `ui.present` command):
+
+```json
+{"schema":{"version":1,"title":"Run parameters","components":[{"type":"slider","id":"concurrency","label":"Concurrent workers","min":1,"max":32,"default":4},{"type":"select","id":"reasoning","label":"Reasoning","options":[{"label":"Off","value":"off"},{"label":"Low","value":"low"},{"label":"Medium","value":"medium"},{"label":"High","value":"high"}],"default":"medium"},{"type":"button","id":"submit","label":"Submit"}]}}
+```
+
+Present binds `task_id` (the `ui.present` tool-call ID) and `message_id` (the originating assistant entry ID), records `customType:"ui.present"` with `status:"waiting_input"` and `rendered:false`, returns a compact state envelope, and yields the current turn (`TERMINAL_TOOL_RESULT_ABORT_REASON`) so later tools in the same batch do not run and autonomous wakes cannot call the model while waiting.
+
+Host lifecycle commands:
+- `{"id":"ui-render-1","type":"render_ui","ui_id":"<from-card>","session_id":"<from-card>"}` — idempotent acknowledgement that the frontend mounted the form (`rendered:true` while `status` stays `"waiting_input"`).
+- `{"id":"ui-cancel-1","type":"cancel_ui","ui_id":"<from-card>","session_id":"<from-card>"}` — transitions a waiting form to `status:"cancelled"` via `ui.state` without invoking the model.
+- `{"id":"ui-submit-1","type":"submit_ui","ui_id":"<from-card>","session_id":"<from-card>","values":{...}}` — validates control values against the branch presentation, records `ui.submit` with `continuation:"pending"`, and admits `ui.continue` (`continuation:"admitted"` recorded right before the model call). If admission is interrupted, re-sending `submit_ui` with the same values retries admission without duplicating the receipt.
+- `{"id":"ui-policy-1","type":"set_interaction_policy","policy":"standard"|"aggressive"|"minimal"}` — updates the session's model-independent interaction policy and refreshes the base system prompt.
+
+Explicit new user prompts and committed branch/tree transitions expire pending forms (`status:"expired"`). `get_messages` with `fullHistory:true` includes `ui.present`, `ui.submit`, and `ui.state` messages plus projected session-wide tombstones (`historyStates()`), so reopened or forked sessions restore accurate terminal state.
+
+Offline end-to-end fixture: run Bun on `packages/coding-agent/test/fixtures/generative-ui-rpc-agent.ts <temporary-root> [session-jsonl]`. It uses `createAgentSession` and a deterministic local mock provider, not network credentials. Enable UI, prompt `show-ui`, inspect the emitted card, submit it, and observe the provider acknowledge the JSON values. Optional `session-jsonl` reopens persisted history. Never point the fixture at a real user session.
+
 ## Startup
 
 ```bash
@@ -674,6 +711,7 @@ Desktop hosts can replace this process's subagent policy without writing global 
 All four flat parameters are required. Unknown modes, appetites, or thinking levels, and non-string models, fail before any settings change. An empty Custom model is permitted when saving preferences but fails when spawning; it never selects a fallback model. `auto` is a model-selection mode, not a thinking level.
 
 - **Auto** asks two questions before spawning: one model choice with three available candidates plus Ask's Other entry, and one supported standard thinking-level choice. One task batch uses one answer pair; eval's single agent call and a workpool batch each obtain their own pair. Cancellation or unavailable UI admits no agents; a timeout must not silently choose a recommendation.
+  Auto's free-text model answer is interpreted semantically through the existing `judge` role chain using authenticated catalog names, provider IDs and routed selectors. Case, spacing and punctuation are not literal-match requirements. Judgment only enumerates catalog candidates; it cannot introduce a model ID. A unique match proceeds to the normal credential and thinking-capability checks. Multiple matches produce another untimed Ask requiring an explicit candidate; cancellation, no match, or judgment failure starts no agents. Ambiguous candidates are enumerated with additional judgments until no further ambiguity is reported, so free text adds model latency and metered judgment usage. Selecting one of the original explicit candidates bypasses judgment. Sync and saved Custom selectors remain exact and never use semantic substitution.
 - **Sync** uses the main session's live model and effective thinking level when work is dispatched.
 - **Custom** always uses the saved model and thinking level. Agent defaults, per-task selectors, hooks, and credential/model fallback cannot replace a host-selected model or thinking configuration.
 - **Appetite** controls both the strength of delegation guidance and the hard concurrent-agent ceiling: Unlimited **32**, Aggressive **8**, Moderate **4**, Conservative **2**, Off **0**. These are ceilings, not desired batch sizes or instructions to delegate every request. Off prevents spawning through task, eval agents, and workpool; it does not reinterpret zero as legacy unlimited concurrency.

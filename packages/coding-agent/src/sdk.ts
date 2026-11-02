@@ -98,6 +98,7 @@ import { disposeVmContextsByOwner } from "./eval/js/context-manager";
 import { getEnabledEvalPreludes, type EvalPreludeDefinition } from "./eval/preludes";
 import { disposeAllKernelSessions, disposeKernelSessionsByOwner } from "./eval/py/executor";
 import { defaultEvalSessionId } from "./eval/session-id";
+import { withGenerativeUiToolWire } from "./generative-ui/tool-wire";
 import type { EditMode } from "@oh-my-pi/pi-tui/tools/edit";
 import {
 	type CustomCommandsLoadResult,
@@ -384,6 +385,8 @@ import { cfgEditRecoverInlineEdits } from "./edit/settings";
 import { cfgGoalEnabled } from "./goals/settings";
 import {
 	cfgImagesBlockImages,
+	cfgInteractionPolicy,
+	type InteractionPolicy,
 	cfgStartupQuiet,
 	cfgTuiReactions,
 	cfgTuiAutoGraph,
@@ -1356,6 +1359,7 @@ export interface BuildSystemPromptOptions {
 	systemPromptTemplate?: string;
 	appendPrompt?: string;
 	inlineToolDescriptors?: boolean;
+	interactionPolicy?: InteractionPolicy;
 	includeWorkspaceTree?: boolean;
 	/** Include the read-only security:// resource inventory entry. Default: false. */
 	securityEnabled?: boolean;
@@ -1387,6 +1391,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		appendSystemPrompt: options.appendPrompt,
 		inlineToolDescriptors: options.inlineToolDescriptors,
 		includeWorkspaceTree: options.includeWorkspaceTree,
+		interactionPolicy: options.interactionPolicy,
 		securityEnabled: options.securityEnabled,
 		evalPreludes: options.evalPreludes,
 		toolNames,
@@ -4230,6 +4235,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				eagerTasks: cfgTaskEager.get(settings) !== "default",
 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
 				delegationAppetite: readSubagentPreferences(settings)?.appetite,
+				interactionPolicy: cfgInteractionPolicy.get(settings),
 				taskBatch: cfgTaskBatch.get(settings),
 				taskMaxConcurrency: getSubagentConcurrencyLimit(settings),
 				scoutAvailable: isScoutSpawnable(cfgTaskDisabledAgents.get(settings), options.spawns ?? "*"),
@@ -4600,7 +4606,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// Primary-agent (and its auto-learn capture twin) provider options read per
 		// request, so `/settings` changes to budgets, Kimi format, or the Codex
 		// websocket policy reach the next call without a session recreate.
-		const primaryStreamFn: StreamFn = (streamModel, context, streamOptions) => {
+		const primaryStreamFn: StreamFn = withGenerativeUiToolWire((streamModel, context, streamOptions) => {
 			const kimiApiFormat = cfgProvidersKimiApiFormat.get(settings);
 			return settingsAwareStreamFn(streamModel, context, {
 				...streamOptions,
@@ -4608,7 +4614,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				kimiApiFormat: streamOptions?.kimiApiFormat ?? (kimiApiFormat === "auto" ? undefined : kimiApiFormat),
 				preferWebsockets: streamOptions?.preferWebsockets ?? resolveOpenAIWebsocketPreference(settings),
 			});
-		};
+		});
 		// Prompt-cache warmer for the main agent loop only: replays the last
 		// request through the same primary wrapper just before the entry would
 		// expire, so idle gaps do not force a full-prefix cache re-write.

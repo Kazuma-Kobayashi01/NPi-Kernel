@@ -2720,6 +2720,116 @@ func (v *UsageLimitState) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type UiState struct {
+	UIID              string               `json:"ui_id"`
+	SessionID         string               `json:"session_id"`
+	Status            UiStateStatus        `json:"status"`
+	Rendered          bool                 `json:"rendered"`
+	TaskID            *string              `json:"task_id,omitempty"`
+	MessageID         *string              `json:"message_id,omitempty"`
+	Reason            *string              `json:"reason,omitempty"`
+	Continuation      *UiStateContinuation `json:"continuation,omitempty"`
+	ContinuationError *string              `json:"continuation_error,omitempty"`
+}
+
+func (v *UiState) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "UiState", v.decodeFrom)
+}
+
+func (v *UiState) decodeFrom(raw map[string]json.RawMessage) error {
+	var out UiState
+	d := fieldDecoder{raw: raw, owner: "UiState"}
+	d.required("ui_id", &out.UIID)
+	d.required("session_id", &out.SessionID)
+	d.required("status", &out.Status)
+	d.required("rendered", &out.Rendered)
+	d.optional("task_id", &out.TaskID)
+	d.optional("message_id", &out.MessageID)
+	d.optional("reason", &out.Reason)
+	d.optional("continuation", &out.Continuation)
+	d.optional("continuation_error", &out.ContinuationError)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type UiStateStatus string
+
+const (
+	UiStateStatusWaitingInput UiStateStatus = "waiting_input"
+	UiStateStatusSubmitted    UiStateStatus = "submitted"
+	UiStateStatusCancelled    UiStateStatus = "cancelled"
+	UiStateStatusExpired      UiStateStatus = "expired"
+)
+
+func (v *UiStateStatus) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "UiStateStatus")
+	if err != nil {
+		return err
+	}
+	switch value := UiStateStatus(s); value {
+	case UiStateStatusWaitingInput, UiStateStatusSubmitted, UiStateStatusCancelled, UiStateStatusExpired:
+		*v = value
+		return nil
+	}
+	return unknownValue("UiStateStatus", s)
+}
+
+type UiStateContinuation string
+
+const (
+	UiStateContinuationPending  UiStateContinuation = "pending"
+	UiStateContinuationAdmitted UiStateContinuation = "admitted"
+)
+
+func (v *UiStateContinuation) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "UiStateContinuation")
+	if err != nil {
+		return err
+	}
+	switch value := UiStateContinuation(s); value {
+	case UiStateContinuationPending, UiStateContinuationAdmitted:
+		*v = value
+		return nil
+	}
+	return unknownValue("UiStateContinuation", s)
+}
+
+type PendingUi struct {
+	UIID      string `json:"ui_id"`
+	SessionID string `json:"session_id"`
+	TaskID    string `json:"task_id"`
+	MessageID string `json:"message_id"`
+	Rendered  bool   `json:"rendered"`
+}
+
+func (v *PendingUi) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "PendingUi", v.decodeFrom)
+}
+
+func (v *PendingUi) decodeFrom(raw map[string]json.RawMessage) error {
+	var out PendingUi
+	d := fieldDecoder{raw: raw, owner: "PendingUi"}
+	d.required("ui_id", &out.UIID)
+	d.required("session_id", &out.SessionID)
+	d.required("task_id", &out.TaskID)
+	d.required("message_id", &out.MessageID)
+	d.constant("status", "waiting_input")
+	d.required("rendered", &out.Rendered)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v PendingUi) MarshalJSON() ([]byte, error) {
+	type plain PendingUi
+	return encodeObject(plain(v), `"status":"waiting_input"`, nil)
+}
+
 type SessionState struct {
 	SessionID             string         `json:"sessionId"`
 	Model                 *ModelInfo     `json:"model,omitempty"`
@@ -2731,6 +2841,7 @@ type SessionState struct {
 	InterruptMode         InterruptMode  `json:"interruptMode"`
 	SessionFile           *string        `json:"sessionFile,omitempty"`
 	SessionName           *string        `json:"sessionName,omitempty"`
+	PendingUI             *PendingUi     `json:"pendingUi"`
 	AutoCompactionEnabled bool           `json:"autoCompactionEnabled"`
 	FastModeEnabled       bool           `json:"fastModeEnabled"`
 	FastModeActive        bool           `json:"fastModeActive"`
@@ -2776,6 +2887,7 @@ func (v *SessionState) decodeFrom(raw map[string]json.RawMessage) error {
 	d.defaulted("interruptMode", &out.InterruptMode, `"immediate"`)
 	d.optional("sessionFile", &out.SessionFile)
 	d.optional("sessionName", &out.SessionName)
+	d.defaulted("pendingUi", &out.PendingUI, `null`)
 	d.defaulted("autoCompactionEnabled", &out.AutoCompactionEnabled, `false`)
 	d.defaulted("fastModeEnabled", &out.FastModeEnabled, `false`)
 	d.defaulted("fastModeActive", &out.FastModeActive, `false`)
@@ -7473,6 +7585,65 @@ func (v *SetHostToolsResult) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type SetGenerativeUiResult struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (v *SetGenerativeUiResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "SetGenerativeUiResult", v.decodeFrom)
+}
+
+func (v *SetGenerativeUiResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out SetGenerativeUiResult
+	d := fieldDecoder{raw: raw, owner: "SetGenerativeUiResult"}
+	d.required("enabled", &out.Enabled)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type SetInteractionPolicyResult struct {
+	Policy SetInteractionPolicyResultPolicy `json:"policy"`
+}
+
+func (v *SetInteractionPolicyResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "SetInteractionPolicyResult", v.decodeFrom)
+}
+
+func (v *SetInteractionPolicyResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out SetInteractionPolicyResult
+	d := fieldDecoder{raw: raw, owner: "SetInteractionPolicyResult"}
+	d.required("policy", &out.Policy)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type SetInteractionPolicyResultPolicy string
+
+const (
+	SetInteractionPolicyResultPolicyStandard   SetInteractionPolicyResultPolicy = "standard"
+	SetInteractionPolicyResultPolicyAggressive SetInteractionPolicyResultPolicy = "aggressive"
+	SetInteractionPolicyResultPolicyMinimal    SetInteractionPolicyResultPolicy = "minimal"
+)
+
+func (v *SetInteractionPolicyResultPolicy) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SetInteractionPolicyResultPolicy")
+	if err != nil {
+		return err
+	}
+	switch value := SetInteractionPolicyResultPolicy(s); value {
+	case SetInteractionPolicyResultPolicyStandard, SetInteractionPolicyResultPolicyAggressive, SetInteractionPolicyResultPolicyMinimal:
+		*v = value
+		return nil
+	}
+	return unknownValue("SetInteractionPolicyResultPolicy", s)
+}
+
 type SetHostUriSchemesResult struct {
 	Schemes []string `json:"schemes"`
 }
@@ -8234,6 +8405,136 @@ func (c Commands) SetHostTools(ctx context.Context, p SetHostToolsCommand) ([]st
 	var out SetHostToolsResult
 	err := c.call(ctx, "set_host_tools", p, 0, &out)
 	return out.ToolNames, err
+}
+
+// SetGenerativeUICommand holds the parameters of "set_generative_ui".
+type SetGenerativeUICommand struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetGenerativeUI sends "set_generative_ui": Enable the host-validated ui.present tool for a Generative UI client.
+func (c Commands) SetGenerativeUI(ctx context.Context, p SetGenerativeUICommand) (SetGenerativeUiResult, error) {
+	var out SetGenerativeUiResult
+	err := c.call(ctx, "set_generative_ui", p, 0, &out)
+	return out, err
+}
+
+// SubmitUICommand holds the parameters of "submit_ui".
+type SubmitUICommand struct {
+	UIID      string                                          `json:"ui_id"`
+	SessionID string                                          `json:"session_id"`
+	Values    map[string]StringOrNumberOrBooleanOrStringArray `json:"values"`
+}
+
+// SubmitUI sends "submit_ui": Durably receive values and resume the originating task. Identical values may retry pending admission only.
+// Its work completes later with a prompt_result frame carrying the request id (see WithRequestID).
+func (c Commands) SubmitUI(ctx context.Context, p SubmitUICommand) (UiState, error) {
+	var out UiState
+	err := c.call(ctx, "submit_ui", p, 0, &out)
+	return out, err
+}
+
+// StringOrNumberOrBooleanOrStringArray holds exactly one of its fields, chosen by the JSON kind of the value.
+type StringOrNumberOrBooleanOrStringArray struct {
+	String  *string
+	Number  *float64
+	Boolean *bool
+	Array   []string
+}
+
+func (v StringOrNumberOrBooleanOrStringArray) MarshalJSON() ([]byte, error) {
+	switch {
+	case v.String != nil:
+		return json.Marshal(*v.String)
+	case v.Number != nil:
+		return json.Marshal(*v.Number)
+	case v.Boolean != nil:
+		return json.Marshal(*v.Boolean)
+	case v.Array != nil:
+		return json.Marshal(v.Array)
+	}
+	return nil, emptyUnion("StringOrNumberOrBooleanOrStringArray")
+}
+
+func (v *StringOrNumberOrBooleanOrStringArray) UnmarshalJSON(data []byte) error {
+	var out StringOrNumberOrBooleanOrStringArray
+	var err error
+	switch jsonKind(data) {
+	case '"':
+		err = json.Unmarshal(data, &out.String)
+	case '0':
+		err = json.Unmarshal(data, &out.Number)
+	case 't':
+		err = json.Unmarshal(data, &out.Boolean)
+	case '[':
+		err = json.Unmarshal(data, &out.Array)
+	default:
+		return unexpectedKind("StringOrNumberOrBooleanOrStringArray", data)
+	}
+	if err != nil {
+		return err
+	}
+	*v = out
+	return nil
+}
+
+// RenderUICommand holds the parameters of "render_ui".
+type RenderUICommand struct {
+	UIID      string `json:"ui_id"`
+	SessionID string `json:"session_id"`
+}
+
+// RenderUI sends "render_ui": Idempotently acknowledge an actual frontend form mount, not tool completion.
+func (c Commands) RenderUI(ctx context.Context, p RenderUICommand) (UiState, error) {
+	var out UiState
+	err := c.call(ctx, "render_ui", p, 0, &out)
+	return out, err
+}
+
+// CancelUICommand holds the parameters of "cancel_ui".
+type CancelUICommand struct {
+	UIID      string `json:"ui_id"`
+	SessionID string `json:"session_id"`
+}
+
+// CancelUI sends "cancel_ui": Persist cancellation without invoking the model.
+func (c Commands) CancelUI(ctx context.Context, p CancelUICommand) (UiState, error) {
+	var out UiState
+	err := c.call(ctx, "cancel_ui", p, 0, &out)
+	return out, err
+}
+
+// SetInteractionPolicyCommand holds the parameters of "set_interaction_policy".
+type SetInteractionPolicyCommand struct {
+	Policy SetInteractionPolicyCommandPolicy `json:"policy"`
+}
+
+// SetInteractionPolicy sends "set_interaction_policy": Set this session's interaction policy and refresh its base prompt.
+func (c Commands) SetInteractionPolicy(ctx context.Context, p SetInteractionPolicyCommand) (SetInteractionPolicyResult, error) {
+	var out SetInteractionPolicyResult
+	err := c.call(ctx, "set_interaction_policy", p, 0, &out)
+	return out, err
+}
+
+type SetInteractionPolicyCommandPolicy string
+
+const (
+	SetInteractionPolicyCommandPolicyStandard   SetInteractionPolicyCommandPolicy = "standard"
+	SetInteractionPolicyCommandPolicyAggressive SetInteractionPolicyCommandPolicy = "aggressive"
+	SetInteractionPolicyCommandPolicyMinimal    SetInteractionPolicyCommandPolicy = "minimal"
+)
+
+func (v *SetInteractionPolicyCommandPolicy) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SetInteractionPolicyCommandPolicy")
+	if err != nil {
+		return err
+	}
+	switch value := SetInteractionPolicyCommandPolicy(s); value {
+	case SetInteractionPolicyCommandPolicyStandard, SetInteractionPolicyCommandPolicyAggressive, SetInteractionPolicyCommandPolicyMinimal:
+		*v = value
+		return nil
+	}
+	return unknownValue("SetInteractionPolicyCommandPolicy", s)
 }
 
 // SetHostURISchemesCommand holds the parameters of "set_host_uri_schemes".

@@ -117,6 +117,7 @@ import { writeArchive } from "@oh-my-pi/pi-utils/ar";
 import { frameDataBytesBudget, readerIncludesThinking } from "@oh-my-pi/snapcompact";
 import type { AdvisorConfig } from "@oh-my-pi/pi-tui/overlays/advisor-config";
 import { formatUsageResetWindow } from "@oh-my-pi/pi-tui/overlays/usage-display";
+import { GenerativeUiController } from "../modes/rpc/generative-ui";
 import { loadAdvisorTranscriptCosts } from "../advisor";
 import { ASYNC_JOB_MANAGER_SHUTDOWN_REASON, type AsyncJob, AsyncJobManager } from "../async";
 import { classifyAutoPrewalk } from "../auto-prewalk/classifier";
@@ -1145,8 +1146,11 @@ export class AgentSession implements SettingsScope {
 	#fallbackExtensionTimers: ManagedTimers | undefined = undefined;
 	#turnIndex = 0;
 	#messageEndPersistenceTail: Promise<void> = Promise.resolve();
+	/** Unmasked result of the latest queued append; the ordering tail intentionally recovers failures. */
+	#messageEndPersistenceResult: Promise<void> = this.#messageEndPersistenceTail;
 	#pendingMessageEndPersistence = new Map<string, Promise<void>>();
 	#persistedMessageKeys: { anchor: string; keys: Set<string> } | undefined;
+	readonly generativeUi = new GenerativeUiController(this);
 
 	// Custom commands (TypeScript slash commands)
 	#customCommands: LoadedCustomCommand[] = [];
@@ -1534,6 +1538,20 @@ export class AgentSession implements SettingsScope {
 			this.agent.emitExternalEvent({ type: "message_start", message: record });
 			this.agent.emitExternalEvent({ type: "message_end", message: record });
 		}
+	}
+
+	/** Persist a host-owned custom message and emit its frames without starting or steering a turn. */
+	async recordCustomMessage<T = unknown>(
+		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details" | "attribution">,
+	): Promise<void> {
+		this.#recordWithoutTurn([{ ...message, role: "custom", timestamp: Date.now() }]);
+		// message_end queues its append; a storage flush alone does not wait for that queue.
+		await this.#messageEndPersistenceResult;
+	}
+
+	/** Tool identity must bind to the assistant entry, not a transient streaming message. */
+	async waitForMessagePersistence(): Promise<void> {
+		await this.#messageEndPersistenceResult;
 	}
 
 	/** Re-validates a #sessionGeneration snapshot captured before an aside/SDK call's await.
@@ -2562,6 +2580,7 @@ export class AgentSession implements SettingsScope {
 		// time so a block/revision lands before concurrency resolution,
 		// tool_execution_start, and the wrapper's approval gate.
 		this.agent.beforeToolCall = (ctx, signal) => this.#beforeToolCall(ctx, signal);
+		this.agent.addBeforeModelCall(() => this.generativeUi.beforeModelCall());
 		this.agent.providerSessionState = this.#providerSessionState;
 		// Records this session's work writes name it; the getter follows every
 		// re-key (new session, resume, fork, relocation off a contended file).
@@ -4046,6 +4065,7 @@ export class AgentSession implements SettingsScope {
 				}
 			});
 		if (key !== undefined) this.#pendingMessageEndPersistence.set(key, pending);
+		this.#messageEndPersistenceResult = pending;
 		this.#messageEndPersistenceTail = pending.catch(() => {});
 		return pending;
 	}
@@ -5600,6 +5620,15 @@ export class AgentSession implements SettingsScope {
 	}
 
 	#afterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
+		if (!ctx.isError && ctx.toolCall.name === "ui.present" && isRecord(ctx.result.details) &&
+			ctx.result.details.task_id === ctx.toolCall.id && typeof ctx.result.details.ui_id === "string") {
+			// Display mode does not wait for user input; the turn continues naturally.
+			// Only interactive mode pauses the agent turn to wait for user input.
+			if (ctx.result.details.status === "waiting_input") {
+				this.agent.abort(TERMINAL_TOOL_RESULT_ABORT_REASON);
+				return undefined;
+			}
+		}
 		if (
 			this.#isTerminalYieldToolResult({
 				toolName: ctx.toolCall.name,
@@ -5625,6 +5654,16 @@ export class AgentSession implements SettingsScope {
 	 * execution still emit there).
 	 */
 	async #beforeToolCall(ctx: BeforeToolCallContext, signal?: AbortSignal): Promise<BeforeToolCallResult | undefined> {
+		const firstInteractiveUiPresent = ctx.assistantMessage.content.find(
+			(block): block is ToolCall => {
+				if (block.type !== "toolCall" || block.name !== "ui.present" || !this.generativeUi.canPresent(block.arguments)) return false;
+				const raw = isRecord(block.arguments) && "schema" in block.arguments ? (block.arguments.schema as Record<string, unknown>) : null;
+				return raw?.mode !== "display";
+			},
+		);
+		if (firstInteractiveUiPresent && ctx.toolCall.id !== firstInteractiveUiPresent.id) {
+			return { block: true, reason: "Deferred until interactive UI input is submitted" };
+		}
 		const runner = this.#extensionRunner;
 		runner?.markLoopToolCall?.(ctx.toolCall.id, ctx.tool.name);
 		const ttsrResult = await this.#ttsr.beforeToolCall(ctx);
@@ -6096,6 +6135,7 @@ export class AgentSession implements SettingsScope {
 		if (this.#observedSessionId === undefined) {
 			this.#observedSessionId = currentSessionId;
 		} else if (this.#observedSessionId !== currentSessionId) {
+			this.generativeUi.clearAdmissionReservations();
 			this.#observedSessionId = currentSessionId;
 			if (notifyChange) this.#notifySessionChangeCallbacks();
 		}
@@ -8270,6 +8310,7 @@ export class AgentSession implements SettingsScope {
 		if (options?.userInitiated ?? !options?.synthetic) this.#noteUserTurn();
 
 		const promptAttribution = options?.attribution ?? (options?.synthetic ? "agent" : "user");
+		if (!options?.synthetic && promptAttribution === "user") await this.generativeUi.expirePending("new_user_task");
 
 		// If streaming, queue via steer()/followUp()/aside based on option
 		if (this.isStreaming) {
@@ -9503,6 +9544,7 @@ export class AgentSession implements SettingsScope {
 		},
 	): Promise<boolean> {
 		const attribution = options?.attribution ?? "user";
+		if (attribution === "user") await this.generativeUi.expirePending("new_user_task");
 		const timestamp = options?.timestamp;
 		const rawText = options?.rawText ?? text;
 		const preprocessed = options?.preprocessed;
@@ -11252,6 +11294,7 @@ export class AgentSession implements SettingsScope {
 		/** Internal `/compact` startup keeps the manual-compaction marker alive while aborting the active turn. */
 		preserveCompaction?: boolean;
 	}): Promise<void> {
+		this.generativeUi.clearAdmissionReservations();
 		const userInterrupt = options?.reason === USER_INTERRUPT_LABEL;
 		this.#pendingAbortErrorId = userInterrupt ? AIError.create(AIError.Flag.UserInterrupt) : undefined;
 		// Latch only when the interrupt stops something; an idle Esc would otherwise fold
@@ -11561,6 +11604,7 @@ export class AgentSession implements SettingsScope {
 		await this.flushToDisk();
 		// Work admitted during the hook or flush awaits would be copied mid-flight.
 		if (requireIdleFor) this.#assertIdleForSnapshot(requireIdleFor);
+		if (previousSessionFile) await this.generativeUi.expirePending("branch_transition");
 		let advisorRecordersDetached = false;
 		try {
 			advisorRecordersDetached = true;
@@ -13578,6 +13622,7 @@ export class AgentSession implements SettingsScope {
 		// idle-only snapshot refuses here, after the flush awaits but before any state of the
 		// old session (pending messages, async jobs, auto-learn capture) is discarded.
 		if (requireIdleFor) this.#assertIdleForSnapshot(requireIdleFor);
+		await this.generativeUi.expirePending("branch_transition");
 
 		// Clear pending messages (bound to old session state)
 		this.#pendingNextTurnMessages = [];
@@ -14044,6 +14089,7 @@ export class AgentSession implements SettingsScope {
 			newLeafId = targetId;
 		}
 
+		await this.generativeUi.expirePending("branch_transition");
 		// Switch leaf (with or without summary)
 		// Summary is attached at the navigation target position (newLeafId), not the old branch
 		const bashTransition = this.#bash.beginSessionTransition();

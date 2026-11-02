@@ -538,6 +538,27 @@ export interface UsageLimitWrapUp {
 /** Provider-neutral state of an account past its usage limit, discriminated by `stage`. */
 export type UsageLimitState = UsageLimitLowPriority | UsageLimitWrapUp;
 
+export interface UiState {
+	ui_id: string;
+	session_id: string;
+	status: "waiting_input" | "submitted" | "cancelled" | "expired";
+	rendered: boolean;
+	task_id?: string;
+	message_id?: string;
+	reason?: string;
+	continuation?: "pending" | "admitted";
+	continuation_error?: string;
+}
+
+export interface PendingUi {
+	ui_id: string;
+	session_id: string;
+	task_id: string;
+	message_id: string;
+	status: "waiting_input";
+	rendered: boolean;
+}
+
 export interface SessionState {
 	sessionId: string;
 	model?: ModelInfo;
@@ -549,6 +570,7 @@ export interface SessionState {
 	interruptMode?: InterruptMode;
 	sessionFile?: string;
 	sessionName?: string;
+	pendingUi?: PendingUi | null;
 	autoCompactionEnabled?: boolean;
 	fastModeEnabled?: boolean;
 	fastModeActive?: boolean;
@@ -1695,6 +1717,38 @@ export interface SetHostToolsResult {
 	toolNames: string[];
 }
 
+export interface SetGenerativeUiParams {
+	enabled: boolean;
+}
+
+export interface SetGenerativeUiResult {
+	enabled: boolean;
+}
+
+export interface SubmitUiParams {
+	ui_id: string;
+	session_id: string;
+	values: Record<string, string | number | boolean | string[]>;
+}
+
+export interface RenderUiParams {
+	ui_id: string;
+	session_id: string;
+}
+
+export interface CancelUiParams {
+	ui_id: string;
+	session_id: string;
+}
+
+export interface SetInteractionPolicyParams {
+	policy: "standard" | "aggressive" | "minimal";
+}
+
+export interface SetInteractionPolicyResult {
+	policy: "standard" | "aggressive" | "minimal";
+}
+
 export interface SetHostUriSchemesParams {
 	schemes: HostUriSchemeDefinition[];
 }
@@ -2007,6 +2061,11 @@ export interface RpcWireCommands {
 	get_tree: { params: undefined; result: SessionTree };
 	set_todos: { params: SetTodosParams; result: SetTodosResult };
 	set_host_tools: { params: SetHostToolsParams; result: SetHostToolsResult };
+	set_generative_ui: { params: SetGenerativeUiParams; result: SetGenerativeUiResult };
+	submit_ui: { params: SubmitUiParams; result: UiState };
+	render_ui: { params: RenderUiParams; result: UiState };
+	cancel_ui: { params: CancelUiParams; result: UiState };
+	set_interaction_policy: { params: SetInteractionPolicyParams; result: SetInteractionPolicyResult };
 	set_host_uri_schemes: { params: SetHostUriSchemesParams; result: SetHostUriSchemesResult };
 	set_subagent_subscription: { params: SetSubagentSubscriptionParams; result: SetSubagentSubscriptionResult };
 	set_event_filter: { params: SetEventFilterParams; result: SetEventFilterResult };

@@ -3124,6 +3124,34 @@ impl<'de> Deserialize<'de> for UsageLimitState {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UiState {
+	pub ui_id: String,
+	pub session_id: String,
+	pub status: UiStateStatus,
+	pub rendered: bool,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub task_id: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub message_id: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub reason: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub continuation: Option<UiStateContinuation>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub continuation_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PendingUi {
+	pub ui_id: String,
+	pub session_id: String,
+	pub task_id: String,
+	pub message_id: String,
+	pub status: LitWaitingInput,
+	pub rendered: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionState {
 	#[serde(rename = "sessionId")]
 	pub session_id: String,
@@ -3145,6 +3173,8 @@ pub struct SessionState {
 	pub session_file: Option<String>,
 	#[serde(rename = "sessionName", default, skip_serializing_if = "Option::is_none")]
 	pub session_name: Option<String>,
+	#[serde(rename = "pendingUi", default = "default_session_state_pending_ui")]
+	pub pending_ui: Option<PendingUi>,
 	#[serde(rename = "autoCompactionEnabled", default = "default_session_state_auto_compaction_enabled")]
 	pub auto_compaction_enabled: bool,
 	#[serde(rename = "fastModeEnabled", default = "default_session_state_fast_mode_enabled")]
@@ -5384,6 +5414,45 @@ pub struct SetHostToolsResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetGenerativeUiParams {
+	pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetGenerativeUiResult {
+	pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmitUiParams {
+	pub ui_id: String,
+	pub session_id: String,
+	pub values: BTreeMap<String, StringOrNumberOrBoolOrStringList>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RenderUiParams {
+	pub ui_id: String,
+	pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CancelUiParams {
+	pub ui_id: String,
+	pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetInteractionPolicyParams {
+	pub policy: SetInteractionPolicyParamsPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetInteractionPolicyResult {
+	pub policy: SetInteractionPolicyResultPolicy,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetHostUriSchemesParams {
 	pub schemes: Vec<HostUriSchemeDefinition>,
 }
@@ -6041,6 +6110,69 @@ impl<'de> Deserialize<'de> for LitCompleted {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum UiStateStatus {
+	#[serde(rename = "waiting_input")]
+	WaitingInput,
+	#[serde(rename = "submitted")]
+	Submitted,
+	#[serde(rename = "cancelled")]
+	Cancelled,
+	#[serde(rename = "expired")]
+	Expired,
+}
+
+impl UiStateStatus {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::WaitingInput => "waiting_input",
+			Self::Submitted => "submitted",
+			Self::Cancelled => "cancelled",
+			Self::Expired => "expired",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum UiStateContinuation {
+	#[serde(rename = "pending")]
+	Pending,
+	#[serde(rename = "admitted")]
+	Admitted,
+}
+
+impl UiStateContinuation {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Pending => "pending",
+			Self::Admitted => "admitted",
+		}
+	}
+}
+
+/// The constant `"waiting_input"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct LitWaitingInput;
+
+impl Serialize for LitWaitingInput {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.serialize_str("waiting_input")
+	}
+}
+
+impl<'de> Deserialize<'de> for LitWaitingInput {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		let value = Value::deserialize(deserializer)?;
+		if value.as_str() == Some("waiting_input") {
+			Ok(Self)
+		} else {
+			Err(D::Error::custom(format!("expected \"waiting_input\", got {value}")))
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LogoutAccountType {
 	#[serde(rename = "api_key")]
 	ApiKey,
@@ -6138,6 +6270,58 @@ impl HostUriResultContentType {
 			Self::TextMarkdown => "text/markdown",
 			Self::ApplicationJson => "application/json",
 			Self::TextPlain => "text/plain",
+		}
+	}
+}
+
+/// Untagged union: the first variant that decodes wins.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StringOrNumberOrBoolOrStringList {
+	String(String),
+	Number(f64),
+	Bool(bool),
+	StringList(Vec<String>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetInteractionPolicyParamsPolicy {
+	#[serde(rename = "standard")]
+	Standard,
+	#[serde(rename = "aggressive")]
+	Aggressive,
+	#[serde(rename = "minimal")]
+	Minimal,
+}
+
+impl SetInteractionPolicyParamsPolicy {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Standard => "standard",
+			Self::Aggressive => "aggressive",
+			Self::Minimal => "minimal",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetInteractionPolicyResultPolicy {
+	#[serde(rename = "standard")]
+	Standard,
+	#[serde(rename = "aggressive")]
+	Aggressive,
+	#[serde(rename = "minimal")]
+	Minimal,
+}
+
+impl SetInteractionPolicyResultPolicy {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Standard => "standard",
+			Self::Aggressive => "aggressive",
+			Self::Minimal => "minimal",
 		}
 	}
 }
@@ -6245,6 +6429,10 @@ fn default_session_state_follow_up_mode() -> QueueMode {
 
 fn default_session_state_interrupt_mode() -> InterruptMode {
 	serde_json::from_str("\"immediate\"").expect("valid wire default")
+}
+
+fn default_session_state_pending_ui() -> Option<PendingUi> {
+	serde_json::from_str("null").expect("valid wire default")
 }
 
 fn default_session_state_auto_compaction_enabled() -> bool {
@@ -6764,6 +6952,93 @@ impl Command for SetHostToolsCommand {
 
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		serde_json::from_value::<SetHostToolsResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.tool_names)
+	}
+}
+
+/// Enable the host-validated ui.present tool for a Generative UI client.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetGenerativeUiCommand {
+	pub enabled: bool,
+}
+
+impl Command for SetGenerativeUiCommand {
+	const NAME: &'static str = "set_generative_ui";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = SetGenerativeUiResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<SetGenerativeUiResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Durably receive values and resume the originating task. Identical values may retry pending admission only.
+///
+/// The returned value is only the acknowledgement: the work completes with a
+/// `prompt_result` notification carrying this command's id.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SubmitUiCommand {
+	pub ui_id: String,
+	pub session_id: String,
+	pub values: BTreeMap<String, StringOrNumberOrBoolOrStringList>,
+}
+
+impl Command for SubmitUiCommand {
+	const NAME: &'static str = "submit_ui";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = UiState;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<UiState>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Idempotently acknowledge an actual frontend form mount, not tool completion.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RenderUiCommand {
+	pub ui_id: String,
+	pub session_id: String,
+}
+
+impl Command for RenderUiCommand {
+	const NAME: &'static str = "render_ui";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = UiState;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<UiState>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Persist cancellation without invoking the model.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CancelUiCommand {
+	pub ui_id: String,
+	pub session_id: String,
+}
+
+impl Command for CancelUiCommand {
+	const NAME: &'static str = "cancel_ui";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = UiState;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<UiState>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Set this session's interaction policy and refresh its base prompt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetInteractionPolicyCommand {
+	pub policy: SetInteractionPolicyParamsPolicy,
+}
+
+impl Command for SetInteractionPolicyCommand {
+	const NAME: &'static str = "set_interaction_policy";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = SetInteractionPolicyResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<SetInteractionPolicyResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
 	}
 }
 

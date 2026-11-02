@@ -41,6 +41,26 @@ export const cfgAutoResume = register({
 	},
 });
 
+export type InteractionPolicy = "standard" | "aggressive" | "minimal";
+
+export const cfgInteractionPolicy = register({
+	id: "interactionPolicy",
+	type: "enum",
+	values: ["standard", "aggressive", "minimal"] as const,
+	default: "aggressive",
+	ui: {
+		tab: "interaction",
+		group: "Execution",
+		label: "Interaction Policy",
+		description: "How readily the agent offers structured forms for bounded choices, independent of model or provider",
+		options: [
+			{ value: "standard", label: "Standard", description: "Balance direct execution with useful structured choices" },
+			{ value: "aggressive", label: "Aggressive", description: "Prefer batching related fields, candidates, and ranges" },
+			{ value: "minimal", label: "Minimal", description: "Use optional forms only when necessary" },
+		],
+	},
+});
+
 export const cfgGitEnabled = register({
 	id: "git.enabled",
 	type: "boolean",

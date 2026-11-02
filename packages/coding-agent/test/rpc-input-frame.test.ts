@@ -298,6 +298,7 @@ describe("RpcInputDispatcher", () => {
 						followUpMode: "all",
 						interruptMode: "immediate",
 						sessionId: "session-1",
+						pendingUi: null,
 						autoCompactionEnabled: false,
 						fastModeEnabled: false,
 						fastModeActive: false,

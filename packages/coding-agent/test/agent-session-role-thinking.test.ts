@@ -97,7 +97,7 @@ describe("AgentSession role model thinking behavior", () => {
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096,
 		});
 		const agent = new Agent({
-			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [], thinkingLevel: "off" },
+			initialState: { model, systemPrompt: ["Test"], tools: [], messages: [], thinkingLevel: undefined },
 		});
 		session = new AgentSession({
 			agent, sessionManager: SessionManager.inMemory(), settings: Settings.isolated(), modelRegistry, thinkingLevel: "off",

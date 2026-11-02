@@ -38,6 +38,7 @@ import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" w
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import delegationPreferencesTemplate from "./prompts/system/delegation-preferences.md" with { type: "text" };
+import interactionPolicyTemplate from "./prompts/system/interaction-policy.md" with { type: "text" };
 import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
@@ -49,7 +50,14 @@ import { combine } from "./config/registry";
 import { cfgBashAutoBackgroundEnabled } from "./exec/settings";
 import { cfgEvalAutoBackgroundEnabled } from "./eval/settings";
 import { cfgTtsrBuiltinRules, cfgTtsrDisabledRules, cfgTtsrEnabled } from "./export/ttsr-settings";
-import { cfgTuiAutoGraph, cfgTuiReactions, cfgTuiRenderMermaid, cfgTuiRenderSvg } from "./modes/settings";
+import {
+	type InteractionPolicy,
+	cfgInteractionPolicy,
+	cfgTuiAutoGraph,
+	cfgTuiReactions,
+	cfgTuiRenderMermaid,
+	cfgTuiRenderSvg,
+} from "./modes/settings";
 import { cfgSecretsEnabled } from "./secrets/settings";
 import { cfgToolsFormat } from "./session/context-settings";
 import {
@@ -77,6 +85,7 @@ import {
  */
 export const cfgSystemPromptInputs = combine({
 	personality: cfgPersonality,
+	interactionPolicy: cfgInteractionPolicy,
 	includeModelInPrompt: cfgIncludeModelInPrompt,
 	includeWorkspaceTree: cfgIncludeWorkspaceTree,
 	inlineToolDescriptors: cfgInlineToolDescriptors,
@@ -557,6 +566,8 @@ export interface BuildSystemPromptOptions {
 	eagerTasksAlways?: boolean;
 	/** Explicit Desktop appetite replaces catalog/eager wording, including for custom system prompts. */
 	delegationAppetite?: SubagentPreferences["appetite"];
+	/** Model/provider-independent guidance for structured user interaction. Default: standard. */
+	interactionPolicy?: InteractionPolicy;
 	/** Whether `task.batch` is enabled; selects the centralized delegation guidance's call shape. */
 	taskBatch?: boolean;
 	/** Effective task concurrency limit displayed in centralized delegation guidance. Zero means unlimited. */
@@ -682,6 +693,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		eagerTasks = false,
 		eagerTasksAlways = false,
 		delegationAppetite,
+		interactionPolicy = "aggressive",
 		taskBatch = true,
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
@@ -1025,6 +1037,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		eagerTasks,
 		eagerTasksAlways,
 		delegationAppetite,
+		interactionPolicyStandard: interactionPolicy === "standard",
+		interactionPolicyAggressive: interactionPolicy === "aggressive",
+		interactionPolicyMinimal: interactionPolicy === "minimal",
 		// Restrained bias yields to an explicit eager-tasks mode.
 		inlineFirstDelegation: delegationBias === "restrained" && !eagerTasks,
 		taskBatch,
@@ -1064,6 +1079,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		rendered = prompt.render(systemPromptTemplate, data);
 	}
 	const systemPrompt = [rendered];
+	systemPrompt.push(prompt.render(interactionPolicyTemplate, data).trim());
 	if (delegationAppetite) {
 		systemPrompt.push(prompt.render(delegationPreferencesTemplate, data).trim());
 	}

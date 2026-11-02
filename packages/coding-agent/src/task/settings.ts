@@ -246,7 +246,7 @@ export const SUBAGENT_DELEGATION_APPETITES = [
 	"conservative",
 	"off",
 ] as const;
-export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const SUBAGENT_THINKING_LEVELS = ["off", ...THINKING_EFFORTS] as const;
 
 /** Desktop preferences are opt-in; ordinary CLI sessions retain the existing task policy. */
 export const cfgTaskSubagentModelMode = register({
