@@ -14,6 +14,7 @@ import {
 	type StructuredSubagentResult,
 } from "../task/structured-subagent";
 import type { AgentProgress, SingleResult, StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
+import { selectDelegationModel } from "../task/delegation-runtime";
 import type { NestedRepoPatch } from "@oh-my-pi/pi-tui/tools/task";
 import type { ToolSession } from "../tools";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
@@ -205,6 +206,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		if (!manager) {
 			throw new ToolError("agent() needs the session's async job manager; unavailable here");
 		}
+		const delegationSelection = await selectDelegationModel(options.session, options.signal);
 		const id = await reserveStructuredSubagentId(options.session, { label: parsed.label });
 		const ownerId = options.session.getAgentId?.() ?? MAIN_AGENT_ID;
 		manager.register(
@@ -218,6 +220,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 						session: options.session,
 						invocationKind: "eval",
 						assignment: parsed.prompt,
+						delegationSelection,
 						...(parsed.agent !== undefined ? { agent: parsed.agent } : {}),
 						...(Object.hasOwn(parsed, "schema") ? { outputSchema: parsed.schema } : {}),
 						...(parsed.schemaMode !== undefined ? { schemaMode: parsed.schemaMode } : {}),

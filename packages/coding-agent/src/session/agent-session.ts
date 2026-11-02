@@ -46,6 +46,7 @@ import {
 	type ThinkingLevel,
 	type ToolChoiceDirective,
 } from "@oh-my-pi/pi-agent-core";
+import { applyDelegationModel, beginDelegationTurn } from "../task/delegation-runtime";
 import {
 	type CompactionPreparation,
 	type CompactionResult,
@@ -1352,7 +1353,10 @@ export class AgentSession implements SettingsScope {
 		}
 	}
 
+	#releaseDelegationTurn: (() => void) | undefined;
+
 	#beginInFlight(): number {
+		if (this.#promptInFlightCount === 0) this.#releaseDelegationTurn = beginDelegationTurn(this);
 		this.#promptInFlightCount++;
 		if (this.#promptInFlightCount === 1) {
 			this.#acquirePowerAssertion();
@@ -1368,6 +1372,8 @@ export class AgentSession implements SettingsScope {
 		// finishing has its bracket reset by it and ends here.
 		if (epoch === this.#inFlightEpoch) this.#promptInFlightCount = Math.max(0, this.#promptInFlightCount - 1);
 		if (this.#promptInFlightCount !== 0) return;
+		this.#releaseDelegationTurn?.();
+		this.#releaseDelegationTurn = undefined;
 		this.yieldQueue.requestIdleFlush();
 		this.#releasePowerAssertion();
 		this.#endComputerTurn();
@@ -1646,7 +1652,8 @@ export class AgentSession implements SettingsScope {
 		// advertise one yield schema while the runtime enforces the other, so join
 		// the transition before building the turn from a consistent contract.
 		void this.whenWorkPoolYieldSettled()
-			.then(() => {
+			.then(async () => {
+				await applyDelegationModel(this);
 				// Synchronous ownership check, atomic with the dispatch below:
 				// agent.prompt() claims streaming with no await in between, and the
 				// yield contract above mutates synchronously, so no install can
@@ -1832,6 +1839,8 @@ export class AgentSession implements SettingsScope {
 		this.#inFlightEpoch++;
 		this.#promptInFlightCount = 0;
 		this.#clientPromptInFlightCount = 0;
+		this.#releaseDelegationTurn?.();
+		this.#releaseDelegationTurn = undefined;
 		this.yieldQueue.requestIdleFlush();
 		this.#releasePowerAssertion();
 		this.#endComputerTurn();
@@ -2321,6 +2330,7 @@ export class AgentSession implements SettingsScope {
 				let turnError: unknown;
 				const inFlightEpoch = this.#beginInFlight();
 				try {
+					await applyDelegationModel(this);
 					await this.agent.prompt(messages.length === 1 ? first : messages);
 				} catch (error) {
 					turnError = error;
@@ -5317,6 +5327,7 @@ export class AgentSession implements SettingsScope {
 			if (signal.aborted || this.#isDisposed || this.#abortInProgress) {
 				return { status: "skipped", reason: "session-unavailable" };
 			}
+			await applyDelegationModel(this);
 			for (;;) {
 				try {
 					if (!this.agent.state.isStreaming) onStart?.();
@@ -8689,6 +8700,7 @@ export class AgentSession implements SettingsScope {
 		signal: AbortSignal | undefined,
 		origin: "direct" | "queued",
 	): Promise<QueuedMessagePreparation & { baseXdevCatalogDelivered: boolean }> {
+		await applyDelegationModel(this);
 		const sessionGeneration = this.#sessionGeneration;
 		const alreadyDisposing = this.#isDisposed && origin === "direct";
 		const isCurrent = () =>
@@ -9049,6 +9061,7 @@ export class AgentSession implements SettingsScope {
 				this.#planReferenceSent = true;
 			}
 			try {
+				await applyDelegationModel(this);
 				const run = this.#recovery.promptAgentWithIdleRetry(messages, agentPromptOptions, () => {
 					// `agent.prompt` claims streaming synchronously before its
 					// first await: this callback fires exactly when THIS
@@ -9950,6 +9963,7 @@ export class AgentSession implements SettingsScope {
 	): Promise<boolean> {
 		const inFlightEpoch = this.#beginInFlight();
 		try {
+			await applyDelegationModel(this);
 			if (!(await this.#runUsageAwarePreflightForNextModelCall())) return false;
 			const acceptTerminalEmptyStop = options?.acceptTerminalEmptyStop === true;
 			if (acceptTerminalEmptyStop) {

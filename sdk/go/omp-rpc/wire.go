@@ -8414,6 +8414,88 @@ func (c Commands) SetThinkingLevel(ctx context.Context, p SetThinkingLevelComman
 	return c.call(ctx, "set_thinking_level", p, 0, nil)
 }
 
+// SetSubagentPreferencesCommand holds the parameters of "set_subagent_preferences".
+type SetSubagentPreferencesCommand struct {
+	Mode     SetSubagentPreferencesCommandMode     `json:"mode"`
+	Appetite SetSubagentPreferencesCommandAppetite `json:"appetite"`
+	Model    string                                `json:"model"`
+	Thinking SetSubagentPreferencesCommandThinking `json:"thinking"`
+}
+
+// SetSubagentPreferences sends "set_subagent_preferences": Set session-local subagent model, thinking, delegation appetite, and concurrency policy.
+func (c Commands) SetSubagentPreferences(ctx context.Context, p SetSubagentPreferencesCommand) error {
+	return c.call(ctx, "set_subagent_preferences", p, 0, nil)
+}
+
+type SetSubagentPreferencesCommandMode string
+
+const (
+	SetSubagentPreferencesCommandModeAuto   SetSubagentPreferencesCommandMode = "auto"
+	SetSubagentPreferencesCommandModeSync   SetSubagentPreferencesCommandMode = "sync"
+	SetSubagentPreferencesCommandModeCustom SetSubagentPreferencesCommandMode = "custom"
+)
+
+func (v *SetSubagentPreferencesCommandMode) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SetSubagentPreferencesCommandMode")
+	if err != nil {
+		return err
+	}
+	switch value := SetSubagentPreferencesCommandMode(s); value {
+	case SetSubagentPreferencesCommandModeAuto, SetSubagentPreferencesCommandModeSync, SetSubagentPreferencesCommandModeCustom:
+		*v = value
+		return nil
+	}
+	return unknownValue("SetSubagentPreferencesCommandMode", s)
+}
+
+type SetSubagentPreferencesCommandAppetite string
+
+const (
+	SetSubagentPreferencesCommandAppetiteUnlimited    SetSubagentPreferencesCommandAppetite = "unlimited"
+	SetSubagentPreferencesCommandAppetiteAggressive   SetSubagentPreferencesCommandAppetite = "aggressive"
+	SetSubagentPreferencesCommandAppetiteModerate     SetSubagentPreferencesCommandAppetite = "moderate"
+	SetSubagentPreferencesCommandAppetiteConservative SetSubagentPreferencesCommandAppetite = "conservative"
+	SetSubagentPreferencesCommandAppetiteOff          SetSubagentPreferencesCommandAppetite = "off"
+)
+
+func (v *SetSubagentPreferencesCommandAppetite) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SetSubagentPreferencesCommandAppetite")
+	if err != nil {
+		return err
+	}
+	switch value := SetSubagentPreferencesCommandAppetite(s); value {
+	case SetSubagentPreferencesCommandAppetiteUnlimited, SetSubagentPreferencesCommandAppetiteAggressive, SetSubagentPreferencesCommandAppetiteModerate, SetSubagentPreferencesCommandAppetiteConservative, SetSubagentPreferencesCommandAppetiteOff:
+		*v = value
+		return nil
+	}
+	return unknownValue("SetSubagentPreferencesCommandAppetite", s)
+}
+
+type SetSubagentPreferencesCommandThinking string
+
+const (
+	SetSubagentPreferencesCommandThinkingOff     SetSubagentPreferencesCommandThinking = "off"
+	SetSubagentPreferencesCommandThinkingMinimal SetSubagentPreferencesCommandThinking = "minimal"
+	SetSubagentPreferencesCommandThinkingLow     SetSubagentPreferencesCommandThinking = "low"
+	SetSubagentPreferencesCommandThinkingMedium  SetSubagentPreferencesCommandThinking = "medium"
+	SetSubagentPreferencesCommandThinkingHigh    SetSubagentPreferencesCommandThinking = "high"
+	SetSubagentPreferencesCommandThinkingXhigh   SetSubagentPreferencesCommandThinking = "xhigh"
+	SetSubagentPreferencesCommandThinkingMax     SetSubagentPreferencesCommandThinking = "max"
+)
+
+func (v *SetSubagentPreferencesCommandThinking) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "SetSubagentPreferencesCommandThinking")
+	if err != nil {
+		return err
+	}
+	switch value := SetSubagentPreferencesCommandThinking(s); value {
+	case SetSubagentPreferencesCommandThinkingOff, SetSubagentPreferencesCommandThinkingMinimal, SetSubagentPreferencesCommandThinkingLow, SetSubagentPreferencesCommandThinkingMedium, SetSubagentPreferencesCommandThinkingHigh, SetSubagentPreferencesCommandThinkingXhigh, SetSubagentPreferencesCommandThinkingMax:
+		*v = value
+		return nil
+	}
+	return unknownValue("SetSubagentPreferencesCommandThinking", s)
+}
+
 // CycleThinkingLevel sends "cycle_thinking_level": Cycle to the next thinking level.
 func (c Commands) CycleThinkingLevel(ctx context.Context) (*ThinkingLevelCycleResult, error) {
 	var out *ThinkingLevelCycleResult

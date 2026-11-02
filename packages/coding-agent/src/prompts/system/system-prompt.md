@@ -147,6 +147,7 @@ SHOULD use syntax-aware tools before text hacks:
 {{/has}}
 {{/ifAny}}
 
+{{#unless delegationAppetite}}
 {{#has tools "task"}}
 # Delegation
 {{#when delegationBias "==" "gated"}}
@@ -181,6 +182,7 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
 {{/when}}
 - Shared prerequisite inline; sequence ONLY true dependencies. {{#if taskIrcEnabled}}Small missing detail? Run parallel; B messages A via `write agent://<id>`.{{/if}}
 {{/has}}
+{{/unless}}
 
 § Workflow
 # 1. Assess

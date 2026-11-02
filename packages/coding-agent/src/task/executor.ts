@@ -160,6 +160,8 @@ import {
 	cfgCompactionThresholdPercent,
 	cfgCompactionThresholdTokens,
 } from "../session/context-settings";
+import { type DelegationSelection } from "./delegation-runtime";
+import { readSubagentPreferences } from "./delegation-preferences";
 
 export type { YieldItem } from "@oh-my-pi/pi-tui/tools/task";
 
@@ -441,6 +443,8 @@ export interface ExecutorOptions {
 	 * if the resolved subagent model has no working credentials. See #985.
 	 */
 	parentActiveModelPattern?: string;
+	/** Desktop's confirmed selection; never subject to model fallback or agent effort defaults. */
+	delegationSelection?: DelegationSelection;
 	thinkingLevel?: ConfiguredThinkingLevel;
 	/** Caller-requested coarse effort (`lo`/`med`/`hi`); maps onto the resolved model's supported thinking range and wins over {@link thinkingLevel}. */
 	effort?: TaskEffort;
@@ -4179,7 +4183,8 @@ function createWarmSubagentReviver(capture: WarmReviveCapture): AgentReviver {
 		// transcript restores the effort, and the spawn selection only backs the model up when it is
 		// unavailable. The spawn's prewalk stays configured; the coordinator sees it was spent. A seance
 		// fork's selections belong to its source run, never to the consult.
-		const sessionLocalModel = capture.spec.preparedSession ? undefined : reopened.getSessionLocalModelChange()?.model;
+		const sessionLocalModel = capture.spec.preparedSession || capture.spec.options.thinkingLevel !== undefined && readSubagentPreferences(capture.settings.parent)
+			? undefined : reopened.getSessionLocalModelChange()?.model;
 		try {
 			try {
 				const options = buildSubagentSessionOptions(
@@ -4332,6 +4337,11 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			...(advisorRolePattern
 				? { modelRoles: { ...settings.getModelRoles(), advisor: advisorRolePattern } }
 				: undefined),
+			...(options.delegationSelection ? {
+				"retry.fallbackChains": { default: [] },
+				"retry.modelFallback": false,
+				"retry.usageAwareFallback": false,
+			} : {}),
 		},
 		options.parentServiceTier,
 	);
@@ -4543,13 +4553,15 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				authFallbackUsed,
 				warning: modelResolutionWarning,
 			} = await awaitAbortable(
-				resolveModelOverrideWithAuthFallback(
-					modelPatterns,
-					options.parentActiveModelPattern,
-					modelRegistry,
-					settings,
-					id,
-				),
+				options.delegationSelection
+					? Promise.resolve({ ...resolveModelOverride(modelPatterns, modelRegistry, settings), authFallbackUsed: false })
+					: resolveModelOverrideWithAuthFallback(
+							modelPatterns,
+							options.parentActiveModelPattern,
+							modelRegistry,
+							settings,
+							id,
+						),
 			);
 			if (modelResolutionWarning) {
 				logger.warn("Subagent model resolution warning", {
@@ -4621,6 +4633,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// model pattern > agent-definition default (e.g. task's `auto`) >
 			// pattern-derived level.
 			const effectiveThinkingLevel =
+				options.delegationSelection?.thinking ??
 				effortLevel ?? (explicitThinkingLevel ? resolvedThinkingLevel : (thinkingLevel ?? resolvedThinkingLevel));
 			resolvedAt = performance.now();
 			const effectiveCwd = worktree ?? cwd;
@@ -4654,7 +4667,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			// frontmatter default; the `task.prewalk` toggle (default off) arms it.
 			// Resolution failures skip prewalk instead of failing the spawn.
 			let prewalk: Prewalk | undefined;
-			const prewalkPattern = preparedSession
+			const prewalkPattern = preparedSession || options.delegationSelection
 				? undefined
 				: resolveAgentPrewalkPattern({
 						settingsOverride: cfgTaskAgentPrewalk.get(settings)[agent.name],

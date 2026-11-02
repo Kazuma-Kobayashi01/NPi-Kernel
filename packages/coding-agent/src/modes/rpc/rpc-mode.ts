@@ -61,6 +61,16 @@ import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins
 import { buildAvailableSlashCommands } from "../../slash-commands/available-commands";
 import { listLogoutAccounts, logoutCredential } from "../../slash-commands/helpers/logout";
 import { cfgSttEnabled } from "../../stt/settings";
+import {
+	cfgTaskDelegationAppetite,
+	cfgTaskEager,
+	cfgTaskSubagentCustomModel,
+	cfgTaskSubagentCustomThinking,
+	cfgTaskSubagentModelMode,
+	SUBAGENT_DELEGATION_APPETITES,
+	SUBAGENT_MODEL_MODES,
+	SUBAGENT_THINKING_LEVELS,
+} from "../../task/settings";
 import { defaultLoadModeForToolName } from "../../tools/essential-tools";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { EventBus } from "../../utils/event-bus";
@@ -2351,6 +2361,31 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					return error(id, "set_slow_mode", "Slow mode is unavailable for the current model.");
 				}
 				return success(id, "set_slow_mode", { enabled: session.isSlowModeEnabled() });
+			}
+
+			case "set_subagent_preferences": {
+				if (!SUBAGENT_MODEL_MODES.some(mode => mode === command.mode)) {
+					return error(id, command.type, "mode must be auto, sync, or custom");
+				}
+				if (!SUBAGENT_DELEGATION_APPETITES.some(appetite => appetite === command.appetite)) {
+					return error(id, command.type, "appetite must be unlimited, aggressive, moderate, conservative, or off");
+				}
+				if (typeof command.model !== "string") {
+					return error(id, command.type, "model must be a string (empty is allowed until a custom spawn)");
+				}
+				if (!SUBAGENT_THINKING_LEVELS.some(thinking => thinking === command.thinking)) {
+					return error(id, command.type, "thinking must be off, minimal, low, medium, high, xhigh, or max");
+				}
+				cfgTaskDelegationAppetite.override(session, command.appetite);
+				cfgTaskSubagentCustomModel.override(session, command.model.trim());
+				cfgTaskSubagentCustomThinking.override(session, command.thinking);
+				cfgTaskSubagentModelMode.override(session, command.mode);
+				cfgTaskEager.override(
+					session,
+					command.appetite === "unlimited" || command.appetite === "aggressive" ? "preferred" : "default",
+				);
+				await session.refreshBaseSystemPrompt();
+				return success(id, command.type);
 			}
 
 			case "goal": {

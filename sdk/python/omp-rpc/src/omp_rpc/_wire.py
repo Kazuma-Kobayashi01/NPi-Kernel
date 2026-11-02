@@ -3698,6 +3698,15 @@ class WireClient:
         params["level"] = level
         self._command("set_thinking_level", params)
 
+    def set_subagent_preferences(self, mode: Literal["auto", "sync", "custom"], appetite: Literal["unlimited", "aggressive", "moderate", "conservative", "off"], model: str, thinking: Literal["off", "minimal", "low", "medium", "high", "xhigh", "max"]) -> None:
+        """Set session-local subagent model, thinking, delegation appetite, and concurrency policy."""
+        params: dict[str, object] = {}
+        params["mode"] = mode
+        params["appetite"] = appetite
+        params["model"] = model
+        params["thinking"] = thinking
+        self._command("set_subagent_preferences", params)
+
     def cycle_thinking_level(self) -> ThinkingLevelCycleResult | None:
         """Cycle to the next thinking level."""
         params: dict[str, object] = {}

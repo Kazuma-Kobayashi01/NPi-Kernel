@@ -1793,6 +1793,13 @@ export interface SetThinkingLevelParams {
 	level: ThinkingLevel;
 }
 
+export interface SetSubagentPreferencesParams {
+	mode: "auto" | "sync" | "custom";
+	appetite: "unlimited" | "aggressive" | "moderate" | "conservative" | "off";
+	model: string;
+	thinking: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+}
+
 export interface GetAvailableThinkingLevelsResult {
 	levels: ThinkingLevel[];
 }
@@ -2017,6 +2024,7 @@ export interface RpcWireCommands {
 	cycle_model: { params: undefined; result: ModelCycleResult | null };
 	get_available_models: { params: undefined; result: GetAvailableModelsResult };
 	set_thinking_level: { params: SetThinkingLevelParams; result: undefined };
+	set_subagent_preferences: { params: SetSubagentPreferencesParams; result: undefined };
 	cycle_thinking_level: { params: undefined; result: ThinkingLevelCycleResult | null };
 	get_available_thinking_levels: { params: undefined; result: GetAvailableThinkingLevelsResult };
 	set_steering_mode: { params: SetSteeringModeParams; result: undefined };

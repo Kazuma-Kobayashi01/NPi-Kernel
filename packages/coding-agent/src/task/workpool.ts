@@ -19,7 +19,15 @@ import { type AgentProgress, oneLineLabel, type SingleResult, type TaskToolDetai
 import { buildWorkPoolOutputSchema, type WorkPoolYieldItem } from "./workpool-yield";
 
 import { cfgEvalWorkpoolFreshAgents } from "../eval/settings";
-import { cfgTaskMaxConcurrency, cfgTaskMaxRuntimeMs } from "./settings";
+import { cfgTaskMaxRuntimeMs } from "./settings";
+import { getSubagentConcurrencyLimit } from "./delegation-preferences";
+import {
+	acquireDelegationSlot,
+	type DelegationSelection,
+	delegationOwner,
+	delegationPreferences,
+	rememberDelegationSelection,
+} from "./delegation-runtime";
 
 /** One user-supplied unit tracked through a workpool batch. */
 export interface WorkPoolItem {
@@ -28,6 +36,7 @@ export interface WorkPoolItem {
 	text: string;
 	agentId?: string;
 	batchId?: string;
+	delegationSelection?: DelegationSelection;
 	status: "queued" | "running" | "completed" | "failed" | "cancelled";
 }
 
@@ -146,18 +155,19 @@ export class WorkPool {
 
 	/** Current worker ceiling from the live `task.maxConcurrency` setting. */
 	limit(): number {
-		const configured = cfgTaskMaxConcurrency.get(this.session.settings);
-		return configured > 0 ? configured : Infinity;
+		const configured = getSubagentConcurrencyLimit(delegationOwner(this.session));
+		return delegationPreferences(this.session) ? configured : configured > 0 ? configured : Infinity;
 	}
 
 	/** Queue items and start the aggregate pool job on the first non-empty push. */
-	push(texts: string[]): string[] {
+	push(texts: string[], delegationSelection?: DelegationSelection): string[] {
 		if (this.closed) throw new ToolError(`workpool ${this.name} is closed`);
 		if (texts.length === 0) return [];
+		if (delegationPreferences(this.session)?.appetite === "off") throw new ToolError("Subagent delegation is off.");
 		const queued: WorkPoolItem[] = [];
 		for (const text of texts) {
 			const seq = this.#nextSeq++;
-			const item: WorkPoolItem = { id: `${this.name}#${seq}`, seq, text, status: "queued" };
+			const item: WorkPoolItem = { id: `${this.name}#${seq}`, seq, text, status: "queued", delegationSelection };
 			this.items.push(item);
 			queued.push(item);
 		}
@@ -321,7 +331,9 @@ export class WorkPool {
 			this.#notifyDrained();
 			return;
 		}
-		const items = agent.queue.splice(0);
+		const firstSelection = agent.queue[0]!.delegationSelection;
+		const nextBatch = agent.queue.findIndex(item => item.delegationSelection !== firstSelection);
+		const items = agent.queue.splice(0, nextBatch < 0 ? agent.queue.length : nextBatch);
 		const id = `${agent.id}-b${agent.turns + 1}`;
 		const batch: WorkPoolBatch = {
 			id,
@@ -383,6 +395,7 @@ export class WorkPool {
 							session: this.session,
 							invocationKind: "eval",
 							assignment: message,
+							delegationSelection: batch.items[0]!.delegationSelection,
 							...(this.context ? { context: this.context } : {}),
 							agent: this.policy.agentName,
 							identity: { id: agent.id },
@@ -398,7 +411,10 @@ export class WorkPool {
 						});
 						result = execution.result;
 					} else {
-						result = await runSubagentFollowUpTurn({
+						const releaseSlot = await acquireDelegationSlot(this.session, agent.id, signal);
+						rememberDelegationSelection(this.session, agent.id, batch.items[0]!.delegationSelection);
+						try {
+							result = await runSubagentFollowUpTurn({
 							id: agent.id,
 							agent: this.policy.agent,
 							message,
@@ -414,6 +430,9 @@ export class WorkPool {
 							maxRuntimeMs: cfgTaskMaxRuntimeMs.get(this.session.settings),
 							completionProbe: isCompletionProbeEnabled(this.session.settings, this.session.taskDepth ?? 0),
 						});
+						} finally {
+							releaseSlot();
+						}
 					}
 				} catch (error) {
 					const output = error instanceof Error ? error.message : String(error);

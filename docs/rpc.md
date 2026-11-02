@@ -156,6 +156,7 @@ Important edge behavior from runtime:
 - `{ id?, type: "set_host_tools", tools: RpcHostToolDefinition[] }`
 - `{ id?, type: "set_host_uri_schemes", schemes: RpcHostUriSchemeDefinition[] }`
 - `{ id?, type: "set_subagent_subscription", level: "off" | "progress" | "events" }`
+- `{ id?, type: "set_subagent_preferences", mode: "auto" | "sync" | "custom", appetite: "unlimited" | "aggressive" | "moderate" | "conservative" | "off", model: string, thinking: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" }`
 - `{ id?, type: "set_event_filter", events: string[] | null, messageUpdates?: "full" | "delta" }`
 - `{ id?, type: "get_subagents" }`
 - `{ id?, type: "get_subagent_messages", subagentId?: string, sessionFile?: string, fromByte?: number }`
@@ -660,6 +661,24 @@ another provider's persisted setting. A non-boolean `enabled` is rejected with
 `"set_slow_mode requires boolean enabled"`. A change made mid-run applies from
 the next request (stopping an active Claude low-priority window takes effect
 immediately); no event announces it, so re-read `get_state`.
+
+### `set_subagent_preferences` payload
+
+Desktop hosts can replace this process's subagent policy without writing global or project configuration:
+
+```json
+{"id":"subagent-prefs","type":"set_subagent_preferences","mode":"sync","appetite":"moderate","model":"","thinking":"off"}
+{"id":"subagent-prefs","type":"response","command":"set_subagent_preferences","success":true}
+```
+
+All four flat parameters are required. Unknown modes, appetites, or thinking levels, and non-string models, fail before any settings change. An empty Custom model is permitted when saving preferences but fails when spawning; it never selects a fallback model. `auto` is a model-selection mode, not a thinking level.
+
+- **Auto** asks two questions before spawning: one model choice with three available candidates plus Ask's Other entry, and one supported standard thinking-level choice. One task batch uses one answer pair; eval's single agent call and a workpool batch each obtain their own pair. Cancellation or unavailable UI admits no agents; a timeout must not silently choose a recommendation.
+- **Sync** uses the main session's live model and effective thinking level when work is dispatched.
+- **Custom** always uses the saved model and thinking level. Agent defaults, per-task selectors, hooks, and credential/model fallback cannot replace a host-selected model or thinking configuration.
+- **Appetite** controls both the strength of delegation guidance and the hard concurrent-agent ceiling: Unlimited **32**, Aggressive **8**, Moderate **4**, Conservative **2**, Off **0**. These are ceilings, not desired batch sizes or instructions to delegate every request. Off prevents spawning through task, eval agents, and workpool; it does not reinterpret zero as legacy unlimited concurrency.
+
+The command applies runtime overrides for `task.subagentModelMode`, `task.subagentCustomModel`, `task.subagentCustomThinking`, and `task.delegationAppetite`, reuses `task.eager` for compatible eager-mode behavior, and refreshes the base system prompt before acknowledging. Its graduated appetite guidance also applies to custom system prompts. Existing agents are not cancelled by changing preferences; new dispatches use the updated policy. CLI sessions that never enable these preferences preserve their existing task configuration.
 
 ### `set_fast_mode` payload
 

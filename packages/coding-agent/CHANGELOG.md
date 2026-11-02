@@ -1,11 +1,12 @@
 # Changelog
 
-## [2.0.1] - 2026-11-02
+## [2.0.5] - 2026-11-02
 
 ### Added
 
 - Enhanced summarization prompts (`compaction-summary.md`, `compaction-update-summary.md`, `handoff-document.md`) with explicit verbatim preservation directives for LaTeX formulas (`$...$` and `$$...$$`), academic citations (`\cite{...}`, authors, ArXiv IDs), and critical code state.
 - Compaction toolResult truncation now uses a Head + Tail strategy (1200 head chars + 800 tail chars) instead of head-only slicing, preserving critical error and failure diagnostics situated at the end of outputs.
+- Desktop RPC hosts can set session-local subagent preferences with `set_subagent_preferences`: Auto asks for one model/thinking choice per batch, Sync follows the main session, and Custom pins both choices. Graduated Unlimited/Aggressive/Moderate/Conservative/Off delegation appetites impose hard concurrency caps of 32/8/4/2/0 without treating them as target counts; sessions without host preferences retain their existing CLI policy.
 
 
 ### Added

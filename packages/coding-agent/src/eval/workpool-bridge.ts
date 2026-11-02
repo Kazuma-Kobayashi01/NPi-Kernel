@@ -4,6 +4,7 @@ import { resolveEffectiveSubagentPolicy } from "../task/structured-subagent";
 import { type WorkPoolPeekResult, type WorkPoolStatus, WorkPoolRegistry } from "../task/workpool";
 import type { ToolSession } from "../tools";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
+import { selectDelegationModel } from "../task/delegation-runtime";
 import type { JsStatusEvent } from "./js/shared/types";
 
 /** Synthetic bridge name reserved for eval work pools. */
@@ -111,7 +112,8 @@ export async function runEvalWorkpool(args: unknown, options: EvalWorkpoolBridge
 		if (!Array.isArray(record.items) || !record.items.every(item => typeof item === "string")) {
 			throw new ToolError("workpool push requires an items string array");
 		}
-		const ids = pool.push(record.items);
+		const selection = record.items.length ? await selectDelegationModel(options.session, options.signal) : undefined;
+		const ids = pool.push(record.items, selection);
 		options.emitStatus?.({ op: "workpool", action: "push", pool: name, count: ids.length });
 		return { ids };
 	}

@@ -163,6 +163,7 @@ import { parseMCPToolName } from "@oh-my-pi/pi-tui/tools/mcp";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { resolveMCPToolAlias } from "./mcp/tool-bridge";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
+import { bindDelegationSession, registerDelegationContext } from "./task/delegation-runtime";
 import { MEMORY_BACKEND_TOOL_NAMES } from "./memory-backend/tool-names";
 import type { MnemopiSessionState } from "./mnemopi/state";
 import mcpXdevGuidanceTemplate from "./prompts/system/mcp-xdev-guidance.md" with { type: "text" };
@@ -404,7 +405,8 @@ import {
 	cfgSnapcompactToolResults,
 	cfgWorkspaceAdditionalDirectories,
 } from "./session/context-settings";
-import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager, cfgTaskMaxConcurrency } from "./task/settings";
+import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager } from "./task/settings";
+import { getSubagentConcurrencyLimit, readSubagentPreferences } from "./task/delegation-preferences";
 
 /** Agent-level tool-call switches, snapshotted by the agent loop per prompt run. */
 const cfgToolCallSwitches = combine({
@@ -2504,6 +2506,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			getModelString: () => (hasExplicitModel && model ? formatModelString(model) : undefined),
 			getActiveModelString,
 			getActiveModel: () => agent?.state.model ?? model,
+			getActiveThinkingLevel: () => session?.thinkingLevel ?? agent?.state.thinkingLevel,
 			getServiceTierByFamily: () => session?.serviceTierByFamily,
 			getImageAttachments: () => session?.getImageAttachments() ?? [],
 			getPlanModeState: () => session?.getPlanModeState(),
@@ -2603,6 +2606,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			return getEnabledEvalPreludes(builtins);
 		};
 		toolSession.getEvalPreludes = getEvalPreludes;
+		registerDelegationContext(toolSession);
 		initializeComputerUse(toolSession, () =>
 			!restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"));
 		// SessionTools owns the advertised snapshot; before it exists the base
@@ -4225,8 +4229,9 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				intentField: cfgToolsIntentTracing.get(settings) ? INTENT_FIELD : undefined,
 				eagerTasks: cfgTaskEager.get(settings) !== "default",
 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
+				delegationAppetite: readSubagentPreferences(settings)?.appetite,
 				taskBatch: cfgTaskBatch.get(settings),
-				taskMaxConcurrency: cfgTaskMaxConcurrency.get(settings),
+				taskMaxConcurrency: getSubagentConcurrencyLimit(settings),
 				scoutAvailable: isScoutSpawnable(cfgTaskDisabledAgents.get(settings), options.spawns ?? "*"),
 				delegationBias: sessionDelegationBias(toolSession),
 				taskIrcEnabled: !restrictToolNames && isIrcEnabled(settings, options.taskDepth ?? 0),
@@ -5028,6 +5033,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// otherwise surface as "issued in this session" in mismatch diagnostics
 		// after a reset (#13370). The tools snapshot into THIS store, not the
 		// AgentSession's own lazy field.
+		bindDelegationSession(session, toolSession);
 		session.registerSessionChangeCallback(() => toolSession.editStore?.clear());
 		if (ownedSkillDescriptionStore) {
 			// Let in-flight compressions land before releasing the file.

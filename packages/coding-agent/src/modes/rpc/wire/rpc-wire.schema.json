@@ -485,6 +485,17 @@
 				"clientOmit": []
 			},
 			{
+				"name": "set_subagent_preferences",
+				"doc": "Set session-local subagent model, thinking, delegation appetite, and concurrency policy.",
+				"params": "SetSubagentPreferencesParams",
+				"result": null,
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "cycle_thinking_level",
 				"doc": "Cycle to the next thinking level.",
 				"params": null,
@@ -6965,6 +6976,50 @@
 			},
 			"required": [
 				"level"
+			]
+		},
+		"SetSubagentPreferencesParams": {
+			"type": "object",
+			"properties": {
+				"mode": {
+					"enum": [
+						"auto",
+						"sync",
+						"custom"
+					],
+					"type": "string"
+				},
+				"appetite": {
+					"enum": [
+						"unlimited",
+						"aggressive",
+						"moderate",
+						"conservative",
+						"off"
+					],
+					"type": "string"
+				},
+				"model": {
+					"type": "string"
+				},
+				"thinking": {
+					"enum": [
+						"off",
+						"minimal",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"mode",
+				"appetite",
+				"model",
+				"thinking"
 			]
 		},
 		"GetAvailableThinkingLevelsResult": {

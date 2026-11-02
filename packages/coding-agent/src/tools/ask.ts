@@ -581,7 +581,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 	readonly concurrency = "exclusive";
 	readonly loadMode = "discoverable";
 
-	constructor(private readonly session: ToolSession) {
+	constructor(private readonly session: ToolSession, private readonly options?: { disableTimeout?: boolean }) {
 		this.description = prompt.render(askDescription);
 	}
 
@@ -755,7 +755,7 @@ export class AskTool implements AgentTool<typeof askSchema, AskToolDetails> {
 		// Determine timeout based on settings and plan mode
 		const planModeEnabled = this.session.getPlanModeState?.()?.enabled ?? false;
 		const settingsTimeout = askTimeoutMs(this.session.settings) ?? null;
-		const timeout = planModeEnabled ? null : settingsTimeout;
+		const timeout = this.options?.disableTimeout || planModeEnabled ? null : settingsTimeout;
 
 		// Send notification if waiting and not suppressed
 		this.#sendAskNotification();

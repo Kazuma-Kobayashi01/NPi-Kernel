@@ -147,6 +147,12 @@ export class Semaphore {
 		this.#max = normalizedMax > 0 ? normalizedMax : Number.POSITIVE_INFINITY;
 	}
 
+	tryAcquire(): boolean {
+		if (this.#current >= this.#max) return false;
+		this.#current++;
+		return true;
+	}
+
 	/**
 	 * Resolves when a slot is available. Pass an `AbortSignal` so callers that
 	 * stop waiting (parent task cancelled, wall-clock budget elapsed) also stop
@@ -201,9 +207,9 @@ export class Semaphore {
 	 * it — keeps in-flight slots counted, so a runtime or mixed limit change can
 	 * never push concurrency past the cap (issue #3464 review feedback).
 	 */
-	resize(max: number): void {
+	resize(max: number, allowZero = false): void {
 		const normalizedMax = normalizeConcurrencyLimit(max);
-		this.#max = normalizedMax > 0 ? normalizedMax : Number.POSITIVE_INFINITY;
+		this.#max = allowZero && max === 0 ? 0 : normalizedMax > 0 ? normalizedMax : Number.POSITIVE_INFINITY;
 		while (this.#current < this.#max) {
 			const next = this.#queue.shift();
 			if (!next) break;

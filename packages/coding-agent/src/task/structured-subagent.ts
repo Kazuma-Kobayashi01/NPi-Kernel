@@ -60,6 +60,14 @@ import type {
 } from "@oh-my-pi/pi-tui/tools/task";
 import type { WorkPoolYieldItem } from "./workpool-yield";
 import { parseIsolationBackend } from "./worktree";
+import {
+	acquireDelegationSlot,
+	type DelegationSelection,
+	delegationPreferences,
+	selectDelegationModel,
+	validateDelegationSelection,
+	rememberDelegationSelection,
+} from "./delegation-runtime";
 
 import {
 	cfgIsolationBackend,
@@ -114,6 +122,8 @@ export interface StructuredSubagentRequest {
 	/** Saved source session selected for the bundled seance agent. */
 	sourceSession?: string;
 	model?: string | string[];
+	/** Explicitly confirmed once by the calling task/eval/workpool batch. */
+	delegationSelection?: DelegationSelection;
 
 	/** Presence, rather than truthiness, makes this the highest-priority schema. */
 	outputSchema?: unknown;
@@ -184,6 +194,7 @@ export interface EffectiveSubagentPolicy {
 	compactionThresholdOverride?: CompactionThresholdPair;
 	/** Exact-name `task.agentAccountPools` entry: the only OAuth accounts the child may use, per listed provider. */
 	oauthAccountPools?: OAuthAccountPools;
+	delegationSelection?: DelegationSelection;
 	parentActiveModelPattern?: string;
 	/** Whether the child gets the `yield` tool; see {@link StructuredSubagentRequest.structured}. */
 	structured: boolean;
@@ -351,6 +362,9 @@ export async function resolveEffectiveSubagentPolicy(
 	request: StructuredSubagentRequest,
 ): Promise<EffectiveSubagentPolicy> {
 	await request.session.settings.reloadFromDisk();
+	if (delegationPreferences(request.session)?.appetite === "off") {
+		throw new StructuredSubagentError("preflight", "Subagent delegation is off.");
+	}
 	const spawnPolicy = resolveSpawnPolicy(request.session.getSessionSpawns());
 	const agentName = request.agent?.trim() || spawnPolicy.defaultAgent;
 	const planMode = request.session.getPlanModeState?.()?.enabled === true;
@@ -612,14 +626,15 @@ function buildExecutorOptions(
 		invokedAt: request.invokedAt,
 		acquiredAt: request.acquiredAt,
 		modelOverride: policy.modelOverride,
+		delegationSelection: policy.delegationSelection,
 		modelRole: policy.modelRole,
 		modelRoute: policy.modelRoute,
 		serviceTierOverride: policy.serviceTierOverride,
 		compactionThresholdOverride: policy.compactionThresholdOverride,
 		oauthAccountPools: policy.oauthAccountPools,
 		parentActiveModelPattern: policy.parentActiveModelPattern,
-		thinkingLevel: policy.effectiveAgent.thinkingLevel,
-		effort: request.effort,
+		thinkingLevel: policy.delegationSelection?.thinking ?? policy.effectiveAgent.thinkingLevel,
+		effort: policy.delegationSelection ? undefined : request.effort,
 		solutionSpace: request.solutionSpace?.trim() || undefined,
 		structured: policy.structured,
 		...(policy.schema.source === "none"
@@ -825,8 +840,18 @@ function describeSalvagedWork(result: SingleResult): string {
  * lease or child dispatch; callers keep responsibility for their result text.
  */
 export async function runStructuredSubagent(request: StructuredSubagentRequest): Promise<StructuredSubagentResult> {
-	const policy = await applySpawnHook(request, await resolveEffectiveSubagentPolicy(request));
+	let policy = await applySpawnHook(request, await resolveEffectiveSubagentPolicy(request));
+	const preferences = delegationPreferences(request.session);
+	const selection = preferences?.mode === "auto" && request.delegationSelection
+		? request.delegationSelection
+		: await selectDelegationModel(request.session, request.signal);
+	if (selection) {
+		validateDelegationSelection(request.session, selection);
+		policy = { ...policy, modelOverride: [selection.model], modelRole: undefined, modelRoute: undefined,
+			parentActiveModelPattern: undefined, delegationSelection: selection };
+	}
 	const lease = await leaseArtifacts(request.session, request.invocationKind);
+	let releaseSlot: (() => void) | undefined;
 	let changesApplied: boolean | null = null;
 	let mergeSummary = "";
 	let requiresRecoveryArtifacts = false;
@@ -847,6 +872,8 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 			...request.identity,
 			label: request.identity?.label ?? (request.invocationKind === "eval" ? "EvalAgent" : undefined),
 		});
+		releaseSlot = await acquireDelegationSlot(request.session, id, request.signal);
+		rememberDelegationSelection(request.session, id, selection);
 		if (policy.preparedSession === undefined) await refreshSkillsForAutoload(request.session, policy.agent);
 		const baseOptions = buildExecutorOptions(request, policy, lease, id);
 		baseOptions.onCleanupDeferred = completion => {
@@ -969,6 +996,7 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 			{ cause: error, result: settled },
 		);
 	} finally {
+		releaseSlot?.();
 		const shouldRetainArtifacts =
 			request.detached === true ||
 			retainSalvagedArtifact ||

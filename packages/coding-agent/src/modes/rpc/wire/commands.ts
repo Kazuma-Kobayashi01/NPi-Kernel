@@ -239,6 +239,16 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 	},
 	{ name: "set_thinking_level", doc: "Set the thinking level.", params: { level: "ThinkingLevel" } },
 	{
+		name: "set_subagent_preferences",
+		doc: "Set session-local subagent model, thinking, delegation appetite, and concurrency policy.",
+		params: {
+			mode: "'auto' | 'sync' | 'custom'",
+			appetite: "'unlimited' | 'aggressive' | 'moderate' | 'conservative' | 'off'",
+			model: "string",
+			thinking: "'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'",
+		},
+	},
+	{
 		name: "cycle_thinking_level",
 		doc: "Cycle to the next thinking level.",
 		result: "ThinkingLevelCycleResult",

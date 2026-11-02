@@ -37,6 +37,7 @@ import friendlyPersonality from "./prompts/system/personalities/friendly.md" wit
 import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
+import delegationPreferencesTemplate from "./prompts/system/delegation-preferences.md" with { type: "text" };
 import userAppendPromptTemplate from "./prompts/system/user-append.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
 import type { ActiveRepoContext } from "@oh-my-pi/pi-tui/status-line/host";
@@ -57,7 +58,8 @@ import {
 	cfgInlineToolDescriptors,
 	cfgPersonality,
 } from "./session/settings";
-import { cfgTaskBatch, cfgTaskEager } from "./task/settings";
+import { cfgTaskBatch, cfgTaskDelegationAppetite, cfgTaskEager, cfgTaskSubagentModelMode } from "./task/settings";
+import type { SubagentPreferences } from "./task/delegation-preferences";
 import {
 	cfgAsyncEnabled,
 	cfgOutEnabled,
@@ -95,6 +97,8 @@ export const cfgSystemPromptInputs = combine({
 	evalAutoBackground: cfgEvalAutoBackgroundEnabled,
 	taskEager: cfgTaskEager,
 	taskBatch: cfgTaskBatch,
+	taskDelegationAppetite: cfgTaskDelegationAppetite,
+	taskSubagentModelMode: cfgTaskSubagentModelMode,
 	// Rule bucketing (TTSR registrations, rulebook, always-apply) runs at rebuild time.
 	ttsrEnabled: cfgTtsrEnabled,
 	ttsrBuiltinRules: cfgTtsrBuiltinRules,
@@ -551,6 +555,8 @@ export interface BuildSystemPromptOptions {
 	eagerTasks?: boolean;
 	/** When true, the Eager Tasks section uses the hard MUST/ONLY wording (`task.eager: always`) rather than the softer `preferred` nudge. */
 	eagerTasksAlways?: boolean;
+	/** Explicit Desktop appetite replaces catalog/eager wording, including for custom system prompts. */
+	delegationAppetite?: SubagentPreferences["appetite"];
 	/** Whether `task.batch` is enabled; selects the centralized delegation guidance's call shape. */
 	taskBatch?: boolean;
 	/** Effective task concurrency limit displayed in centralized delegation guidance. Zero means unlimited. */
@@ -675,6 +681,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		intentField,
 		eagerTasks = false,
 		eagerTasksAlways = false,
+		delegationAppetite,
 		taskBatch = true,
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
@@ -1017,6 +1024,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		intentGuidance: $env.PI_INTENT_PROMPT ?? "",
 		eagerTasks,
 		eagerTasksAlways,
+		delegationAppetite,
 		// Restrained bias yields to an explicit eager-tasks mode.
 		inlineFirstDelegation: delegationBias === "restrained" && !eagerTasks,
 		taskBatch,
@@ -1056,6 +1064,9 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		rendered = prompt.render(systemPromptTemplate, data);
 	}
 	const systemPrompt = [rendered];
+	if (delegationAppetite) {
+		systemPrompt.push(prompt.render(delegationPreferencesTemplate, data).trim());
+	}
 	for (const prelude of evalPreludes) {
 		const guidance = prelude.guidance?.trim();
 		if (guidance) systemPrompt.push(guidance);

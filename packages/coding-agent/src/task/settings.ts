@@ -238,6 +238,48 @@ export const cfgTaskEager = register({
 	},
 });
 
+export const SUBAGENT_MODEL_MODES = ["auto", "sync", "custom"] as const;
+export const SUBAGENT_DELEGATION_APPETITES = [
+	"unlimited",
+	"aggressive",
+	"moderate",
+	"conservative",
+	"off",
+] as const;
+export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Desktop preferences are opt-in; ordinary CLI sessions retain the existing task policy. */
+export const cfgTaskSubagentModelMode = register({
+	id: "task.subagentModelMode",
+	protocolDefault: ["rpc", "acp"],
+	type: "enum",
+	values: ["default", ...SUBAGENT_MODEL_MODES] as const,
+	default: "default",
+});
+
+export const cfgTaskSubagentCustomModel = register({
+	id: "task.subagentCustomModel",
+	protocolDefault: ["rpc", "acp"],
+	type: "string",
+	default: "",
+});
+
+export const cfgTaskSubagentCustomThinking = register({
+	id: "task.subagentCustomThinking",
+	protocolDefault: ["rpc", "acp"],
+	type: "enum",
+	values: SUBAGENT_THINKING_LEVELS,
+	default: "off",
+});
+
+export const cfgTaskDelegationAppetite = register({
+	id: "task.delegationAppetite",
+	protocolDefault: ["rpc", "acp"],
+	type: "enum",
+	values: ["default", ...SUBAGENT_DELEGATION_APPETITES] as const,
+	default: "default",
+});
+
 export const cfgTaskBatch = register({
 	id: "task.batch",
 	protocolDefault: ["rpc", "acp"],

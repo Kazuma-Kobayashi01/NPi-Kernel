@@ -5522,6 +5522,14 @@ pub struct SetThinkingLevelParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetSubagentPreferencesParams {
+	pub mode: SetSubagentPreferencesParamsMode,
+	pub appetite: SetSubagentPreferencesParamsAppetite,
+	pub model: String,
+	pub thinking: SetSubagentPreferencesParamsThinking,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetAvailableThinkingLevelsResult {
 	pub levels: Vec<ThinkingLevel>,
 }
@@ -6130,6 +6138,87 @@ impl HostUriResultContentType {
 			Self::TextMarkdown => "text/markdown",
 			Self::ApplicationJson => "application/json",
 			Self::TextPlain => "text/plain",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetSubagentPreferencesParamsMode {
+	#[serde(rename = "auto")]
+	Auto,
+	#[serde(rename = "sync")]
+	Sync,
+	#[serde(rename = "custom")]
+	Custom,
+}
+
+impl SetSubagentPreferencesParamsMode {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Auto => "auto",
+			Self::Sync => "sync",
+			Self::Custom => "custom",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetSubagentPreferencesParamsAppetite {
+	#[serde(rename = "unlimited")]
+	Unlimited,
+	#[serde(rename = "aggressive")]
+	Aggressive,
+	#[serde(rename = "moderate")]
+	Moderate,
+	#[serde(rename = "conservative")]
+	Conservative,
+	#[serde(rename = "off")]
+	Off,
+}
+
+impl SetSubagentPreferencesParamsAppetite {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Unlimited => "unlimited",
+			Self::Aggressive => "aggressive",
+			Self::Moderate => "moderate",
+			Self::Conservative => "conservative",
+			Self::Off => "off",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetSubagentPreferencesParamsThinking {
+	#[serde(rename = "off")]
+	Off,
+	#[serde(rename = "minimal")]
+	Minimal,
+	#[serde(rename = "low")]
+	Low,
+	#[serde(rename = "medium")]
+	Medium,
+	#[serde(rename = "high")]
+	High,
+	#[serde(rename = "xhigh")]
+	Xhigh,
+	#[serde(rename = "max")]
+	Max,
+}
+
+impl SetSubagentPreferencesParamsThinking {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Off => "off",
+			Self::Minimal => "minimal",
+			Self::Low => "low",
+			Self::Medium => "medium",
+			Self::High => "high",
+			Self::Xhigh => "xhigh",
+			Self::Max => "max",
 		}
 	}
 }
@@ -6959,6 +7048,26 @@ pub struct SetThinkingLevelCommand {
 
 impl Command for SetThinkingLevelCommand {
 	const NAME: &'static str = "set_thinking_level";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = ();
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		let _ = data;
+		Ok(())
+	}
+}
+
+/// Set session-local subagent model, thinking, delegation appetite, and concurrency policy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetSubagentPreferencesCommand {
+	pub mode: SetSubagentPreferencesParamsMode,
+	pub appetite: SetSubagentPreferencesParamsAppetite,
+	pub model: String,
+	pub thinking: SetSubagentPreferencesParamsThinking,
+}
+
+impl Command for SetSubagentPreferencesCommand {
+	const NAME: &'static str = "set_subagent_preferences";
 	const TIMEOUT_MS: Option<u64> = None;
 	type Output = ();
 
