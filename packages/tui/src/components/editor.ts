@@ -1820,7 +1820,7 @@ export class Editor implements Component, Focusable {
 		}
 
 		const bottomRow = style.renderBottom(chromeCtx);
-		if (bottomRow !== undefined) result.push(bottomRow);
+		if (bottomRow !== undefined) result.push(...bottomRow.split("\n"));
 
 		// Add autocomplete list if active
 		const autocompleteList = this.#visibleAutocompleteList();

@@ -87,7 +87,7 @@ export interface ComposerStyle {
 	 *  column, IME-safe layout, and the right-border scrollbar. */
 	readonly sideBorders: boolean;
 	/** Rows consumed by top+bottom chrome (drives maxHeight budgeting). */
-	readonly verticalChrome: 0 | 1 | 2;
+	readonly verticalChrome: 0 | 1 | 2 | 3;
 	/** Where the host should attach the status bar: embedded in the top border,
 	 * rendered as a flush soft-capped band above the input, docked onto a top rule, or detached into a standalone bottom bar. */
 	readonly statusAttachment: "top-border" | "top-band" | "top-rule-chip" | "bottom-label" | "none";

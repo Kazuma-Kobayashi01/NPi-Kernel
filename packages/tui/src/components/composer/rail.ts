@@ -17,7 +17,7 @@ export const railComposerStyle: ComposerStyle = {
 	id: "rail",
 	filledSurface: true,
 	sideBorders: true,
-	verticalChrome: 2,
+	verticalChrome: 3,
 	statusAttachment: "bottom-label",
 	bottomBar: "full",
 	bottomBarGap: true,
@@ -48,11 +48,9 @@ export const railComposerStyle: ComposerStyle = {
 		return [rail + ctx.surfaceColor(leftFill + ctx.pad + padding(rightFillCells))];
 	},
 
+	/** The panel closes with a blank surface row; the mode / model label sits under it, outside the fill. */
 	renderBottom(ctx: ComposerChromeContext): string {
 		const content = ctx.topBorder?.content ?? "";
-		return (
-			ctx.accentColor(ACCENT_RAIL) +
-			ctx.surfaceColor(" " + content + padding(Math.max(0, ctx.width - 2 - (ctx.topBorder?.width ?? 0))))
-		);
+		return `${blankSurfaceRow(ctx)}\n${padding(2)}${content}`;
 	},
 };

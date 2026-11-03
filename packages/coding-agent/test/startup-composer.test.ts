@@ -655,7 +655,8 @@ describe("Composer prepaint", () => {
 			await terminal.waitForRender();
 			expect(mode.editor.getExpandedText()).toBe(draft);
 			expect(draft.split("\n")).toHaveLength(18);
-			expect(mode.editor.render(80).length).toBeLessThanOrEqual(4);
+			// blank, one draft row, blank, mode/model label, hint row
+			expect(mode.editor.render(80).length).toBeLessThanOrEqual(5);
 			expect(terminal.getViewport().join("\n")).not.toContain("Starting OMP");
 		} finally {
 			mode.stop();
@@ -805,7 +806,8 @@ describe("Composer prepaint", () => {
 			await terminal.waitForRender(() =>
 				terminal.getViewport().some(row => Bun.stripANSI(row).includes("real status bar *18 ?5")),
 			);
-			const welcomeMatches = (output.match(/v9\.9\.9/g) || []).length;
+			// The home footer repeats the version beside the directory; only the header counts as the welcome.
+			const welcomeMatches = output.split("\n").filter(row => row.includes("v9.9.9") && !row.startsWith("~")).length;
 			expect(welcomeMatches).toBe(1);
 			const adoptedEditorRow = terminal
 				.getViewport()
