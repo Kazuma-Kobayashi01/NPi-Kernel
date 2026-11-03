@@ -16,6 +16,7 @@ import { resolveMermaidAscii } from "./mermaid-cache";
 import type { SlashCommandIconName } from "./symbols";
 import { ensureThemeSync, theme } from "./theme";
 import type { Theme } from "./theme-class";
+import { padding, visibleWidth } from "../utils";
 
 // ============================================================================
 // TUI Helpers
@@ -336,6 +337,9 @@ export function getSelectListTheme(): SelectListTheme {
 	return {
 		selectedPrefix: (text: string) => theme.fg("accent", text),
 		selectedText: (text: string) => theme.fg("accent", text),
+		// The chosen row reads as a filled bar: the selection colour behind bold accent text.
+		selectedFill: (text: string, width: number) =>
+			theme.bg("selectedBg", theme.bold(theme.fg("accent", text + padding(Math.max(0, width - visibleWidth(text)))))),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),

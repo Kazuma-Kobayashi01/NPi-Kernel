@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The composer now defaults to the Accent Rail shape (a left accent bar over a filled surface, the model and mode line under it); a saved choice is kept.
+
 ## [2.0.10] - 2026-11-02
 
 Bundled with Desktop 2.0.0.378: managed Python execution through the Rust host,

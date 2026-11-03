@@ -19,7 +19,7 @@ class ComposerSceneController implements SetupSceneController {
 	#selectList: SelectList;
 	#shapes: readonly ComposerShape[];
 	#items: readonly SelectItem[];
-	#currentShape: ComposerShape = "band";
+	#currentShape: ComposerShape = "rail";
 	#committing = false;
 	#step: WizardStep | undefined;
 	#native = new Memo();
@@ -35,7 +35,7 @@ class ComposerSceneController implements SetupSceneController {
 			label: `${index + 1}  ${choice.label}`,
 			description: choice.description,
 		}));
-		const configuredShape = host.ctx.composerShape ?? "band";
+		const configuredShape = host.ctx.composerShape ?? "rail";
 		const initialShape = this.#shapes.includes(configuredShape) ? configuredShape : "band";
 		this.#currentShape = initialShape;
 		const initialIndex = Math.max(0, this.#shapes.indexOf(initialShape));

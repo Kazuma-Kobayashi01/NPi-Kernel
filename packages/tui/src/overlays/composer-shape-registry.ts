@@ -8,7 +8,7 @@ export type ComposerShape = string;
 export const BUILTIN_COMPOSER_SHAPES = [
 	{
 		value: "band",
-		label: "Status Band (Default)",
+		label: "Status Band",
 		description: "Flush soft-capped status band above a curved prompt, no frame",
 	},
 	{
@@ -43,7 +43,7 @@ export const BUILTIN_COMPOSER_SHAPES = [
 	},
 	{
 		value: "rail",
-		label: "Accent Rail",
+		label: "Accent Rail (Default)",
 		description: "Filled one-row field anchored by a single accent rail",
 	},
 ] as const;

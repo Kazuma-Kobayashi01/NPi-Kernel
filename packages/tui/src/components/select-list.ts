@@ -61,6 +61,8 @@ export interface SelectItem {
 export interface SelectListTheme {
 	selectedPrefix: (text: string) => string;
 	selectedText: (text: string) => string;
+	/** The selected row as a bar `width` columns wide; themes without it use {@link selectedText} on the bare text. */
+	selectedFill?: (text: string, width: number) => string;
 	description: (text: string) => string;
 	scrollInfo: (text: string) => string;
 	noMatch: (text: string) => string;
@@ -529,6 +531,9 @@ export class SelectList implements Component, MouseRoutable {
 		const { prefix, truncatedValue, spacing } = layout;
 		const iconCell =
 			layout.iconCell && !isSelected && this.theme.icon ? this.theme.icon(layout.iconCell) : layout.iconCell;
+		// A selected row is one filled bar the width of the list, not just its text.
+		const selectedRow = (text: string): string =>
+			this.theme.selectedFill ? this.theme.selectedFill(text, width) : this.theme.selectedText(text);
 
 		if (layout.kind === "description") {
 			const { descriptionSingleLine, descriptionStart, remainingWidth } = layout;
@@ -538,9 +543,9 @@ export class SelectList implements Component, MouseRoutable {
 				const indent = padding(descriptionStart);
 				const first = wrapped[0] ?? "";
 				if (isSelected) {
-					const rows = [this.theme.selectedText(`${prefix}${iconCell}${truncatedValue}${spacing}${first}`)];
+					const rows = [selectedRow(`${prefix}${iconCell}${truncatedValue}${spacing}${first}`)];
 					for (let i = 1; i < wrapped.length; i++) {
-						rows.push(this.theme.selectedText(`${indent}${wrapped[i]}`));
+						rows.push(selectedRow(`${indent}${wrapped[i]}`));
 					}
 					return rows;
 				}
@@ -553,13 +558,13 @@ export class SelectList implements Component, MouseRoutable {
 
 			const truncatedDesc = truncateToWidth(descriptionSingleLine, remainingWidth, Ellipsis.Omit);
 			if (isSelected) {
-				return [this.theme.selectedText(`${prefix}${iconCell}${truncatedValue}${spacing}${truncatedDesc}`)];
+				return [selectedRow(`${prefix}${iconCell}${truncatedValue}${spacing}${truncatedDesc}`)];
 			}
 			return [prefix + iconCell + truncatedValue + this.theme.description(spacing + truncatedDesc)];
 		}
 
 		if (isSelected) {
-			return [this.theme.selectedText(`${prefix}${iconCell}${truncatedValue}`)];
+			return [selectedRow(`${prefix}${iconCell}${truncatedValue}`)];
 		}
 		return [prefix + iconCell + truncatedValue];
 	}

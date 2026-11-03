@@ -87,6 +87,22 @@ describe("SelectList", () => {
 		expect(rendered[0]).toContain("Line one Line two Line three");
 	});
 
+	it("draws the selected row as a bar the width of the list when the theme can fill", () => {
+		const filled: SelectListTheme = { ...testTheme, selectedFill: (text, width) => `[${text.padEnd(width - 2)}]` };
+		const list = new SelectList(
+			[
+				{ value: "a", label: "alpha", description: "first" },
+				{ value: "b", label: "beta" },
+			],
+			5,
+			filled,
+		);
+		const [selected, other] = list.render(30);
+		expect(selected?.startsWith("[")).toBe(true);
+		expect(selected?.endsWith("]")).toBe(true);
+		expect(other?.includes("[")).toBe(false);
+	});
+
 	it("falls back to an ASCII cursor when a legacy theme omits symbols", () => {
 		const legacyTheme: SelectListTheme = { ...testTheme };
 		Reflect.deleteProperty(legacyTheme, "symbols");

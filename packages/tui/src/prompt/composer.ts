@@ -52,7 +52,7 @@ export interface ComposerPreferences {
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
 export const COMPOSER_DEFAULTS: ComposerPreferences = {
 	quiet: false,
-	composerShape: "band",
+	composerShape: "rail",
 	showHardwareCursor: true,
 	maxInlineImages: 8,
 	resizeScrollback: "rebuild",

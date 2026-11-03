@@ -124,7 +124,7 @@ export class ComposerShapePreview implements Component {
 	#options: ComposerShapePreviewOptions;
 	#native: { shape: ComposerShape; node: NativeNode } | undefined;
 
-	constructor(initialValue: ComposerShape = "band", options: ComposerShapePreviewOptions = {}) {
+	constructor(initialValue: ComposerShape = "rail", options: ComposerShapePreviewOptions = {}) {
 		this.#shape = initialValue;
 		this.#options = options;
 	}

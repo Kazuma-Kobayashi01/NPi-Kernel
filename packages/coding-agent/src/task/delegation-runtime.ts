@@ -243,15 +243,16 @@ export async function selectDelegationModel(
 		const available = owner.modelRegistry!.getAvailable();
 		const current = owner.getActiveModel?.();
 		const candidates = current ? [current, ...available.filter(model => formatModelStringWithRouting(model) !== formatModelStringWithRouting(current))] : available;
-		const models = candidates.filter(model => owner.modelRegistry!.hasConfiguredAuth(model)).slice(0, 3);
+		// Every configured model, the current one first and recommended: a long list is a dropdown in the Desktop form.
+		const models = candidates.filter(model => owner.modelRegistry!.hasConfiguredAuth(model));
 		if (models.length === 0) throw new Error("No available subagent models.");
 		const ask = context(session).ask;
 		await ask.acquire(signal);
 		try {
 		const result = await new AskTool(owner, { disableTimeout: true }).execute("subagent-preferences", {
 			questions: [
-				{ id: "model", question: "Which model should this subagent batch use?", options: models.map(model => ({ label: formatModelStringWithRouting(model) })) },
-				{ id: "thinking", question: "Which thinking level should this subagent batch use?", options: thinkingLevels.map(label => ({ label })) },
+				{ id: "model", question: "Which model should this subagent batch use?", options: models.map(model => ({ label: formatModelStringWithRouting(model) })), recommended: 0 },
+				{ id: "thinking", question: "Which thinking level should this subagent batch use?", options: thinkingLevels.map(label => ({ label })), recommended: Math.max(0, thinkingLevels.indexOf((owner.getActiveThinkingLevel?.() ?? "off") as SubagentPreferences["thinking"])) },
 			],
 		}, signal, undefined, toolContext ?? owner.getToolContext?.());
 		const answers = result.details?.results;
