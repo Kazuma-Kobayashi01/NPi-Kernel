@@ -4,6 +4,8 @@
 
 ### Changed
 
+- New setting `composer.paintBackground` (on by default): fill the whole terminal with the theme's background while npi runs. Terminals that ignore OSC 11 keep their own background.
+
 - The composer now defaults to the Accent Rail shape (a left accent bar over a filled surface, the model and mode line under it); a saved choice is kept.
 
 ## [2.0.10] - 2026-11-02

@@ -1,0 +1,56 @@
+import { beforeAll, describe, expect, it } from "bun:test";
+import { COMPOSER_DEFAULTS, Composer } from "@oh-my-pi/pi-tui/prompt/composer";
+import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
+import { VirtualRenderScheduler } from "./virtual-render-scheduler";
+import { VirtualTerminal } from "./virtual-terminal";
+import { withoutTerminalMultiplexer } from "./helpers/terminal-multiplexer";
+
+withoutTerminalMultiplexer();
+
+/** A virtual terminal that records what the composer asks of the terminal's default background. */
+class PaintTerminal extends VirtualTerminal {
+	readonly paints: Array<string | undefined> = [];
+	setDefaultBackground(color: string | undefined): void {
+		this.paints.push(color);
+	}
+}
+
+function composer(preferences: Partial<typeof COMPOSER_DEFAULTS> = {}) {
+	const terminal = new PaintTerminal(100, 30);
+	const scheduler = new VirtualRenderScheduler();
+	const c = new Composer({
+		terminal,
+		tuiOptions: { renderScheduler: scheduler },
+		preferences: { ...COMPOSER_DEFAULTS, quiet: true, ...preferences },
+	});
+	return { c, terminal };
+}
+
+describe("terminal background paint", () => {
+	beforeAll(async () => {
+		await initTheme();
+	});
+
+	it("paints the theme's background once the composer starts, and gives it back when asked", () => {
+		const { c, terminal } = composer();
+		expect(terminal.paints).toEqual([]);
+		c.start();
+		expect(terminal.paints).toEqual([theme.terminalBackground]);
+		c.setPreferences({ paintBackground: false });
+		expect(terminal.paints).toEqual([theme.terminalBackground, undefined]);
+		c.setPreferences({ paintBackground: true });
+		expect(terminal.paints.at(-1)).toBe(theme.terminalBackground);
+		c.stop();
+	});
+
+	it("leaves the terminal alone when the preference is off from the start", () => {
+		const { c, terminal } = composer({ paintBackground: false });
+		c.start();
+		expect(terminal.paints.every(color => color === undefined)).toBe(true);
+		c.stop();
+	});
+
+	it("is a near-black surface on a dark theme and a near-white one on a light theme", () => {
+		expect(theme.terminalBackground).toBe(theme.isLight ? "#f7f7f4" : "#0e0e10");
+	});
+});

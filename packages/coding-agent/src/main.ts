@@ -163,6 +163,7 @@ import {
 	cfgAutocompleteMaxVisible,
 	cfgAutoResume,
 	cfgColorBlindMode,
+	cfgComposerPaintBackground,
 	cfgComposerShape,
 	cfgImagesAutoResize,
 	cfgMarketplaceAutoUpdate,
@@ -2076,6 +2077,7 @@ export async function runRootCommand(
 		applyStartupComposerPreferences({
 			quiet: cfgStartupQuiet.get(settingsInstance),
 			composerShape: cfgComposerShape.get(settingsInstance),
+			paintBackground: cfgComposerPaintBackground.get(settingsInstance),
 			showHardwareCursor: cfgShowHardwareCursor.get(settingsInstance),
 			maxInlineImages: cfgTuiMaxInlineImages.get(settingsInstance),
 			resizeScrollback: cfgTuiResizeScrollback.get(settingsInstance),

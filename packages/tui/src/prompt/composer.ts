@@ -47,6 +47,8 @@ export interface ComposerPreferences {
 	readonly spellingTypoDetection: boolean;
 	readonly spellingAutocomplete: WordCompletionMethod;
 	readonly spellingAutocorrect: boolean;
+	/** Paint the terminal's background with the theme's while npi runs (OSC 11). On unless `false`. */
+	readonly paintBackground?: boolean;
 }
 
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
@@ -359,6 +361,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	#started = false;
 	#stopped = false;
 	#transferred = false;
+	#terminal: Terminal;
 
 	constructor(options: ComposerOptions = {}) {
 		ensureThemeSync();
@@ -370,8 +373,9 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#preferences = { ...COMPOSER_DEFAULTS, ...options.preferences };
 		this.#applyWelcomeUpdate(options.welcome ?? {});
 
+		this.#terminal = options.terminal ?? new ProcessTerminal();
 		this.ui = new TUI(
-			options.terminal ?? new ProcessTerminal(),
+			this.#terminal,
 			this.#preferences.showHardwareCursor,
 			options.tuiOptions,
 		);
@@ -1150,6 +1154,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// the held input, standing in for the kernel echo other terminals give.
 		this.#editor.nativeTypeahead = options.deferInput === true;
 		this.ui.start({ clearScrollback: options.clearScrollback === true, deferInput: options.deferInput === true });
+		this.#applyBackgroundPaint();
 		if (options.playWelcomeIntro !== false) this.playWelcomeIntro();
 		// Deferred input identifies the CLI prepaint handoff. Flush the queued
 		// forced frame before returning so subsequent dynamic-import evaluation
@@ -1162,11 +1167,20 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.ui.enableInput();
 	}
 
+	/** Paint (or give back) the terminal's default background per the preference and the active theme. */
+	#applyBackgroundPaint(): void {
+		if (!this.#started || this.#stopped) return;
+		this.#terminal.setDefaultBackground?.(
+			this.#preferences.paintBackground === false ? undefined : theme.terminalBackground,
+		);
+	}
+
 	/** Apply settings changes without replacing the editor or welcome component. */
 	setPreferences(update: Partial<ComposerPreferences>): void {
 		if (this.#stopped) return;
 		const wasQuiet = this.#preferences.quiet;
 		this.#preferences = { ...this.#preferences, ...update };
+		this.#applyBackgroundPaint();
 		this.editor.setTheme(getEditorTheme());
 		try {
 			this.editor.setBorderStyle(this.#preferences.composerShape);

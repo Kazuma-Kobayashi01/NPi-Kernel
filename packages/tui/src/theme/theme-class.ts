@@ -237,6 +237,15 @@ export class Theme {
 		this.#spinnerFramesOverrides = spinnerFramesOverrides;
 	}
 
+	/**
+	 * The terminal's own background while npi runs (OSC 11): near-black on a dark
+	 * theme, near-white on a light one, so the whole screen is one surface the
+	 * theme's panels sit on, whatever the user's terminal theme is.
+	 */
+	get terminalBackground(): string {
+		return this.isLight ? "#f7f7f4" : "#0e0e10";
+	}
+
 	/** True when the active theme has a light status-line background. */
 	get isLight(): boolean {
 		return this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;
@@ -363,6 +372,17 @@ export class Theme {
 			this.#resolvedFgColors.set(color, resolved);
 		}
 		return `${resolved}${text.replace(FOREGROUND_RESET_PATTERN, `$&${resolved}`)}\x1b[39m`;
+	}
+
+	/**
+	 * `text` as a selection bar: bold, in the terminal's own background colour on the
+	 * accent colour. Falls back to the selection background when the accent is the
+	 * terminal default.
+	 */
+	accentBar(text: string): string {
+		const accent = this.getColorHex("accent");
+		if (!accent) return this.bg("selectedBg", this.bold(this.fg("accent", text)));
+		return `\x1b[1m${bgAnsi(accent, this.mode)}${fgAnsi(this.terminalBackground, this.mode)}${text}\x1b[0m`;
 	}
 
 	bg(color: ThemeBg, text: string): string {

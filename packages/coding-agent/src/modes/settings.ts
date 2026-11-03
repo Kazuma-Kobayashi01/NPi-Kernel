@@ -157,6 +157,18 @@ export const cfgComposerShape = register({
 });
 effect(cfgComposerShape, setEditorGapComposerShape);
 
+export const cfgComposerPaintBackground = register({
+	id: "composer.paintBackground",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "appearance",
+		group: "Composer",
+		label: "Paint Terminal Background",
+		description: "Fill the whole terminal with the theme's background while npi runs (terminals that ignore OSC 11 keep theirs)",
+	},
+});
+
 export const cfgComposerDockInput = register({
 	id: "composer.dockInput",
 	type: "boolean",

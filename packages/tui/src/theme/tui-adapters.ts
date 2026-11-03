@@ -337,9 +337,10 @@ export function getSelectListTheme(): SelectListTheme {
 	return {
 		selectedPrefix: (text: string) => theme.fg("accent", text),
 		selectedText: (text: string) => theme.fg("accent", text),
-		// The chosen row reads as a filled bar: the selection colour behind bold accent text.
+		// The chosen row reads as a bar: the accent colour behind text in the terminal's own
+		// background colour, so it stays legible on dark and light themes alike.
 		selectedFill: (text: string, width: number) =>
-			theme.bg("selectedBg", theme.bold(theme.fg("accent", text + padding(Math.max(0, width - visibleWidth(text)))))),
+			theme.accentBar(text + padding(Math.max(0, width - visibleWidth(text)))),
 		description: (text: string) => theme.fg("muted", text),
 		scrollInfo: (text: string) => theme.fg("muted", text),
 		noMatch: (text: string) => theme.fg("muted", text),

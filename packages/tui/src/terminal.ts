@@ -450,6 +450,11 @@ function createConsoleCodepageGuard(): (() => void) | null {
 		return null;
 	}
 }
+/** Whether this process changed the terminal's default background (OSC 11) and owes a reset (OSC 111). */
+let defaultBackgroundPainted = false;
+const PAINT_BACKGROUND = (color: string): string => `\x1b]11;${color}\x07`;
+const RESET_BACKGROUND = "\x1b]111\x07";
+
 /**
  * Emergency terminal restore - call this from signal/crash handlers
  * Resets terminal state without requiring access to the ProcessTerminal instance
@@ -471,6 +476,10 @@ export function emergencyTerminalRestore(): void {
 			}
 			terminal.stop();
 			terminal.showCursor(true);
+			if (defaultBackgroundPainted) {
+				process.stdout.write(RESET_BACKGROUND);
+				defaultBackgroundPainted = false;
+			}
 		} else if (terminalEverStarted && !isTerminalHeadless()) {
 			// Blind restore only if we know a terminal was started but lost track of it
 			// This avoids writing escape sequences for non-TUI commands (grep, commit, etc.)
@@ -492,6 +501,7 @@ export function emergencyTerminalRestore(): void {
 					// with no prior save), corrupting the shell handoff on exit.
 					(altScreenActive ? "\x1b[?1049l\x1b[?1l\x1b>\x1b[<u" : "") + // Leave alt; reset main keyboard
 					"\x1b[0 q" + // Restore the terminal's configured cursor shape (DECSCUSR)
+					(defaultBackgroundPainted ? RESET_BACKGROUND : "") + // Give the terminal's background back
 					"\x1b[?25h", // Show cursor
 			);
 			altScreenActive = false;
@@ -563,6 +573,13 @@ export const CURSOR_SHAPE_CODES: Record<CursorShape, number> = {
 	bar: 6,
 };
 export interface Terminal {
+	/**
+	 * Paint the terminal's default background (`#rrggbb`) while npi runs, or give
+	 * it back (`undefined`). Terminals that ignore OSC 11 keep their own colour.
+	 * Optional so custom Terminals built against older pi-tui versions keep working.
+	 */
+	setDefaultBackground?(color: string | undefined): void;
+
 	/**
 	 * Start the terminal with input, resize, and host-disconnect handlers.
 	 * Unless input is deferred, this sends capability probes; a terminal that
@@ -2350,6 +2367,17 @@ export class ProcessTerminal implements Terminal {
 		}
 	}
 
+	setDefaultBackground(color: string | undefined): void {
+		if (this.#headless) return;
+		if (color !== undefined) {
+			this.#safeWrite(PAINT_BACKGROUND(color));
+			defaultBackgroundPainted = true;
+		} else if (defaultBackgroundPainted) {
+			this.#safeWrite(RESET_BACKGROUND);
+			defaultBackgroundPainted = false;
+		}
+	}
+
 	stop(): void {
 		// Suppress observer/timer callbacks before any teardown can yield or throw.
 		this.#active = false;
@@ -2387,6 +2415,9 @@ export class ProcessTerminal implements Terminal {
 		// Disable bracketed paste mode
 		this.#safeWrite("\x1b[?2004l");
 		this.#safeWrite("\x1b[?5522l");
+
+		// Give the terminal's background back before the shell prompt returns.
+		this.setDefaultBackground(undefined);
 
 		// Hand the cursor shape back to the user's terminal configuration; a Vim
 		// Normal-mode block must not outlive the session in their shell.

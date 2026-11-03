@@ -4,6 +4,8 @@
 
 ### Changed
 
+- The terminal's default background is painted with the theme's (near-black on dark themes, near-white on light) while npi runs, through OSC 11, and given back on exit; `Terminal.setDefaultBackground` and `Theme.terminalBackground` are new. The selected row of a list is an accent-coloured bar with text in the background colour.
+
 - Selected rows of lists and menus are a filled bar the width of the list (selection colour behind bold accent text); themes without `selectedFill` keep the plain look.
 
 
