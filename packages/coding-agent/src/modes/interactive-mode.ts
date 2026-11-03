@@ -2042,6 +2042,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor = this.composer.editor;
 		this.editor.magicKeywordsEnabled = () => cfgMagicKeywordsEnabled.get(this.settings);
 		this.editor.placeholder = () => this.#composerHint();
+		this.editor.footerHint = () =>
+			theme.fg(
+				"dim",
+				`${appKey(this.keybindings, "app.thinking.cycle")} thinking · ${appKey(this.keybindings, "app.agents.hub")} agents · / commands`,
+			);
 		this.editor.prediction = () => this.#eventController.composerPrediction.text;
 		this.editor.composerState = () => this.#composerNativeState();
 		this.editor.onToggleDictation = () => void this.#toggleComposerDictation();
@@ -4615,6 +4620,18 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/** Placeholder for the empty composer; see `COMPOSER_HINTS` for the registered hints. */
 	#composerHint(): string | undefined {
+		if (this.editor.getBorderStyle() === "rail") {
+			return theme.fg(
+				"dim",
+				this.isBashMode
+					? "Run a shell command…"
+					: this.isPythonMode
+						? "Run Python…"
+						: this.planModeEnabled
+							? "Plan an approach…"
+							: "Ask anything…",
+			);
+		}
 		return resolveComposerHint({
 			runningAgents: this.#runningSubagentCount,
 			focusedOnAgent: this.focusedAgentId !== undefined,
@@ -8204,6 +8221,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		nextEditor.viewportRowsProvider = () => this.ui.terminal.rows;
 		nextEditor.magicKeywordsEnabled = () => cfgMagicKeywordsEnabled.get(this.settings);
 		nextEditor.placeholder = () => this.#composerHint();
+		nextEditor.footerHint = this.editor.footerHint;
 		nextEditor.prediction = () => this.#eventController.composerPrediction.text;
 		nextEditor.composerState = () => this.#composerNativeState();
 		nextEditor.onToggleDictation = () => void this.#toggleComposerDictation();

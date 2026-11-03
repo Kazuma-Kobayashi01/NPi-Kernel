@@ -90,7 +90,7 @@ export interface ComposerStyle {
 	readonly verticalChrome: 0 | 1 | 2;
 	/** Where the host should attach the status bar: embedded in the top border,
 	 * rendered as a flush soft-capped band above the input, docked onto a top rule, or detached into a standalone bottom bar. */
-	readonly statusAttachment: "top-border" | "top-band" | "top-rule-chip" | "none";
+	readonly statusAttachment: "top-border" | "top-band" | "top-rule-chip" | "bottom-label" | "none";
 	/** Which segment groups the standalone bottom status bar shows. */
 	readonly bottomBar: "none" | "left" | "full";
 	/** Insert a blank spacer row between the editor and the standalone bottom

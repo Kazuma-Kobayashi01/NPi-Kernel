@@ -197,6 +197,19 @@ export class SelectorController {
 	#openMenus = new Map<MenuKind, OpenMenu>();
 
 	constructor(private ctx: InteractiveModeContext) {}
+
+	#showListMenu(component: Component): OverlayHandle {
+		const handle = this.ctx.ui.showOverlay(component, {
+			anchor: "center",
+			width: "85%",
+			maxHeight: "90%",
+			margin: 1,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(component);
+		this.ctx.ui.requestRender();
+		return handle;
+	}
 	/**
 	 * Mount a primary fullscreen menu through the one polished modal path shared
 	 * by Settings, Model Hub, and Agent Hub.
@@ -296,10 +309,12 @@ export class SelectorController {
 	 * Temporarily replaces the editor slot with a selector, restoring the prior
 	 * slot contents and focus when the selector finishes.
 	 */
-	showSelector(create: (done: () => void) => { component: Component; focus: Component }): void {
+	showSelector(create: (done: () => void) => { component: Component; focus: Component }, modal = false): void {
+		let overlay: OverlayHandle | undefined;
 		const previousChildren = [...this.ctx.editorContainer.children];
 		const previousFocus = this.ctx.ui.getFocused();
 		const done = () => {
+			overlay?.hide();
 			this.ctx.editorContainer.clear();
 			for (const child of previousChildren) this.ctx.editorContainer.addChild(child);
 			const focus =
@@ -309,6 +324,11 @@ export class SelectorController {
 			this.ctx.ui.setFocus(focus);
 		};
 		const { component, focus } = create(done);
+		if (modal) {
+			overlay = this.#showListMenu(component);
+			this.ctx.ui.setFocus(focus);
+			return;
+		}
 		this.ctx.editorContainer.clear();
 		this.ctx.editorContainer.addChild(component);
 		this.ctx.ui.setFocus(focus);
@@ -405,7 +425,8 @@ export class SelectorController {
 						},
 					},
 				);
-				this.#mountMenu(menu, selector, () => this.#showFullscreenMenu(selector));
+				selector.viewportRows = () => Math.max(10, Math.floor(this.ctx.ui.terminal.rows * 0.9) - 2);
+				this.#mountMenu(menu, selector, () => this.#showListMenu(selector));
 			})
 			.catch((error: unknown) => {
 				// A menu that never opened must not block the next `/settings`.
@@ -1934,18 +1955,12 @@ export class SelectorController {
 			},
 			{
 				...selectorOptions,
-				getTerminalRows: () => this.ctx.ui.terminal.rows,
+				getTerminalRows: () => Math.max(10, Math.floor(this.ctx.ui.terminal.rows * 0.9) - 2),
 				fillHeight: true,
 			},
 		);
 		selector.setOnRequestRender(() => this.ctx.ui.requestRender());
-		const overlayHandle = this.ctx.ui.showOverlay(selector, {
-			anchor: "top-left",
-			width: "100%",
-			maxHeight: "100%",
-			margin: 0,
-			fullscreen: true,
-		});
+		const overlayHandle = this.#showListMenu(selector);
 		this.ctx.ui.setFocus(selector);
 		this.ctx.ui.requestRender();
 	}
@@ -2349,8 +2364,9 @@ export class SelectorController {
 					},
 				},
 			);
+			selector.setMaxHeight(Math.max(10, Math.floor(this.ctx.ui.terminal.rows * 0.9) - 2));
 			return { component: selector, focus: selector };
-		});
+		}, true);
 	}
 
 	async showSessionPinSelector(): Promise<void> {

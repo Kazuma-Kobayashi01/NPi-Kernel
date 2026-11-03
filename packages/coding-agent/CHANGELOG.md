@@ -2,12 +2,26 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Startup no longer lists every mounted MCP tool by default; mount details remain in debug logs and can be shown with `tools.xdevNotices`.
+
 ### Changed
 
+- Tool results use smaller defaults: spill above 12 KiB, retain 2 KiB of head and 6 KiB of tail (up to 100 tail lines), and read 120 file lines by default. Existing configured limits and artifact recovery remain available.
+
+- CLI settings, session and provider menus open as centred dialogs; sessions are grouped by day and services by Popular/Services. Ctrl+D deletes, Ctrl+R renames and Ctrl+A changes session scope, alongside the existing shortcuts.
+- Ctrl+T expands or collapses thinking in ordinary terminals, with the choice available in Settings → Model → Expand Thinking Blocks.
+
+- The settings panel has no Advanced tab and no "Show More Options" switch: every setting is listed in its own tab again. `composer.dockInput` now defaults to off, so the prompt sits under the welcome instead of on the bottom row.
 - New setting `tui.contentWidth` (default 100; 0 = full width): the conversation column is centred on a wider terminal.
 - New setting `composer.paintBackground` (on by default): fill the whole terminal with the theme's background while npi runs. Terminals that ignore OSC 11 keep their own background.
 
 - The composer now defaults to the Accent Rail shape (a left accent bar over a filled surface, the model and mode line under it); a saved choice is kept.
+
+- Interaction policy now treats Interactive UI (`ui.present`, `mode: "interactive"`) as the default decision channel, including subagent agent/scope/model setup, and documents `ask` as a fallback for surfaces without `ui.present`. The text states the real contract — one pending form, presentation ends the turn, submitted values arrive as a new user turn, `mode` is inferred when omitted — instead of describing a non-blocking pause.
+- Delegation guidance is appetite-consistent: `grep`/`glob`/`ast-grep`/`eval` now say "prefer" delegation instead of `MUST`, per-task `model` is limited to a user-chosen value, the eager-task reminder defers to a conservative/off appetite, and the parallel-spawn rule moved inside the appetite-gated block.
+- Tool-selection policy disambiguates `lsp` references from text search, shell aggregation from match searching, whole-file `write` from surgical `edit`, the todo init threshold, and search-hit reading; subagent cleanup now reports doc/changelog updates to the main agent instead of writing them.
 
 ## [2.0.10] - 2026-11-02
 

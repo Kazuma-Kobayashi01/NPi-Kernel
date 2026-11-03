@@ -11,8 +11,7 @@ export type SettingTab =
 	| "shell"
 	| "tools"
 	| "tasks"
-	| "providers"
-	| "advanced";
+	| "providers";
 
 /** Tab display metadata - icon is resolved via theme.symbol() */
 export type TabMetadata = { label: string; icon: Extract<SymbolKey, `tab.${string}`> };
@@ -29,7 +28,6 @@ export const SETTING_TABS: SettingTab[] = [
 	"tools",
 	"tasks",
 	"providers",
-	"advanced",
 ];
 
 /** Tab display metadata - icon is a symbol key from theme.ts (tab.*) */
@@ -44,7 +42,6 @@ export const TAB_METADATA: Record<SettingTab, TabMetadata> = {
 	tools: { label: "Tools", icon: "tab.tools" },
 	tasks: { label: "Tasks", icon: "tab.tasks" },
 	providers: { label: "Providers", icon: "tab.providers" },
-	advanced: { label: "Advanced", icon: "tab.advanced" },
 };
 
 /** One-sentence lead per tab, under the page title of the native settings page. */
@@ -59,7 +56,6 @@ export const TAB_LEADS: Record<SettingTab, string> = {
 	tools: "Which tools the model has, their limits and the external integrations.",
 	tasks: "Modes, subagents, isolation and custom commands.",
 	providers: "Services, provider protocols, timeouts and privacy.",
-	advanced: "Everything rarely changed: terminal look, startup, voice, remote and tuning options, grouped by where they used to live.",
 };
 
 /**
@@ -73,6 +69,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	interaction: [
 		"Input",
 		"Approvals",
+		"Execution",
 		"Notifications",
 		"Speech",
 		"Collab",
@@ -103,8 +100,6 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 	],
 	tasks: ["Modes", "Subagents", "Isolation", "Commands & Skills"],
 	providers: ["Services", "Fireworks", "Tiny Model", "Protocol", "Timeouts", "Privacy"],
-	// The tab a setting lived in before it moved here (config/setting-tiers.ts).
-	advanced: ["Appearance", "Model", "Interaction", "Context", "Memory", "Files", "Shell", "Tools", "Tasks", "Providers"],
 };
 
 /** Submenu choice metadata. */

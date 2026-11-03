@@ -24,6 +24,7 @@ import { card, col, elapsed, node, span, text } from "../native/describe";
 import { hasTranscriptActions, runTranscriptAction } from "./transcript-actions";
 import type { DescribeContext, NativeChild, NativeNode, NativeUiEvent } from "../native/node";
 import { isNativeRendering } from "../native/state";
+import { editorKey } from "../chrome/keybinding-hints";
 import { NativeImageCache, nativeMediaNode } from "../native/blobs";
 import { linkedImageText } from "../prompt/image-references";
 import { Memo } from "../native/memo";
@@ -727,6 +728,7 @@ export class AssistantMessageComponent extends Container {
 		if (this.#expandThinkingBlocks === expand) return;
 		this.#expandThinkingBlocks = expand;
 		this.#nativeViewVersion++;
+		if (!isNativeRendering() && this.#lastMessage) this.updateContent(this.#lastMessage);
 	}
 
 	override dispose(): void {
@@ -1579,7 +1581,11 @@ export class AssistantMessageComponent extends Container {
 			this.#fastPathKey = undefined;
 			this.#fastPathItems = undefined;
 		}
-		if ((this.#thinkingDots || sealRenderers) && this.#lastMessage) {
+		const foldedThinking =
+			!isNativeRendering() &&
+			!this.#expandThinkingBlocks &&
+			this.#lastMessage?.content.some(content => content.type === "thinking");
+		if ((this.#thinkingDots || sealRenderers || foldedThinking) && this.#lastMessage) {
 			this.updateContent(this.#lastMessage, { transient: this.#lastUpdateTransient });
 		}
 	}
@@ -1828,6 +1834,12 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#canFastPath(message: AssistantMessage): boolean {
+		if (
+			!this.#expandThinkingBlocks &&
+			!isNativeRendering() &&
+			message.content.some(content => content.type === "thinking")
+		)
+			return false;
 		for (const content of message.content) {
 			if (content.type === "toolCall" || content.type === "image") return false;
 		}
@@ -2013,6 +2025,28 @@ export class AssistantMessageComponent extends Container {
 				const display = resolveThinkingDisplay(content, this.#proseOnlyThinking);
 				if (!display.visible) continue;
 				const thinkingText = display.text;
+				if (!isNativeRendering() && !this.#expandThinkingBlocks) {
+					const live = !this.#transcriptBlockFinalized && this.#thinkingTailIndex(message) === i;
+					let clock = this.#thinkingClock.get(i);
+					if (!clock && live) {
+						clock = { start: performance.now(), tokens: 0 };
+						this.#thinkingClock.set(i, clock);
+					}
+					if (clock && !live) clock.end ??= performance.now();
+					this.#contentContainer.addChild(
+						new Text(
+							theme.fg(
+								"dim",
+								`+ ${live ? "Thinking…" : thoughtLabel(clock)} · ${editorKey("app.thinking.toggle") || "Ctrl+T"} expand`,
+							),
+							1,
+							0,
+						),
+					);
+					hasRenderedContent = true;
+					thinkingIndex += 1;
+					continue;
+				}
 				// Add spacing only when another visible assistant content block follows.
 				// This avoids a superfluous blank line before separately-rendered tool execution blocks.
 				const hasVisibleContentAfter = message.content

@@ -191,7 +191,7 @@ export const cfgComposerPaintBackground = register({
 export const cfgComposerDockInput = register({
 	id: "composer.dockInput",
 	type: "boolean",
-	default: true,
+	default: false,
 	ui: {
 		tab: "appearance",
 		group: "Composer",

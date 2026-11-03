@@ -337,7 +337,9 @@ export class UserMessageComponent extends Container implements ReactionTarget, T
 	}
 
 	override render(width: number): readonly string[] {
-		const lines = super.render(width);
+		// One column on the left carries the accent bar that says "you"; the bubble fills the rest.
+		const barred = width > 8;
+		const lines = super.render(barred ? width - 1 : width);
 		if (lines.length === 0) {
 			return lines;
 		}
@@ -348,8 +350,9 @@ export class UserMessageComponent extends Container implements ReactionTarget, T
 		if (this.#zoneSource === lines && this.#zoneLines !== undefined) {
 			return this.#zoneLines;
 		}
-		const wrapped = lines.slice();
-		if (this.#reaction !== undefined || this.#liveSteered) wrapped[0] = this.#badgeRow(width);
+		const bar = barred ? theme.accentBar(" ") : "";
+		const wrapped = lines.map(row => bar + row);
+		if (this.#reaction !== undefined || this.#liveSteered) wrapped[0] = bar + this.#badgeRow(barred ? width - 1 : width);
 		wrapped[0] = OSC133_ZONE_START + wrapped[0];
 		wrapped[wrapped.length - 1] = wrapped[wrapped.length - 1] + OSC133_ZONE_CLOSE;
 		this.#zoneSource = lines;

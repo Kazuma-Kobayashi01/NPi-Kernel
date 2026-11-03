@@ -14,6 +14,8 @@ import {
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../keybinding-matchers";
 import { OverlayPanel } from "../chrome/overlay-box";
+import { ListDialogFrame } from "../chrome/list-dialog";
+import { padding, truncateToWidth } from "../utils";
 import { Input } from "../components/input";
 import { MenuSelection } from "../components/menu-selection";
 import { centeredViewportRange } from "../components/scroll-viewport";
@@ -47,12 +49,6 @@ export interface OAuthSelectorSheet {
 	readonly leave: { readonly id: string; readonly label: string };
 }
 
-/**
- * Rendered lines before the provider rows: top border
- * (must mirror the constructor's addChild order).
- */
-const LIST_ROW_OFFSET = 1;
-
 /** Compact, human-readable tag for each credential-origin leg. */
 const ORIGIN_LABELS = {
 	runtime: "--api-key",
@@ -65,6 +61,8 @@ const ORIGIN_LABELS = {
  * Component that renders an OAuth provider selector.
  */
 export class OAuthSelectorComponent extends OverlayPanel {
+	#hitProviderRows = new Map<number, number>();
+	readonly #popular = new Set(["anthropic", "openai-codex", "google-gemini-cli", "github-copilot"]);
 	#listContainer: Container;
 	/** Provider rows viewport of the last {@link #updateList}; spinner ticks repaint only its rows. */
 	#listView: ScrollView | undefined;
@@ -122,6 +120,9 @@ export class OAuthSelectorComponent extends OverlayPanel {
 		});
 		// Load all OAuth providers
 		this.#loadProviders(options?.disabledProviders);
+		this.#menu.setItems(
+			[...this.#menu.items].sort((a, b) => Number(this.#popular.has(b.id)) - Number(this.#popular.has(a.id))),
+		);
 		// Create list container
 		this.#listContainer = new Container();
 		this.addChild(this.#listContainer);
@@ -158,9 +159,9 @@ export class OAuthSelectorComponent extends OverlayPanel {
 	 */
 	setMaxHeight(lines: number): void {
 		// Above the rows: LIST_ROW_OFFSET; below: search status + border.
-		const strict = lines - LIST_ROW_OFFSET - 2;
+		const strict = lines - 7;
 		// Keeps only the rows + search status inside `lines`.
-		const relaxed = lines - LIST_ROW_OFFSET - 1;
+		const relaxed = lines - 7;
 		const rows = Math.min(OAUTH_SELECTOR_MAX_VISIBLE, Math.max(1, strict, Math.min(relaxed, 3)));
 		if (rows === this.#maxVisible) return;
 		this.#maxVisible = rows;
@@ -296,7 +297,42 @@ export class OAuthSelectorComponent extends OverlayPanel {
 	}
 
 	#isSearchEnabled(): boolean {
-		return this.#menu.items.length > this.#maxVisible;
+		return true;
+	}
+
+	override render(width: number): readonly string[] {
+		const frame = new ListDialogFrame(width, this.#mode === "login" ? "Connect a service" : "Disconnect a service");
+		frame.add(this.#renderStatusLine(this.#menu.visibleItems.length));
+		this.#hitProviderRows.clear();
+		const items = this.#menu.visibleItems;
+		const window = centeredViewportRange(this.#menu.selectedIndex, items.length, this.#maxVisible);
+		let group = "";
+		for (let index = window.start; index < window.end; index++) {
+			const provider = items[index]!;
+			const nextGroup = this.#popular.has(provider.id) ? "Popular" : "Services";
+			if (nextGroup !== group) {
+				frame.section(nextGroup);
+				group = nextGroup;
+			}
+			const raw = this.#providerRows(index, index + 1)[0] ?? "";
+			const shown = truncateToWidth(raw, Math.max(1, width - 4));
+			this.#hitProviderRows.set(frame.lines.length, index);
+			frame.add(
+				index === this.#menu.selectedIndex
+					? theme.accentBar(Bun.stripANSI(shown) + padding(Math.max(0, width - 4 - visibleWidth(shown))))
+					: shown,
+			);
+		}
+		if (items.length === 0)
+			frame.add(
+				this.#menu.items.length === 0
+					? this.#mode === "logout"
+						? "No stored provider credentials to log out"
+						: "No OAuth providers available"
+					: "No matching providers",
+			);
+		if (this.#statusMessage) frame.add(theme.fg("warning", this.#statusMessage));
+		return frame.finish();
 	}
 
 	#shouldRenderSearchStatus(): boolean {
@@ -679,8 +715,7 @@ export class OAuthSelectorComponent extends OverlayPanel {
 			this.handleWheel(event.wheel);
 			return;
 		}
-		const localRow = line - LIST_ROW_OFFSET;
-		const index = localRow >= 0 && localRow < this.#visibleCount ? this.#scrollStart + localRow : undefined;
+		const index = this.#hitProviderRows.get(line);
 		const target = index !== undefined && index < this.#menu.visibleItems.length ? index : null;
 		if (event.motion) {
 			if (target !== this.#hoveredIndex) {

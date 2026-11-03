@@ -26,7 +26,7 @@ function createSession(id: string, title: string, cwd: string, parentSessionPath
 const TAB = "\t";
 
 describe("SessionSelectorComponent scope toggle", () => {
-	it("loads the all-projects list on Tab and surfaces each session's directory", async () => {
+	it("loads the all-projects list on Ctrl+A and surfaces each session's directory", async () => {
 		const folder = [createSession("local", "Local", "/work/current")];
 		const global = [
 			createSession("local", "Local", "/work/current"),
@@ -50,7 +50,7 @@ describe("SessionSelectorComponent scope toggle", () => {
 		expect(selector.render(120).join("\n")).toContain("(current folder)");
 		expect(selector.render(120).join("\n")).not.toContain("other-project");
 
-		selector.handleInput(TAB);
+		selector.handleInput("\x01");
 		await Bun.sleep(0);
 
 		const rendered = selector.render(120).join("\n");

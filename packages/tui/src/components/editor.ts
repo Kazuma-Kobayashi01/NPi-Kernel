@@ -1,4 +1,5 @@
 import { getProjectDir } from "@oh-my-pi/pi-utils/dirs";
+import { ListDialogFrame } from "../chrome/list-dialog";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import {
 	type AutocompleteItem,
@@ -945,6 +946,8 @@ export class Editor implements Component, Focusable {
 	 *  cursor. The host styles it (ANSI allowed). Re-evaluated on every render, so hosts can derive
 	 *  it from live state. */
 	placeholder?: () => string | undefined;
+	/** Host-provided shortcuts outside the input, using active keybindings. */
+	footerHint?: () => string;
 	/** Whole-message prediction for the next prompt, painted as ghost text after the cursor while
 	 *  the single-line buffer is a strict prefix of it, the cursor sits at its end, and no
 	 *  autocomplete is open. A shown prediction replaces the {@link placeholder}; Tab or Right inserts
@@ -1822,13 +1825,32 @@ export class Editor implements Component, Focusable {
 		// Add autocomplete list if active
 		const autocompleteList = this.#visibleAutocompleteList();
 		if (autocompleteList) {
+			const aboveInput = style.id === "rail";
 			// Clamp the dropdown to the terminal viewport: the editor rows already
 			// rendered above plus a small reserve must stay visible.
 			const viewportRows = this.viewportRowsProvider?.() || process.stdout.rows || Number(Bun.env.LINES) || 24;
 			autocompleteList.setMaxVisible(
-				Math.max(3, Math.min(this.#autocompleteMaxVisible, viewportRows - result.length - 2)),
+				Math.max(1, Math.min(this.#autocompleteMaxVisible, viewportRows - result.length - 2)),
 			);
-			result.push(...autocompleteList.render(width));
+			if (aboveInput) {
+				autocompleteList.setMaxVisible(
+					Math.max(1, Math.min(this.#autocompleteMaxVisible, viewportRows - result.length - 8)),
+				);
+				const popup = new ListDialogFrame(
+					width,
+					this.#autocompletePrefix.startsWith("/") ? "Commands" : "Suggestions",
+				);
+				popup.add(`Search: ${this.#autocompletePrefix}`);
+				for (const line of autocompleteList.render(Math.max(1, width - 4))) popup.add(line);
+				result.unshift(...popup.finish(), "");
+			} else {
+				result.push(...autocompleteList.render(width));
+			}
+		}
+		const footer = this.footerHint?.();
+		if (style.id === "rail" && footer) {
+			const shown = truncateToWidth(footer, width);
+			result.push(padding(Math.max(0, width - visibleWidth(shown))) + shown);
 		}
 
 		return result;

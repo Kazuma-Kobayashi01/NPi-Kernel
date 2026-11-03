@@ -92,7 +92,8 @@ import {
 	cfgPasteLargeMenuThreshold,
 	cfgTuiMouse,
 } from "../settings";
-import { cfgHideThinkingBlock } from "../../session/settings";
+import { cfgHideThinkingBlock, cfgExpandThinkingBlocks } from "../../session/settings";
+import { isNativeRendering } from "@oh-my-pi/pi-tui/native/state";
 
 /** Bare words that quit (as `/<word>`) when typed alone into a session with no messages. */
 const BARE_EXIT_WORDS: Record<string, true> = { exit: true, quit: true, q: true };
@@ -853,7 +854,8 @@ export class InputController {
 		const event = parseSgrMouse(data);
 		if (!event) return undefined;
 		if (event.motion) this.#updateHoverHighlight(event.row);
-		else if (event.leftClick && !this.#activateClickedLink(event.row, event.col - this.ctx.composer.contentMargin)) this.#focusClickedAgent(event.row);
+		else if (event.leftClick && !this.#activateClickedLink(event.row, event.col - this.ctx.composer.contentMargin))
+			this.#focusClickedAgent(event.row);
 		return { consume: true };
 	}
 
@@ -3139,6 +3141,27 @@ export class InputController {
 			((this.ctx.viewSession ?? this.ctx.session)?.thinkingLevel ?? ThinkingLevel.Off) === ThinkingLevel.Off;
 		if (thinkingOff && !this.ctx.hasDisplayableThinkingContent) {
 			this.ctx.showStatus("Thinking is off — enable thinking to show blocks");
+			return;
+		}
+		if (!isNativeRendering()) {
+			this.ctx.expandThinkingBlocks = !this.ctx.expandThinkingBlocks;
+			if (this.ctx.expandThinkingBlocks && this.ctx.hideThinkingBlock) {
+				this.ctx.hideThinkingBlock = false;
+				cfgHideThinkingBlock.set(this.ctx.settings, false);
+				for (const child of this.ctx.chatContainer.children) {
+					if (child instanceof AssistantMessageComponent) child.setHideThinkingBlock(false);
+				}
+				this.ctx.streamingComponent?.setHideThinkingBlock(false);
+			}
+			cfgExpandThinkingBlocks.set(this.ctx.settings, this.ctx.expandThinkingBlocks);
+			for (const child of this.ctx.chatContainer.children) {
+				if (child instanceof AssistantMessageComponent)
+					child.setExpandThinkingBlocks(this.ctx.expandThinkingBlocks);
+			}
+			this.ctx.streamingComponent?.setExpandThinkingBlocks(this.ctx.expandThinkingBlocks);
+			this.ctx.chatContainer.resetStableEmission();
+			this.ctx.ui.resetDisplay();
+			this.ctx.showStatus(`Thinking blocks: ${this.ctx.expandThinkingBlocks ? "expanded" : "collapsed"}`);
 			return;
 		}
 		this.ctx.hideThinkingBlock = !this.ctx.hideThinkingBlock;

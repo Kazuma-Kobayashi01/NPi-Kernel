@@ -18,14 +18,19 @@ import {
 	type TUIOptions,
 	type ViewportSize,
 } from "../tui";
-import { wrapLiteralLine } from "../utils";
+import { visibleWidth, wrapLiteralLine } from "../utils";
 import type { NativeChild, NativeSurface, NativeSurfaceProvider } from "../native/node";
 import { sameItems } from "../native/memo";
 import { postmortem } from "@oh-my-pi/pi-utils";
+import { getProjectDir } from "@oh-my-pi/pi-utils";
+import { shortenPath } from "../render/render-utils";
+import { truncateToWidth } from "../utils";
 import { CustomEditor } from "./custom-editor";
 import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
 import { WelcomeComponent } from "./welcome";
+import { stripPromptZones } from "../chat/transcript-outline";
+import { StatusNotice } from "../chrome/status-notice";
 import { isComposerDockInput } from "./dock-input";
 import { ensureThemeSync, getEditorTheme, theme } from "../theme/theme";
 
@@ -47,7 +52,7 @@ export interface ComposerPreferences {
 	readonly spellingTypoDetection: boolean;
 	readonly spellingAutocomplete: WordCompletionMethod;
 	readonly spellingAutocorrect: boolean;
-	/** Paint the terminal's background with the theme's while npi runs (OSC 11). On unless `false`. */
+	/** Paint the terminal with the theme's background while npi runs (OSC 11 and every drawn row). Off unless `true`; the app's setting turns it on. */
 	readonly paintBackground?: boolean;
 	/** Widest the conversation column gets, centred on a wider terminal; 0 or unset keeps the full width. */
 	readonly contentWidth?: number;
@@ -144,12 +149,15 @@ export interface ComposerStartOptions {
  */
 class StatusHost implements Component {
 	#component: Component | undefined;
+	homeFooter?: (width: number) => string | undefined;
 
 	setComponent(component: Component): void {
 		this.#component = component;
 	}
 
 	render(width: number): readonly string[] {
+		const home = this.homeFooter?.(width);
+		if (home !== undefined) return ["", home];
 		return this.#component?.render(width) ?? [];
 	}
 }
@@ -376,11 +384,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#applyWelcomeUpdate(options.welcome ?? {});
 
 		this.#terminal = options.terminal ?? new ProcessTerminal();
-		this.ui = new TUI(
-			this.#terminal,
-			this.#preferences.showHardwareCursor,
-			options.tuiOptions,
-		);
+		this.ui = new TUI(this.#terminal, this.#preferences.showHardwareCursor, options.tuiOptions);
 		this.ui.setFrameProvider(this);
 		this.ui.setMaxInlineImages(this.#preferences.maxInlineImages);
 		this.ui.setResizeScrollback(this.#preferences.resizeScrollback);
@@ -421,6 +425,28 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 		if (!this.#preferences.quiet) this.#ensureWelcome();
 		this.#rebuildHeader();
+		this.#statusHost.homeFooter = width => {
+			if (this.editor.getBorderStyle() !== "rail") return undefined;
+			if (
+				this.#runtimeMounted &&
+				!this.#runtimeChildren.some(
+					root => root === this.editor || (root instanceof Container && root.children.includes(this.editor)),
+				)
+			)
+				return undefined;
+			const transcript = this.#runtimeChildren.find(child => child instanceof TranscriptContainer);
+			if (
+				!this.#welcome ||
+				this.#headerRetired ||
+				this.#runActive ||
+				(transcript instanceof TranscriptContainer &&
+					!transcript.children.every(child => child instanceof StatusNotice || child instanceof Spacer))
+			)
+				return undefined;
+			const version = this.#version ? `v${this.#version}` : "";
+			const path = truncateToWidth(shortenPath(getProjectDir()), Math.max(0, width - version.length - 2));
+			return theme.fg("dim", path + " ".repeat(Math.max(0, width - visibleWidth(path) - version.length)) + version);
+		};
 		this.ui.addChild(this.#header);
 		this.ui.addChild(this.#bootstrapInputGap);
 		this.ui.addChild(this.editor);
@@ -458,18 +484,54 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	static #indent(rows: readonly string[], margin: number): readonly string[] {
 		if (margin <= 0) return rows;
 		const lead = " ".repeat(margin);
-		return rows.map(row => (row === "" ? row : lead + row));
+		// Shell prompt zones let terminals rewrite these rows as an editable shell
+		// prompt, losing the column margin. A centred application owns its layout.
+		return stripPromptZones(rows).map(row => (row === "" ? row : lead + row));
 	}
 
-	/** Compose the bounded mutable viewport and the next ordered history append, in the centred column. */
+	/**
+	 * `rows` on the theme's background edge to edge, so the screen is one surface even on a
+	 * terminal that ignores OSC 11: each row sets the background, takes it back after every
+	 * reset inside the row, and is padded to `columns`. Rows that carry terminal graphics
+	 * (kitty, sixel, iTerm) are left as they are. Unchanged when painting is off.
+	 */
+	#paint(rows: readonly string[], columns: number): readonly string[] {
+		if (this.#preferences.paintBackground !== true) return rows;
+		const bg = theme.terminalBackgroundAnsi;
+		return rows.map(row => {
+			if (row.includes("\x1b_G") || row.includes("\x1bP") || row.includes("\x1b]1337")) return row;
+			const resumed = row
+				.replaceAll("\x1b[0m", `\x1b[0m${bg}`)
+				.replaceAll("\x1b[m", `\x1b[m${bg}`)
+				.replaceAll("\x1b[49m", `\x1b[49m${bg}`);
+			return `${bg}${resumed}${" ".repeat(Math.max(0, columns - visibleWidth(row)))}\x1b[0m`;
+		});
+	}
+
+	/** `rows` followed by blank rows up to `height`. */
+	static #fill(rows: readonly string[], height: number): readonly string[] {
+		return rows.length >= height ? rows : [...rows, ...Array<string>(height - rows.length).fill("")];
+	}
+
+	/** Place the empty welcome scene in the upper middle, keeping short terminals usable. */
+	#welcomeTopPadding(rows: number, contentRows: number): number {
+		if (!this.#welcome || this.#headerRetired || isComposerDockInput()) return 0;
+		return Math.max(0, Math.floor((rows - contentRows) / 3));
+	}
+
+	/** Compose the bounded mutable viewport and the next ordered history append, in the centred, painted column. */
 	renderFrame(viewport: ViewportSize): TerminalFramePlan {
 		const { width, margin } = this.#column(viewport.columns);
 		const plan = this.#renderColumnFrame({ ...viewport, columns: width });
-		if (margin <= 0) return plan;
+		const painting = this.#preferences.paintBackground === true;
+		if (margin <= 0 && !painting) return plan;
+		const lay = (rows: readonly string[]) => this.#paint(Composer.#indent(rows, margin), viewport.columns);
 		return {
 			...plan,
-			viewport: Composer.#indent(plan.viewport, margin),
-			...(plan.history ? { history: { ...plan.history, rows: Composer.#indent(plan.history.rows, margin) } } : {}),
+			viewport: lay(
+				painting && plan.viewport.length > 0 ? Composer.#fill(plan.viewport, viewport.rows) : plan.viewport,
+			),
+			...(plan.history ? { history: { ...plan.history, rows: lay(plan.history.rows) } } : {}),
 		};
 	}
 
@@ -499,9 +561,11 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			}
 			// The prompt sits on the bottom row from the first frame: the slack goes above the input.
 			const total = parts.reduce((sum, part) => sum + part.length, 0);
+			viewport.push(...Array<string>(this.#welcomeTopPadding(rows, total)).fill(""));
 			const inputAt = Math.max(0, roots.indexOf(this.#runtimeMounted ? this.editor : this.#bootstrapInputGap));
 			for (const [index, part] of parts.entries()) {
-				if (isComposerDockInput() && index === inputAt && total < rows) viewport.push(...Array<string>(rows - total).fill(""));
+				if (isComposerDockInput() && index === inputAt && total < rows)
+					viewport.push(...Array<string>(rows - total).fill(""));
 				viewport.push(...part);
 			}
 			return { viewport: viewport.slice(-rows) };
@@ -550,6 +614,15 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// the `drop` slice below; they stay live until the chrome shrinks. With
 		// `completeScrollback` none are held back.
 		const active = transcript.renderViewport(width, Math.max(0, rows - before.length - belowFloor), frame);
+		if (
+			transcript.children.every(child => child instanceof StatusNotice || child instanceof Spacer) &&
+			history === undefined &&
+			!this.#runActive
+		) {
+			before.unshift(
+				...Array<string>(this.#welcomeTopPadding(rows, before.length + active.length + after.length)).fill(""),
+			);
+		}
 		const activeSpans: ViewportClickSpan[] = [];
 		for (const span of transcript.getLastViewportSpans()) {
 			const ids = (span.component as Partial<{ getClickFocusAgentIds(): string[] }>).getClickFocusAgentIds?.();
@@ -914,7 +987,10 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	/** Render the semantic transcript tail while the terminal borrows its resize buffer. */
 	renderResizeFrame(viewport: ViewportSize): readonly string[] {
 		const { width: columnWidth, margin } = this.#column(viewport.columns);
-		return Composer.#indent(this.#renderColumnResizeFrame({ ...viewport, columns: columnWidth }), margin);
+		return this.#paint(
+			Composer.#indent(this.#renderColumnResizeFrame({ ...viewport, columns: columnWidth }), margin),
+			viewport.columns,
+		);
 	}
 
 	#renderColumnResizeFrame(viewport: ViewportSize): readonly string[] {
@@ -1211,7 +1287,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	#applyBackgroundPaint(): void {
 		if (!this.#started || this.#stopped) return;
 		this.#terminal.setDefaultBackground?.(
-			this.#preferences.paintBackground === false ? undefined : theme.terminalBackground,
+			this.#preferences.paintBackground === true ? theme.terminalBackground : undefined,
 		);
 	}
 

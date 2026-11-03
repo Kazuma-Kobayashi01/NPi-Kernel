@@ -12,8 +12,9 @@ import {
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { postProcessToolResult } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
+import { postProcessToolResult, wrapToolWithMetaNotice } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
 import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
+import { cfgReadDefaultLimit } from "@oh-my-pi/pi-coding-agent/tools/settings";
 
 function getTextOutput(result: AgentToolResult): string {
 	const texts: string[] = [];
@@ -81,6 +82,60 @@ describe("read tool artifacts without an artifacts directory", () => {
 
 		expect(head).toContain("spill line 1 ");
 		expect(tail).toContain("spill line 8000 ");
+	});
+
+	it("spills a medium result under the smaller defaults, preserves recovery, and respects an explicit larger budget", async () => {
+		const lines = Array.from(
+			{ length: 300 },
+			(_, index) => `row-${String(index + 1).padStart(4, "0")} ${"x".repeat(80)}`,
+		);
+		const fullOutput = lines.join("\n");
+		const context = await makeToolContext();
+		const result = await postProcessToolResult(
+			{ content: [{ type: "text", text: fullOutput }], details: {} },
+			"bash",
+			context,
+		);
+		const inline = getTextOutput(result);
+		expect(Buffer.byteLength(inline)).toBeLessThan(10 * 1024);
+		expect(inline).toContain("row-0001");
+		expect(inline).toContain("row-0300");
+		expect(inline).not.toContain("row-0150");
+		const artifact = inline.match(/artifact:\/\/(\d+)/);
+		expect(artifact).not.toBeNull();
+		const recovered = await new ReadTool(makeSession()).execute("recover-middle", {
+			path: `artifact://${artifact![1]}:raw:150-150`,
+		});
+		expect(getTextOutput(recovered)).toContain(lines[149]!);
+		context.settings = Settings.isolated({ "tools.artifactSpillThreshold": 50 });
+		const expanded = await postProcessToolResult(
+			{ content: [{ type: "text", text: fullOutput }], details: {} },
+			"bash",
+			context,
+		);
+		expect(getTextOutput(expanded)).toBe(fullOutput);
+	});
+
+	it("returns a smaller default file page with continuation while allowing explicit ranges and configured limits", async () => {
+		const file = path.join(testDir, "paged.txt");
+		await Bun.write(
+			file,
+			Array.from({ length: 200 }, (_, index) => `record-${String(index + 1).padStart(4, "0")}`).join("\n"),
+		);
+		const session = makeSession();
+		session.settings = Settings.isolated({ "read.summarize.enabled": false });
+		const tool = wrapToolWithMetaNotice(new ReadTool(session));
+		const first = getTextOutput(await tool.execute("first", { path: file }));
+		expect(first).toContain("record-0120");
+		expect(first).not.toContain("record-0121");
+		expect(first).toContain(":121");
+		const next = getTextOutput(await tool.execute("next", { path: `${file}:raw:121-200` }));
+		expect(next).toContain("record-0121");
+		expect(next).toContain("record-0200");
+		cfgReadDefaultLimit.set(session.settings, 180);
+		const configured = getTextOutput(await tool.execute("configured", { path: file }));
+		expect(configured).toContain("record-0180");
+		expect(configured).not.toContain("record-0181");
 	});
 
 	it("pages an in-memory artifact with a line selector", async () => {

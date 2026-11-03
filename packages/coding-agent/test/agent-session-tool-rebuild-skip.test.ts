@@ -1495,6 +1495,7 @@ These tools became available:
 	});
 
 	it.each([
+		["default settings", cfgToolsXdevNotices, undefined],
 		["quiet startup", cfgStartupQuiet, true],
 		["tools.xdevNotices off", cfgToolsXdevNotices, false],
 	] as const)(
@@ -1504,7 +1505,7 @@ These tools became available:
 				xdev: createTestXdevState(),
 				responses: [{ content: ["ok"] }],
 			});
-			setting.set(session.settings, value);
+			if (value !== undefined) setting.set(session.settings, value);
 			cfgToolsXdevDocs.set(session.settings, "builtins");
 			cfgToolsXdevInlineDevices.set(session.settings, ["mcp__nucleus_*"]);
 			const notices: string[] = [];

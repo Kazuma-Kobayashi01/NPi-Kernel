@@ -14,6 +14,7 @@ import {
 	visibleWidth,
 } from "../index";
 import * as path from "node:path";
+import * as os from "node:os";
 import { formatBytes, getProjectDir } from "@oh-my-pi/pi-utils";
 import type { TspPickerGroup, TspPickerItem, TspSpan, TspText, TspTone } from "@oh-my-pi/pi-wire";
 import { compact, kv, md, node, span } from "../native/describe";
@@ -55,10 +56,11 @@ export interface SessionSelectorEntry {
 import { shortenPath } from "../render/render-utils";
 import { formTheme } from "../chrome/form-theme";
 import { HookSelectorComponent } from "./hook-selector";
-import { bottomBorder, OverlayPanel, row, topBorder } from "../chrome/overlay-box";
+import { OverlayPanel, row } from "../chrome/overlay-box";
+import { ListDialogFrame } from "../chrome/list-dialog";
 import { TextFormField } from "../components/form";
 import { MenuSelection, getMenuWindow } from "../components/menu-selection";
-import { formatKeyHint, formatKeyHints } from "../app-keybindings";
+import { formatKeyHint } from "../app-keybindings";
 import { boundKeys, interruptKey } from "../chrome/keybinding-hints";
 
 /**
@@ -1225,7 +1227,7 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 		// worst-case count-based window would leave (then padded by
 		// fill-height).
 		const filtered = this.#menu.visibleItems;
-		const budget = this.#lineBudget();
+		const budget = Math.max(1, this.#lineBudget() - 1);
 		const {
 			startIndex,
 			endIndex,
@@ -1239,11 +1241,22 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 		const sessionRowIndex: number[] = [];
 		const rowWidth = contentRowWidth(width, rawTotalRows, budget);
 		const currentPath = this.#getCurrentSessionPath();
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		let dayGroup = "";
 		for (let i = startIndex; i < endIndex; i++) {
 			const blockStart = sessionLines.length;
 			const session = filtered[i];
 			if (!session) continue;
 			const isSelected = i === this.#menu.selectedIndex;
+			const group = this.#pinnedIds.has(session.id)
+				? { id: "pinned", label: "Pinned" }
+				: sessionDayGroup(session.modified, today);
+			if (group.id !== dayGroup && !this.#searchInput.getValue()) {
+				sessionLines.push(truncateToWidth(theme.fg("accent", theme.bold(group.label)), rowWidth));
+				dayGroup = group.id;
+			}
+			const titleRow = sessionLines.length;
 
 			// Normalize first message to single line
 			const normalizedMessage = session.firstMessage.replace(/\n/g, " ").trim();
@@ -1296,6 +1309,12 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 			if (this.#showCwd && session.cwd) {
 				metadata += ` ${dot} ${dim(shortenPath(session.cwd))}`;
 			}
+			if (isSelected && sessionLines[titleRow]) {
+				const line = sessionLines[titleRow]!;
+				sessionLines[titleRow] = theme.accentBar(
+					Bun.stripANSI(line) + padding(Math.max(0, rowWidth - visibleWidth(line))),
+				);
+			}
 			const metadataLine = truncateToWidth(metadata, rowWidth);
 
 			sessionLines.push(metadataLine);
@@ -1332,7 +1351,15 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 		if (cached?.items === items && cached.length === items.length && cached.version === this.#itemsVersion) {
 			return cached.heights;
 		}
-		const heights = items.map(session => (session.title ? 4 : 3));
+		const now = new Date();
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		let previousGroup = "";
+		const heights = items.map(session => {
+			const group = this.#pinnedIds.has(session.id) ? "pinned" : sessionDayGroup(session.modified, today).id;
+			const heading = !this.#searchInput.getValue() && group !== previousGroup ? 1 : 0;
+			previousGroup = group;
+			return (session.title ? 4 : 3) + heading;
+		});
 		this.#rowHeights = { items, length: items.length, version: this.#itemsVersion, heights };
 		return heights;
 	}
@@ -1347,6 +1374,7 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 		// can still edit their filter text.
 		if (
 			matchesKey(keyData, "delete") ||
+			matchesKey(keyData, "ctrl+d") ||
 			(matchesKey(keyData, "backspace") && this.#searchInput.getValue().length === 0)
 		) {
 			this.requestDelete();
@@ -1354,7 +1382,7 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 		}
 		// F2 renames the selected session; as a non-printable key it never
 		// collides with the search input.
-		if (matchesKey(keyData, "f2")) {
+		if (matchesKey(keyData, "f2") || matchesKey(keyData, "ctrl+r")) {
 			this.requestRename();
 			return;
 		}
@@ -1409,7 +1437,7 @@ class SessionList<T extends SessionSelectorEntry> implements Component {
 			return;
 		}
 		// Tab - toggle folder / all-projects scope
-		if (matchesKey(keyData, "tab")) {
+		if (matchesKey(keyData, "tab") || matchesKey(keyData, "ctrl+a")) {
 			this.onToggleScope?.();
 			return;
 		}
@@ -1557,7 +1585,7 @@ export class SessionSelectorComponent<T extends SessionSelectorEntry = SessionSe
 		onExit: () => void,
 		options: SessionSelectorOptions<T> = {},
 	) {
-		super(options.title ?? "Resume Session");
+		super(options.title ?? `Sessions for ${os.userInfo().username}`);
 
 		this.#messageContainer = new Container();
 		this.#onDelete = options.onDelete;
@@ -1571,7 +1599,7 @@ export class SessionSelectorComponent<T extends SessionSelectorEntry = SessionSe
 		this.#globalSessions = options.allSessions ?? null;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => 24);
 		this.#fillHeight = options.fillHeight ?? false;
-		this.#title = options.title ?? "Resume Session";
+		this.#title = options.title ?? `Sessions for ${os.userInfo().username}`;
 		this.#actionLabel = options.actionLabel ?? "Resume";
 		this.#pickerTitle = options.title;
 		this.#standalone = options.standalone ?? false;
@@ -1876,7 +1904,7 @@ export class SessionSelectorComponent<T extends SessionSelectorEntry = SessionSe
 	 */
 	override render(width: number): readonly string[] {
 		const innerWidth = Math.max(1, width - 4);
-		const lines: string[] = [topBorder(width, this.title)];
+		const lines = new ListDialogFrame(width, this.title).lines;
 		for (const child of this.children) {
 			const childLines = child.render(innerWidth);
 			if (child === this.#contentSlot) this.#listLineOffset = lines.length;
@@ -1923,9 +1951,11 @@ export class SessionSelectorComponent<T extends SessionSelectorEntry = SessionSe
 		const pinKey = pin && getKeybindings().getKeys(pin.binding)[0];
 		const hint = theme.fg(
 			"muted",
-			`[${this.#onDelete ? `${formatKeyHints(["delete", "backspace"])} delete · ` : ""}${this.#onRename ? `${formatKeyHint("f2")} rename · ` : ""}${pinKey ? `${formatKeyHint(pinKey)} ${pin.label} · ` : ""}${formatKeyHint("enter")} select · ${formatKeyHint("tab")} ${scopeHint} · ${cancel} cancel]`,
+			`[${this.#onDelete ? `${formatKeyHint("ctrl+d")} delete · ` : ""}${this.#onRename ? `${formatKeyHint("ctrl+r")} rename · ` : ""}${pinKey ? `${formatKeyHint(pinKey)} ${pin.label} · ` : ""}${formatKeyHint("enter")} select · ${formatKeyHint("ctrl+a")} ${scopeHint} · ${cancel} cancel]`,
 		);
-		return [row("", width), row(hint, width), row("", width), bottomBorder(width)];
+		const footer = new ListDialogFrame(width, "");
+		footer.lines.length = 0;
+		return [...footer.finish(hint, true)];
 	}
 
 	/** Scope tabs replace the "(current folder)" title suffix when the scope can toggle. */

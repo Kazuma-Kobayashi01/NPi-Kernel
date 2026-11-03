@@ -28,6 +28,7 @@ import { col, node, span, text } from "../native/describe";
  * render a candidate shape's placement instead of the active one.
  */
 export interface ComposerPreviewStatusSource {
+	getComposerLabel?(width: number): EditorTopBorder;
 	/** Powerline bar with the context gauge (box top border content). */
 	getTopBorder(width: number, previewTitle?: string): { content: string; width: number };
 	/** Flush soft-capped powerline band (band composer top row). */
@@ -60,7 +61,9 @@ export function renderComposerShapePreview(
 
 	let topBorder: EditorTopBorder | undefined;
 	if (status) {
-		if (style.statusAttachment === "top-border") {
+		if (style.statusAttachment === "bottom-label") {
+			topBorder = status.getComposerLabel?.(previewWidth - chromeWidth * 2);
+		} else if (style.statusAttachment === "top-border") {
 			topBorder = status.getTopBorder(Math.max(1, previewWidth - chromeWidth * 2), PREVIEW_TITLE);
 		} else if (style.statusAttachment === "top-band") {
 			topBorder = status.getBandTopBorder(previewWidth, PREVIEW_TITLE);

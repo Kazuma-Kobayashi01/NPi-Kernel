@@ -734,7 +734,7 @@ describe("Composer prepaint", () => {
 			.map(r => Bun.stripANSI(r))
 			.join("\n");
 		expect(output).not.toContain("Starting OMP");
-		expect(output).toContain("╰");
+		expect(output).toContain("▎");
 		const initialEditorRow = terminal
 			.getViewport()
 			.map(row => Bun.stripANSI(row))

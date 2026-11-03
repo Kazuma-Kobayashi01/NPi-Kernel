@@ -3,14 +3,13 @@
  */
 import { register } from "./registry";
 
-/** Whether the panel lists the less common (tier B) settings in every tab. */
+/**
+ * Retired: the panel used to hide the less common settings behind this switch and move
+ * others to an Advanced tab. Every setting is listed in its own tab now. The key stays
+ * registered so a config file that still holds it loads as before; it has no panel row.
+ */
 export const cfgSettingsShowMore = register({
 	id: "settings.showMore",
 	type: "boolean",
 	default: false,
-	ui: {
-		tab: "advanced",
-		label: "Show More Options",
-		description: "List the less common settings in every tab. Off keeps each tab to the settings most people change.",
-	},
 });

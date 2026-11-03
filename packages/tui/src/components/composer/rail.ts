@@ -3,17 +3,22 @@
  * silhouette separates input from transcript without enclosing it in a box.
  */
 import { padding } from "../../utils";
-import type { ComposerRowContext, ComposerStyle } from "./types";
+import type { ComposerChromeContext, ComposerRowContext, ComposerStyle } from "./types";
 
 const ACCENT_RAIL = "▎";
+
+/** An empty row of the filled surface: the prompt gets a line of air above and below, as a panel. */
+function blankSurfaceRow(ctx: ComposerChromeContext): string {
+	return ctx.accentColor(ACCENT_RAIL) + ctx.surfaceColor(padding(Math.max(0, ctx.width - 1)));
+}
 
 /** Filled composer surface anchored by a single left accent rail. */
 export const railComposerStyle: ComposerStyle = {
 	id: "rail",
 	filledSurface: true,
 	sideBorders: true,
-	verticalChrome: 0,
-	statusAttachment: "none",
+	verticalChrome: 2,
+	statusAttachment: "bottom-label",
 	bottomBar: "full",
 	bottomBarGap: true,
 	defaultPromptGutter: undefined,
@@ -26,8 +31,8 @@ export const railComposerStyle: ComposerStyle = {
 		return paddingX + 1;
 	},
 
-	renderTop(): undefined {
-		return undefined;
+	renderTop(ctx: ComposerChromeContext): string {
+		return blankSurfaceRow(ctx);
 	},
 
 	renderRow(ctx: ComposerRowContext): string[] {
@@ -43,7 +48,11 @@ export const railComposerStyle: ComposerStyle = {
 		return [rail + ctx.surfaceColor(leftFill + ctx.pad + padding(rightFillCells))];
 	},
 
-	renderBottom(): undefined {
-		return undefined;
+	renderBottom(ctx: ComposerChromeContext): string {
+		const content = ctx.topBorder?.content ?? "";
+		return (
+			ctx.accentColor(ACCENT_RAIL) +
+			ctx.surfaceColor(" " + content + padding(Math.max(0, ctx.width - 2 - (ctx.topBorder?.width ?? 0))))
+		);
 	},
 };

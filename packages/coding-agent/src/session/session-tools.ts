@@ -1683,6 +1683,7 @@ export class SessionTools {
 			addedNames,
 			removedNames,
 		);
+		logger.debug("xd:// tool mounts changed", { addedNames, removedNames });
 		if (cfgStartupQuiet.get(this.#host.settings) || !cfgToolsXdevNotices.get(this.#host.settings)) return;
 		const parts: string[] = [];
 		if (addedNames.length > 0) parts.push(`mounted ${addedNames.join(", ")}`);

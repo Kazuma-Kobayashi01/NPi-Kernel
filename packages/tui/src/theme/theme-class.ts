@@ -246,6 +246,11 @@ export class Theme {
 		return this.isLight ? "#f7f7f4" : "#0e0e10";
 	}
 
+	/** The escape that sets the background to {@link terminalBackground}. */
+	get terminalBackgroundAnsi(): string {
+		return bgAnsi(this.terminalBackground, this.mode);
+	}
+
 	/** True when the active theme has a light status-line background. */
 	get isLight(): boolean {
 		return this.statusLineLuminance !== undefined && this.statusLineLuminance > 0.5;

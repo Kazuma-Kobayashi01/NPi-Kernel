@@ -414,10 +414,12 @@ export function getSettingsListTheme(): SettingsListTheme {
 		description: (text: string) => theme.fg("dim", text),
 		warning: (text: string) => theme.fg("warning", text),
 		warningMark: theme.status.warning,
+		selectedFill: (text: string, width: number) =>
+			theme.accentBar(Bun.stripANSI(text) + padding(Math.max(0, width - visibleWidth(text)))),
 		cursor: theme.fg("accent", `${theme.nav.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 		heading: (text: string, dimmed: boolean) =>
-			dimmed ? theme.fg("dim", theme.underline(text)) : theme.fg("muted", theme.bold(theme.underline(text))),
+			dimmed ? theme.fg("dim", theme.underline(text)) : theme.fg("accent", theme.bold(text)),
 		section: (text: string, active: boolean) =>
 			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
 		hovered: (text: string) => theme.bg("selectedBg", text),

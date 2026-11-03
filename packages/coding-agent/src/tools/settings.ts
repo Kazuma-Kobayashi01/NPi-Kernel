@@ -12,20 +12,21 @@ const EMPTY_STRING_ARRAY: string[] = [];
 export const cfgToolsArtifactSpillThreshold = register({
 	id: "tools.artifactSpillThreshold",
 	type: "number",
-	default: 50,
+	default: 12,
 	ui: {
 		tab: "tools",
 		group: "Output Limits",
 		label: "Artifact Spill Threshold (KB)",
 		description: "Tool output above this size is saved as an artifact; tail is kept inline",
 		options: [
+			{ value: "12", label: "12 KB", description: "Default" },
 			{ value: "1", label: "1 KB", description: "~250 tokens" },
 			{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
 			{ value: "5", label: "5 KB", description: "~1.25K tokens" },
 			{ value: "10", label: "10 KB", description: "~2.5K tokens" },
 			{ value: "20", label: "20 KB", description: "~5K tokens" },
 			{ value: "30", label: "30 KB", description: "~7.5K tokens" },
-			{ value: "50", label: "50 KB", description: "Default; ~12.5K tokens" },
+			{ value: "50", label: "50 KB", description: "~12.5K tokens" },
 			{ value: "75", label: "75 KB", description: "~19K tokens" },
 			{ value: "100", label: "100 KB", description: "~25K tokens" },
 			{ value: "200", label: "200 KB", description: "~50K tokens" },
@@ -38,18 +39,19 @@ export const cfgToolsArtifactSpillThreshold = register({
 export const cfgToolsArtifactTailBytes = register({
 	id: "tools.artifactTailBytes",
 	type: "number",
-	default: 20,
+	default: 6,
 	ui: {
 		tab: "tools",
 		group: "Output Limits",
 		label: "Artifact Tail Size (KB)",
 		description: "Amount of tail content kept inline when output spills to artifact",
 		options: [
+			{ value: "6", label: "6 KB", description: "Default" },
 			{ value: "1", label: "1 KB", description: "~250 tokens" },
 			{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
 			{ value: "5", label: "5 KB", description: "~1.25K tokens" },
 			{ value: "10", label: "10 KB", description: "~2.5K tokens" },
-			{ value: "20", label: "20 KB", description: "Default; ~5K tokens" },
+			{ value: "20", label: "20 KB", description: "~5K tokens" },
 			{ value: "50", label: "50 KB", description: "~12.5K tokens" },
 			{ value: "100", label: "100 KB", description: "~25K tokens" },
 			{ value: "200", label: "200 KB", description: "~50K tokens" },
@@ -60,7 +62,7 @@ export const cfgToolsArtifactTailBytes = register({
 export const cfgToolsArtifactHeadBytes = register({
 	id: "tools.artifactHeadBytes",
 	type: "number",
-	default: 20,
+	default: 2,
 	ui: {
 		tab: "tools",
 		group: "Output Limits",
@@ -68,12 +70,13 @@ export const cfgToolsArtifactHeadBytes = register({
 		description:
 			"Amount of head content kept inline alongside the tail when output spills to artifact (middle elision). 0 disables — keep tail only.",
 		options: [
+			{ value: "2", label: "2 KB", description: "Default" },
 			{ value: "0", label: "0 KB", description: "Disabled; tail-only truncation" },
 			{ value: "1", label: "1 KB", description: "~250 tokens" },
 			{ value: "2.5", label: "2.5 KB", description: "~625 tokens" },
 			{ value: "5", label: "5 KB", description: "~1.25K tokens" },
 			{ value: "10", label: "10 KB", description: "~2.5K tokens" },
-			{ value: "20", label: "20 KB", description: "Default; ~5K tokens" },
+			{ value: "20", label: "20 KB", description: "~5K tokens" },
 			{ value: "50", label: "50 KB", description: "~12.5K tokens" },
 			{ value: "100", label: "100 KB", description: "~25K tokens" },
 			{ value: "200", label: "200 KB", description: "~50K tokens" },
@@ -106,7 +109,7 @@ export const cfgToolsOutputMaxColumns = register({
 export const cfgToolsArtifactTailLines = register({
 	id: "tools.artifactTailLines",
 	type: "number",
-	default: 500,
+	default: 100,
 	ui: {
 		tab: "tools",
 		group: "Output Limits",
@@ -114,9 +117,9 @@ export const cfgToolsArtifactTailLines = register({
 		description: "Maximum lines of tail content kept inline when output spills to artifact",
 		options: [
 			{ value: "50", label: "50 lines", description: "~250 tokens" },
-			{ value: "100", label: "100 lines", description: "~500 tokens" },
+			{ value: "100", label: "100 lines", description: "Default" },
 			{ value: "250", label: "250 lines", description: "~1.25K tokens" },
-			{ value: "500", label: "500 lines", description: "Default; ~2.5K tokens" },
+			{ value: "500", label: "500 lines", description: "~2.5K tokens" },
 			{ value: "1000", label: "1000 lines", description: "~5K tokens" },
 			{ value: "2000", label: "2000 lines", description: "~10K tokens" },
 			{ value: "5000", label: "5000 lines", description: "~25K tokens" },
@@ -160,13 +163,14 @@ export const cfgReadLineNumbers = register({
 export const cfgReadDefaultLimit = register({
 	id: "read.defaultLimit",
 	type: "number",
-	default: 300,
+	default: 120,
 	ui: {
 		tab: "files",
 		group: "Reading",
 		label: "Default Read Limit",
 		description: "Default number of lines returned when agent calls read without a limit",
 		options: [
+			{ value: "120", label: "120 lines", description: "Default" },
 			{ value: "200", label: "200 lines" },
 			{ value: "300", label: "300 lines" },
 			{ value: "500", label: "500 lines" },
@@ -1061,7 +1065,7 @@ export const cfgToolsXdevInlineDevices = register({
 export const cfgToolsXdevNotices = register({
 	id: "tools.xdevNotices",
 	type: "boolean",
-	default: true,
+	default: false,
 	ui: {
 		tab: "tools",
 		group: "Discovery & MCP",

@@ -117,6 +117,8 @@ export interface SettingsListTheme {
 	section?: (text: string, active: boolean) => string;
 	/** Hover band applied to the full row under the mouse pointer. */
 	hovered?: (text: string) => string;
+	/** Optional full-width keyboard selection, separate from pointer hover. */
+	selectedFill?: (text: string, width: number) => string;
 }
 
 /** A contiguous run of items under one heading, derived from the item list. */
@@ -789,6 +791,7 @@ export class SettingsList implements Component {
 			this.#theme.label(item.label, isSelected, item.changed === true) + (mark ? warningStyle(mark) : "") + labelPad;
 		const valueText = this.#theme.value(valuePlain, isSelected, item.changed === true);
 		const text = truncateToWidth(prefix + labelText + separator + valueText, Math.max(0, rowWidth));
+		if (isSelected && this.#theme.selectedFill) return this.#theme.selectedFill(text, rowWidth);
 		// Pointer hover paints a band behind the whole row, distinct from the
 		// keyboard selection (cursor glyph + accent) which stays where it is.
 		if (hovered && this.#theme.hovered) {

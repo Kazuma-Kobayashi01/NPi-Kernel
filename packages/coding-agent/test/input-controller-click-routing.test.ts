@@ -20,6 +20,7 @@ function makeHarness() {
 	const focused: string[] = [];
 	let toggled = 0;
 	const ctx = {
+		composer: { contentMargin: 0 },
 		ui: {
 			addInputListener: (fn: (data: string) => { consume?: boolean; data?: string } | undefined) => {
 				listeners.push(fn);

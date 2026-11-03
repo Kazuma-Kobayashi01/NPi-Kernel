@@ -828,6 +828,10 @@ describe("interactive native input ingress", () => {
 		try {
 			h.editor.handleInput("\x1bl");
 			h.editor.handleInput("\x1b");
+			expect(h.session.abort).toHaveBeenCalledTimes(1);
+			// Once cancellation settles, Ctrl+C can take the idle shutdown path.
+			// The session stub does not clear streaming state as a real abort does.
+			h.session.isStreaming = false;
 			h.editor.handleInput("\x03");
 			h.editor.handleInput("\x03");
 			expect(h.ctx.resetDisplayAfterAppearanceRefresh).toHaveBeenCalled();

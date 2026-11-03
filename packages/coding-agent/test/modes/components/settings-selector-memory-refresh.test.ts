@@ -8,6 +8,7 @@ import { initTheme } from "@oh-my-pi/pi-tui/theme";
 
 import { cfgHindsightApiToken } from "@oh-my-pi/pi-coding-agent/hindsight/settings";
 import { cfgMemoryBackend } from "@oh-my-pi/pi-coding-agent/memory-backend/settings";
+import { cfgShowHardwareCursor } from "@oh-my-pi/pi-coding-agent/modes/settings";
 
 beforeAll(async () => {
 	await initTheme();
@@ -65,11 +66,22 @@ function createSelector(onCancel: () => void = () => {}): SettingsSelectorCompon
 /** Switch the selector to the memory tab. SETTING_TABS puts memory at index 4 (after appearance/model/interaction/context). */
 function focusMemoryTab(comp: SettingsSelectorComponent): void {
 	for (let i = 0; i < 4; i++) {
-		comp.handleInput("\x1b[C");
+		comp.handleInput("\x1b[1;5C");
 	}
 }
 
 describe("SettingsSelectorComponent memory tab", () => {
+	it("cycles the selected boolean with Left/Right without switching its settings page", () => {
+		const comp = createSelector();
+		cfgShowHardwareCursor.set(settings, false);
+		for (const character of "Show Hardware Cursor") comp.handleInput(character);
+		comp.handleInput("\x1b");
+		comp.handleInput("\x1b[C");
+		expect(cfgShowHardwareCursor.get(settings)).toBe(true);
+		comp.handleInput("\x1b[D");
+		expect(cfgShowHardwareCursor.get(settings)).toBe(false);
+		expect(Bun.stripANSI(comp.render(80).join("\n"))).toContain("Show Hardware Cursor");
+	});
 	it("reveals condition-gated Hindsight rows the moment memory.backend changes via the submenu", () => {
 		cfgMemoryBackend.set(settings, "off");
 		const comp = createSelector();

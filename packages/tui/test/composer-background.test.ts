@@ -21,7 +21,7 @@ function composer(preferences: Partial<typeof COMPOSER_DEFAULTS> = {}) {
 	const c = new Composer({
 		terminal,
 		tuiOptions: { renderScheduler: scheduler },
-		preferences: { ...COMPOSER_DEFAULTS, quiet: true, ...preferences },
+		preferences: { ...COMPOSER_DEFAULTS, quiet: true, paintBackground: true, ...preferences },
 	});
 	return { c, terminal };
 }
@@ -52,5 +52,40 @@ describe("terminal background paint", () => {
 
 	it("is a near-black surface on a dark theme and a near-white one on a light theme", () => {
 		expect(theme.terminalBackground).toBe(theme.isLight ? "#f7f7f4" : "#0e0e10");
+	});
+});
+
+describe("painted rows", () => {
+	beforeAll(async () => {
+		await initTheme();
+	});
+
+	async function screen(preferences: Partial<typeof COMPOSER_DEFAULTS>) {
+		const terminal = new VirtualTerminal(80, 12);
+		const scheduler = new VirtualRenderScheduler();
+		const c = new Composer({
+			terminal,
+			tuiOptions: { renderScheduler: scheduler },
+			preferences: { ...COMPOSER_DEFAULTS, quiet: true, ...preferences },
+		});
+		c.start();
+		await scheduler.settle(terminal);
+		return { c, terminal };
+	}
+
+	it("fills every row of the screen with the background, edge to edge", async () => {
+		const { c, terminal } = await screen({ paintBackground: true });
+		for (let row = 0; row < 12; row++) {
+			// Every cell of the row has a background (the cells the text leaves empty included).
+			expect(terminal.getViewportRowBackgroundColumns(row).length).toBe(80);
+		}
+		c.stop();
+	});
+
+	it("draws no background of its own when painting is off", async () => {
+		const { c, terminal } = await screen({});
+		const painted = Array.from({ length: 12 }, (_, row) => terminal.getViewportRowBackgroundColumns(row).length);
+		expect(Math.max(...painted)).toBeLessThan(80);
+		c.stop();
 	});
 });

@@ -2965,7 +2965,12 @@ describe("Editor component", () => {
 			});
 			editor.setBorderStyle("rail");
 			editor.setText("hello");
-			const [line] = editor.render(20);
+			// A line of air above and below the text, as a panel: the same surface and accent edge.
+			const [top, line, bottom] = editor.render(20);
+			for (const air of [top, bottom]) {
+				expect(stripVTControlCharacters(air)).toBe(`▎${" ".repeat(19)}`);
+				expect(air).toContain("\x1b[44m");
+			}
 			expect(stripVTControlCharacters(line)).toStartWith("▎ hello");
 			expect(stripVTControlCharacters(line)).not.toContain("▌");
 			expect(visibleWidth(line)).toBe(20);

@@ -3460,6 +3460,9 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		editor.composerFacts = this;
 		this.setAutocompleteActiveProbe(() => editor.isAutocompleteActive());
 		switch (style.statusAttachment) {
+			case "bottom-label":
+				editor.setTopBorderProvider(availableWidth => this.getComposerLabel(availableWidth));
+				break;
 			case "top-border":
 				editor.setTopBorderProvider(availableWidth => this.getTopBorder(availableWidth));
 				break;
@@ -3484,6 +3487,17 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			width: statusLine.width,
 			revision: this.#renderRevision,
 		};
+	}
+
+	/** Compact identity row inside the Rail composer; state is read live on every paint. */
+	getComposerLabel(width: number): { content: string; width: number; revision: number } {
+		const model = this.session.state.model ?? this.session.model;
+		const mode = this.#planModeStatus?.enabled ? "Plan" : this.#goalModeStatus?.enabled ? "Goal" : "Build";
+		const label = truncateToWidth(
+			`${mode} · ${model?.name ?? "Select model"}${model ? ` · ${model.provider}` : ""}`,
+			Math.max(0, width),
+		);
+		return { content: theme.fg("accent", label), width: visibleWidth(label), revision: this.#renderRevision };
 	}
 
 	/** Flush-left soft-capped powerline band (the band composer's top row). */

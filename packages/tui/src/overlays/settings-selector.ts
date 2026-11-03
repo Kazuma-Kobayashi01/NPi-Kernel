@@ -47,7 +47,8 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../thinking";
 import { getTabBarTheme } from "../chrome/shared";
 import { type ComposerPreviewStatusSource, ComposerShapePreview } from "./composer-shape-preview";
 import { getComposerShapeOptions } from "./composer-shape-registry";
-import { bottomBorder, divider, row, topBorder } from "../chrome/overlay-box";
+import { divider, row } from "../chrome/overlay-box";
+import { ListDialogFrame } from "../chrome/list-dialog";
 import { PluginSettingsComponent, type PluginSettingsHost } from "./plugin-settings";
 import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { SnapcompactShapePreview } from "./snapcompact-shape-preview";
@@ -108,7 +109,7 @@ function settingsTabsNode(tabs: readonly Tab[], active: string | undefined): Nat
 function settingsHintsNode(mode: SettingsHintMode): NativeNode {
 	const confirmKeys: readonly KeyName[] = actionHint("tui.select.confirm", "")?.keys ?? [];
 	const close = actionHint("tui.select.cancel", "close");
-	const switchTabs: NativeHint = { keys: ["left", "right"], label: "switch tabs" };
+	const switchTabs: NativeHint = { keys: ["ctrl+left", "ctrl+right"], label: "switch tabs" };
 	let hints: (NativeHint | undefined)[];
 	switch (mode) {
 		case "search":
@@ -132,7 +133,7 @@ function settingsHintsNode(mode: SettingsHintMode): NativeNode {
 		case "rows":
 		case "rows-sections":
 			hints = [
-				{ keys: [...confirmKeys, "space"], label: "change" },
+				{ keys: [...confirmKeys, "space", "left", "right"], label: "change" },
 				...(mode === "rows-sections"
 					? [{ keys: ["tab"], label: "jump sections" } satisfies NativeHint, switchTabs]
 					: [{ keys: ["tab"], label: "switch tabs" } satisfies NativeHint]),
@@ -613,6 +614,7 @@ export interface SettingsCallbacks {
  * Uses declarative settings definitions from settings-defs.ts.
  */
 export class SettingsSelectorComponent implements Component {
+	viewportRows?: () => number;
 	#tabBar: TabBar;
 	/** The tab bar's current tab list (the bar keeps no public getter). */
 	#tabs: Tab[];
@@ -703,7 +705,7 @@ export class SettingsSelectorComponent implements Component {
 		const confirm = editorKey("tui.select.confirm");
 		const cancel = editorKey("tui.select.cancel");
 		const tab = formatKeyHint("tab");
-		const switchTabs = `${formatKeyHints(["left", "right"])} to switch tabs`;
+		const switchTabs = `${formatKeyHints(["ctrl+left", "ctrl+right"])} tabs`;
 		if (this.#searchList) {
 			return `${confirm} to change · ${tab} to jump tabs · ${cancel} to exit search`;
 		}
@@ -714,7 +716,7 @@ export class SettingsSelectorComponent implements Component {
 			return `${editorKeys("tui.select.up", "tui.select.down")} to jump sections · ${tab}/${confirm} to settings · ${switchTabs} · ${cancel} to close`;
 		}
 		const nav = this.#hasSectionJump ? `${tab} to jump sections · ${switchTabs}` : `${tab} to switch tabs`;
-		return `${confirm}/${formatKeyHint("space")} to change · ${nav} · Type to search · ${cancel} to close`;
+		return `${confirm}/${formatKeyHint("space")}/${formatKeyHints(["left", "right"])} change · ${nav} · Type to search · ${cancel} close`;
 	}
 
 	/** Single-line search banner: accent icon, editable query with live cursor, right-aligned match count. */
@@ -736,23 +738,23 @@ export class SettingsSelectorComponent implements Component {
 	 * then a footer hint pinned above the bottom border.
 	 */
 	render(width: number): readonly string[] {
-		const height = Math.max(14, process.stdout.rows || 40);
+		const height = Math.max(10, this.viewportRows?.() ?? process.stdout.rows ?? 40);
 		const innerWidth = Math.max(1, width - 4);
 
 		const tabLines = this.#tabBar.render(innerWidth);
 		const searching = this.#searchList !== null;
-		const showPreview = !searching && this.#currentTabId === "appearance";
+		const showPreview = height >= 20 && !searching && this.#currentTabId === "appearance";
 		const previewLines = showPreview ? ["", theme.fg("muted", "Preview:"), this.#getStatusPreviewString()] : [];
 
 		// Fixed chrome: top border, tabs, divider, [search row], divider, hint, bottom border.
-		const fixedRows = 1 + tabLines.length + 1 + (searching ? 1 : 0) + 1 + 1 + 1;
-		const contentRows = Math.max(7, height - fixedRows - previewLines.length);
+		const fixedRows = 1 + tabLines.length + 1 + 1 + 1 + 1 + 1;
+		const contentRows = Math.max(1, height - fixedRows - previewLines.length);
 
 		const list = this.#searchList ?? this.#currentList;
 		let contentLines: readonly string[];
 		if (list) {
 			// SettingsList pads itself to viewport + blank + 3 description rows.
-			list.setMaxVisible(contentRows - 4);
+			list.setMaxVisible(Math.max(1, contentRows - 4));
 			contentLines = list.render(innerWidth);
 		} else if (this.#pluginComponent) {
 			contentLines = this.#pluginComponent.render(innerWidth);
@@ -760,17 +762,20 @@ export class SettingsSelectorComponent implements Component {
 			contentLines = [];
 		}
 
-		const out: string[] = [];
-		out.push(topBorder(width, "Settings"));
+		const frame = new ListDialogFrame(width, "Settings");
+		const out = frame.lines;
 		this.#tabRowStart = out.length;
 		this.#tabRowCount = tabLines.length;
 		for (const line of tabLines) {
 			out.push(row(line, width));
 		}
 		out.push(divider(width));
-		if (searching) {
-			out.push(row(this.#renderSearchBanner(innerWidth), width));
-		}
+		out.push(
+			row(
+				searching ? this.#renderSearchBanner(innerWidth) : theme.fg("dim", "Search settings… (type to filter)"),
+				width,
+			),
+		);
 		this.#contentRowStart = out.length;
 		this.#contentRowCount = contentRows;
 		for (let i = 0; i < contentRows; i++) {
@@ -779,10 +784,7 @@ export class SettingsSelectorComponent implements Component {
 		for (const line of previewLines) {
 			out.push(row(line, width));
 		}
-		out.push(divider(width));
-		out.push(row(theme.fg("dim", this.#footerHintText()), width));
-		out.push(bottomBorder(width));
-		return out;
+		return frame.finish(this.#footerHintText());
 	}
 
 	/**
@@ -1932,6 +1934,10 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
+		if (matchesKey(data, "ctrl+left") || matchesKey(data, "ctrl+right")) {
+			this.#tabBar.handleInput(matchesKey(data, "ctrl+left") ? "\x1b[D" : "\x1b[C");
+			return;
+		}
 		if (this.#searchList) {
 			this.#handleSearchModeInput(data, this.#searchList);
 			return;
@@ -1948,6 +1954,14 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 		if (matchesKey(data, "left") || matchesKey(data, "right")) {
+			const selected = this.#currentList?.getSelectedItem();
+			if (selected?.values?.length && !selected.submenu && !this.#currentList?.sectionFocused) {
+				const values = selected.values;
+				const direction = matchesKey(data, "left") ? -1 : 1;
+				const index = (values.indexOf(selected.currentValue) + direction + values.length) % values.length;
+				this.#currentList?.applyValue(selected.id, values[index]!);
+				return;
+			}
 			this.#tabBar.handleInput(data);
 			return;
 		}

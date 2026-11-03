@@ -4,6 +4,10 @@
 
 ### Changed
 
+- The Rail composer shows mode, model and provider inside the input, with shortcuts outside and a directory/version footer on the welcome screen. Command, settings, session and provider lists share dialog chrome; settings values support Left/Right and Ctrl+Left/Right changes tabs.
+- ANSI thinking is collapsed by default with a one-line summary; expanding preserves the original reasoning and streaming replies stay folded.
+
+- With `paintBackground` on, every row of the frame (viewport, history, resize frame) is painted with the theme's background edge to edge, so the screen is one surface even on a terminal that ignores OSC 11; the preference is off unless set. The Accent Rail composer gets a line of air above and below the text.
 - The conversation column is capped at `contentWidth` columns (default 100 through the `tui.contentWidth` setting) and centred on a wider terminal; `0` keeps the full width. Link clicks account for the margin.
 - The terminal's default background is painted with the theme's (near-black on dark themes, near-white on light) while npi runs, through OSC 11, and given back on exit; `Terminal.setDefaultBackground` and `Theme.terminalBackground` are new. The selected row of a list is an accent-coloured bar with text in the background colour.
 
@@ -16,6 +20,9 @@
 
 ### Fixed
 
+- Centred conversations omit shell prompt zones that can shift message backgrounds in shell-integrated terminals. Accent Rail completion menus open above the input with a gap and aligned inset.
+- The empty welcome screen places the logo, tip and composer together in the upper middle of the terminal, adapting to its height.
+- The Interaction settings page now places Interaction Policy in its registered Execution section.
 - Thinking selectors now clamp an explicit or restored `off` to the lowest supported effort when a model requires thinking.
 - Fixed IME composition text in the BTW history `Follow up:` input appearing at the left edge instead of at the caret when the hardware cursor is enabled ([#17427](https://github.com/can1357/oh-my-pi/issues/17427))
 - Fixed session tree rows overlapping when messages, tool arguments, or labels contain carriage returns or Unicode line/paragraph separators (`U+2028`, `U+2029`), while keeping multiline formatting in the selected entry preview ([#17430](https://github.com/can1357/oh-my-pi/pull/17430) by [@lincicomb](https://github.com/lincicomb)).

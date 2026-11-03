@@ -3,11 +3,12 @@ import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-messa
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { cfgHideThinkingBlock } from "@oh-my-pi/pi-coding-agent/session/settings";
+import { cfgHideThinkingBlock, cfgExpandThinkingBlocks } from "@oh-my-pi/pi-coding-agent/session/settings";
 
 function createAssistant(): AssistantMessageComponent {
 	const assistant = Object.create(AssistantMessageComponent.prototype) as AssistantMessageComponent;
 	assistant.setHideThinkingBlock = vi.fn();
+	assistant.setExpandThinkingBlocks = vi.fn();
 	return assistant;
 }
 
@@ -71,13 +72,16 @@ describe("InputController thinking visibility", () => {
 
 		new InputController(ctx).toggleThinkingBlockVisibility();
 
-		expect(ctx.hideThinkingBlock).toBe(true);
-		expect(cfgHideThinkingBlock.get(settings)).toBe(true);
-		expect(setHideThinkingBlock).toHaveBeenCalledWith(true);
+		expect(ctx.hideThinkingBlock).toBe(false);
+		expect(ctx.expandThinkingBlocks).toBe(true);
+		expect(cfgExpandThinkingBlocks.get(settings)).toBe(true);
+		expect(cfgHideThinkingBlock.get(settings)).toBe(false);
+		expect(assistant.setExpandThinkingBlocks).toHaveBeenCalledWith(true);
+		expect(setHideThinkingBlock).not.toHaveBeenCalled();
 		expect(resetStableEmission).toHaveBeenCalledTimes(1);
 		expect(resetDisplay).toHaveBeenCalledTimes(1);
 		expect(resetOrder).toEqual(["stable emission", "display"]);
-		expect(showStatus).toHaveBeenCalledWith("Thinking blocks: hidden");
+		expect(showStatus).toHaveBeenCalledWith("Thinking blocks: expanded");
 	});
 
 	it("refuses to toggle when the focused view session has thinking off", () => {
