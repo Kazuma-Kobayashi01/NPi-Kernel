@@ -372,6 +372,7 @@ import {
 	cfgAutocompleteMaxVisible,
 	cfgComposerPredictions,
 	cfgComposerPaintBackground,
+	cfgTuiContentWidth,
 	cfgComposerShape,
 	cfgComposerTokenRate,
 	cfgDisplayAdvisorCollapsedLines,
@@ -462,6 +463,7 @@ const cfgLiveUiSettings = combine({
 	"spelling.autocorrect": cfgSpellingAutocorrect,
 	"composer.shape": cfgComposerShape,
 	"composer.paintBackground": cfgComposerPaintBackground,
+	"tui.contentWidth": cfgTuiContentWidth,
 	"tui.vimMode": cfgTuiVimMode,
 	"tui.vimModeDisplay": cfgTuiVimModeDisplay,
 	"display.pinnedAgents": cfgDisplayPinnedAgents,
@@ -4077,6 +4079,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		return {
 			showHardwareCursor: cfgShowHardwareCursor.get(this.settings),
 			paintBackground: cfgComposerPaintBackground.get(this.settings),
+			contentWidth: cfgTuiContentWidth.get(this.settings),
 			maxInlineImages: cfgTuiMaxInlineImages.get(this.settings),
 			resizeScrollback: cfgTuiResizeScrollback.get(this.settings),
 			completeScrollback: cfgTuiCompleteScrollback.get(this.settings),
@@ -4137,6 +4140,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				"spelling.autocomplete",
 				"spelling.autocorrect",
 				"composer.paintBackground",
+				"tui.contentWidth",
 			)
 		) {
 			this.composer.setPreferences(this.#liveComposerPreferences());

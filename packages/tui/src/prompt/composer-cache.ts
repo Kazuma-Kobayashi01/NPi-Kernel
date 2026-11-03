@@ -100,6 +100,8 @@ function parseUiState(
 		spellingTypoDetection,
 		spellingAutocomplete,
 		spellingAutocorrect,
+		paintBackground,
+		contentWidth,
 	} = value.preferences;
 	if (
 		typeof quiet !== "boolean" ||
@@ -144,6 +146,9 @@ function parseUiState(
 			spellingTypoDetection,
 			spellingAutocomplete,
 			spellingAutocorrect,
+			// Absent in a cache written before these existed: leave them unset.
+			...(typeof paintBackground === "boolean" ? { paintBackground } : {}),
+			...(typeof contentWidth === "number" ? { contentWidth } : {}),
 		},
 		theme: { symbolPreset, colorBlindMode, darkTheme, lightTheme },
 	};

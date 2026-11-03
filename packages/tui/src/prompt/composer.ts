@@ -49,6 +49,8 @@ export interface ComposerPreferences {
 	readonly spellingAutocorrect: boolean;
 	/** Paint the terminal's background with the theme's while npi runs (OSC 11). On unless `false`. */
 	readonly paintBackground?: boolean;
+	/** Widest the conversation column gets, centred on a wider terminal; 0 or unset keeps the full width. */
+	readonly contentWidth?: number;
 }
 
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
@@ -437,8 +439,41 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		return this.#rowsBelow.get(root);
 	}
 
-	/** Compose the bounded mutable viewport and the next ordered history append. */
+	/**
+	 * The conversation column of a terminal `columns` wide: its width and the cells of margin on
+	 * its left. A column cap of 0 (or a terminal narrower than the cap) is the full width.
+	 */
+	#column(columns: number): { width: number; margin: number } {
+		const cap = this.#preferences.contentWidth ?? 0;
+		if (!Number.isFinite(cap) || cap < 40 || columns <= cap) return { width: Math.max(1, columns), margin: 0 };
+		return { width: cap, margin: Math.floor((columns - cap) / 2) };
+	}
+
+	/** Cells of margin left of the conversation column at the terminal's current width (0 when it is full width). */
+	get contentMargin(): number {
+		return this.#column(this.#terminal.columns).margin;
+	}
+
+	/** `rows` pushed `margin` cells to the right; empty rows stay empty. */
+	static #indent(rows: readonly string[], margin: number): readonly string[] {
+		if (margin <= 0) return rows;
+		const lead = " ".repeat(margin);
+		return rows.map(row => (row === "" ? row : lead + row));
+	}
+
+	/** Compose the bounded mutable viewport and the next ordered history append, in the centred column. */
 	renderFrame(viewport: ViewportSize): TerminalFramePlan {
+		const { width, margin } = this.#column(viewport.columns);
+		const plan = this.#renderColumnFrame({ ...viewport, columns: width });
+		if (margin <= 0) return plan;
+		return {
+			...plan,
+			viewport: Composer.#indent(plan.viewport, margin),
+			...(plan.history ? { history: { ...plan.history, rows: Composer.#indent(plan.history.rows, margin) } } : {}),
+		};
+	}
+
+	#renderColumnFrame(viewport: ViewportSize): TerminalFramePlan {
 		if (!this.#started || this.#stopped) return { viewport: [] };
 		const width = Math.max(1, viewport.columns);
 		const rows = Math.max(0, viewport.rows);
@@ -878,6 +913,11 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 	/** Render the semantic transcript tail while the terminal borrows its resize buffer. */
 	renderResizeFrame(viewport: ViewportSize): readonly string[] {
+		const { width: columnWidth, margin } = this.#column(viewport.columns);
+		return Composer.#indent(this.#renderColumnResizeFrame({ ...viewport, columns: columnWidth }), margin);
+	}
+
+	#renderColumnResizeFrame(viewport: ViewportSize): readonly string[] {
 		if (!this.#started || this.#stopped) return [];
 		const width = Math.max(1, viewport.columns);
 		const rows = Math.max(0, viewport.rows);

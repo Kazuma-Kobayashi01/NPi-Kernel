@@ -157,6 +157,25 @@ export const cfgComposerShape = register({
 });
 effect(cfgComposerShape, setEditorGapComposerShape);
 
+export const cfgTuiContentWidth = register({
+	id: "tui.contentWidth",
+	type: "number",
+	default: 100,
+	ui: {
+		tab: "appearance",
+		group: "Composer",
+		label: "Content Width",
+		description: "Widest the conversation column gets, centred on a wider terminal (0 = use the full width)",
+		options: [
+			{ value: "0", label: "Full width" },
+			{ value: "80", label: "80 columns" },
+			{ value: "100", label: "100 columns" },
+			{ value: "120", label: "120 columns" },
+			{ value: "140", label: "140 columns" },
+		],
+	},
+});
+
 export const cfgComposerPaintBackground = register({
 	id: "composer.paintBackground",
 	type: "boolean",

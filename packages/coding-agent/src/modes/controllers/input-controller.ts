@@ -853,7 +853,7 @@ export class InputController {
 		const event = parseSgrMouse(data);
 		if (!event) return undefined;
 		if (event.motion) this.#updateHoverHighlight(event.row);
-		else if (event.leftClick && !this.#activateClickedLink(event.row, event.col)) this.#focusClickedAgent(event.row);
+		else if (event.leftClick && !this.#activateClickedLink(event.row, event.col - this.ctx.composer.contentMargin)) this.#focusClickedAgent(event.row);
 		return { consume: true };
 	}
 
