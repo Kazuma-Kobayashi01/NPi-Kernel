@@ -30,4 +30,18 @@ describe("buildMemoryToolDeveloperInstructions", () => {
 			expect(instructions).not.toContain(memoryRoot);
 		});
 	});
+
+	it("does not send the model to read a summary that does not exist", async () => {
+		await withTempDir(async agentDir => {
+			const settings = Settings.isolated({ "memories.enabled": true });
+			const memoryRoot = getMemoryRoot(agentDir, settings.getCwd());
+			await fs.mkdir(memoryRoot, { recursive: true });
+			await Bun.write(path.join(memoryRoot, "learned.md"), "- Prefer small commits.\n");
+
+			const instructions = await buildMemoryToolDeveloperInstructions(agentDir, settings.getCwd(), settings);
+			expect(instructions).toContain("Prefer small commits");
+			expect(instructions).not.toContain("memory_summary.md");
+			expect(instructions).not.toContain("memory://root/MEMORY.md");
+		});
+	});
 });
