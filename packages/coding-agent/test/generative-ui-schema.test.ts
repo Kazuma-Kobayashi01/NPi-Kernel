@@ -95,6 +95,12 @@ describe("Generative UI image references", () => {
 	const local = { type: "image", id: "logo", src: "assets/logo.png", alt: "Logo" } satisfies UiComponent;
 	const image = (src: unknown, extra: Record<string, unknown> = {}) => ({ version: 1, components: [{ type: "image", id: "x", src, ...extra }] });
 
+	it("keeps an image's description (the side-by-side card) and bounds it", () => {
+		const described = normalizeUiSchema(image("https://cdn.example.com/a.png", { title: "Autumn", description: "Maples at Nikko." }));
+		expect(described.components[0]).toMatchObject({ type: "image", description: "Maples at Nikko." });
+		expect(() => normalizeUiSchema(image("https://cdn.example.com/a.png", { description: "x".repeat(1201) }))).toThrow(/image\.description/);
+	});
+
 	it("normalizes remote and project-relative references as a display component that never waits for a submit", () => {
 		const host = normalizeUiSchema({ version: 1, components: [remote, local] });
 		expect(host.mode).toBe("display");

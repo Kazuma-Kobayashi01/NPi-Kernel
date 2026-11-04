@@ -57,6 +57,7 @@ output:
 Find bugs author wants fixed before merge.
 
 <procedure>
+Without a `yield` tool (a plain subagent session), report the same findings and verdict fields in your final message instead.
 1. Patch: `git diff` | `jj diff --git` | `gh pr diff <number>`
 2. Modified files: read full context.
 3. Each issue: incremental `yield`, `type: ["findings"]`.

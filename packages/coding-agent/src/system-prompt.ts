@@ -8,6 +8,7 @@ import type { AgentTool } from "@oh-my-pi/pi-agent-core";
 import type { ToolExample, TSchema } from "@oh-my-pi/pi-ai";
 import { renderToolInventory } from "@oh-my-pi/pi-ai/dialect";
 import type { DelegationBias } from "@oh-my-pi/pi-catalog/compat/delegation";
+import type { PromptProfile } from "@oh-my-pi/pi-catalog/compat/prompt-profile";
 import {
 	$env,
 	getAgentDir,
@@ -578,6 +579,8 @@ export interface BuildSystemPromptOptions {
 	scoutAvailable?: boolean;
 	/** Active model's delegation appetite (catalog `delegation-bias` axis); selects the Delegation section's wording. Default: `eager`. */
 	delegationBias?: DelegationBias;
+	/** Active model's prompt weight (catalog `prompt-profile` axis); `lite` renders the short tool-first prompt. Default: `full`. */
+	promptProfile?: PromptProfile;
 
 	/** Rules with alwaysApply=true — their full content is injected into the prompt. */
 	alwaysApplyRules?: AlwaysApplyRule[];
@@ -693,7 +696,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		eagerTasks = false,
 		eagerTasksAlways = false,
 		delegationAppetite,
-		interactionPolicy = "aggressive",
+		interactionPolicy = "standard",
 		taskBatch = true,
 		taskMaxConcurrency = 0,
 		taskIrcEnabled = false,
@@ -701,6 +704,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		workspaceTree: providedWorkspaceTree,
 		scoutAvailable = true,
 		delegationBias = "eager",
+		promptProfile = "full",
 		memoryBackend,
 		securityEnabled = false,
 		settingsApproval = false,
@@ -1029,6 +1033,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		additionalWorkspaceRoots: additionalWorkspaceRoots.filter(d => path.resolve(d) !== path.resolve(resolvedCwd)),
 		model: includeModelInPrompt ? (model ?? "") : "",
 		delegationBias,
+		liteProfile: promptProfile === "lite",
 		personality: personalityBlock,
 		intentTracing: !!intentField,
 		intentField: intentField ?? "",

@@ -64,6 +64,13 @@ export const EFFORT_TIERS: readonly string[] = [...EFFORTS, "off"];
  * forbids subagents unless the user or a skill asks.
  */
 export const DELEGATION_BIASES = ["eager", "restrained", "gated"] as const;
+
+/**
+ * Which system-prompt weight a model lineage gets (`prompt-profile` axis).
+ * `full` is the unassigned default. `lite` is a short, tool-first prompt for
+ * small fast models that stall or over-deliberate under the full rulebook.
+ */
+export const PROMPT_PROFILES = ["full", "lite"] as const;
 const THINKING_MODES = [
 	"effort",
 	"budget",
@@ -457,6 +464,7 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
 		values: ["output", "signature"],
 	},
 	"delegation-bias": { key: "delegationBias", set: "catalog", shape: "scalar", values: DELEGATION_BIASES },
+	"prompt-profile": { key: "promptProfile", set: "catalog", shape: "scalar", values: PROMPT_PROFILES },
 	"discovery-api": { key: "discoveryApi", set: "catalog", shape: "scalar" },
 	"edit-prompt-variant": { key: "editPromptVariant", set: "catalog", shape: "scalar", values: ["full", "compact"] },
 	"edit-revision": { key: "editRevision", set: "catalog", shape: "scalar" },

@@ -2042,11 +2042,12 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor = this.composer.editor;
 		this.editor.magicKeywordsEnabled = () => cfgMagicKeywordsEnabled.get(this.settings);
 		this.editor.placeholder = () => this.#composerHint();
-		this.editor.footerHint = () =>
-			theme.fg(
-				"dim",
-				`${appKey(this.keybindings, "app.thinking.cycle")} thinking · ${appKey(this.keybindings, "app.agents.hub")} agents · / commands`,
-			);
+		this.editor.footerHint = () => {
+			const hints = `${appKey(this.keybindings, "app.thinking.cycle")} thinking · ${appKey(this.keybindings, "app.agents.hub")} agents · / commands`;
+			const usage = this.session.getContextUsage();
+			const used = usage && usage.tokens > 0 ? `${formatNumber(usage.tokens)} (${Math.round(usage.percent)}%)  ` : "";
+			return theme.fg("dim", `${used}${hints}`);
+		};
 		this.editor.prediction = () => this.#eventController.composerPrediction.text;
 		this.editor.composerState = () => this.#composerNativeState();
 		this.editor.onToggleDictation = () => void this.#toggleComposerDictation();

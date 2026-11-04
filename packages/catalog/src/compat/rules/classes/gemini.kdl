@@ -16,14 +16,18 @@ class "gemini" {
 			thinking-efforts "low" "high"
 		}
 	}
+	// Flash and Lite are small fast lines: they stall or over-deliberate under
+	// the full rulebook, so they get the short tool-first prompt.
 	family "flash" {
 		revision ">=0" {
 			thinking-efforts "minimal" "low" "medium" "high"
+			prompt-profile "lite"
 		}
 	}
 	family "lite" {
 		revision ">=0" {
 			thinking-efforts "minimal" "low" "medium" "high"
+			prompt-profile "lite"
 		}
 	}
 	// Direct Gemini 2.5 thinking budgets. Flash and Lite share the lower

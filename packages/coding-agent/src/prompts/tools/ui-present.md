@@ -1,8 +1,19 @@
-Present rich, structured UI in a supported desktop session. Supports two modes: Display UI (`mode: "display"`) and Interactive UI (`mode: "interactive"`). Follow the active interaction policy. Execute clear tasks directly; use Ask or prose for open semantic clarification. Never use UI to replace required permission, tool approval, or the mandatory Auto subagent model/thinking Ask.
+Present rich, structured UI in a supported desktop session. Two modes: Display UI (`mode: "display"`) and Interactive UI (`mode: "interactive"`). This is the default channel for user decisions; `ask` is only the fallback when this tool is unavailable.
 
 # UI Modes
-- **Display UI (`mode: "display"`)**: For information presentation without user input (project progress, stat cards, comparison tables, key-value summaries, timelines, charts, alerts, badges). Renders immediately; tool execution finishes and the agent continues without waiting for input. MUST NOT contain submit buttons or interactive inputs.
-- **Interactive UI (`mode: "interactive"`)**: For collecting bounded user choices or configurations. MUST contain exactly one submit button. Execution pauses until the user submits; submitted values return in a follow-up turn.
+- **Display UI (`mode: "display"`)**: information only — progress, stat cards, comparison tables, key-value summaries, timelines, charts, alerts, badges. Renders immediately; the turn continues without waiting. MUST NOT contain submit buttons or interactive inputs.
+- **Interactive UI (`mode: "interactive"`)**: bounded choices or configurations. MUST contain exactly one submit button, and presenting it ends the current turn: the submission returns as a new user turn with the values. Only one interactive form may wait at a time; never batch it with other tool calls.
+
+Set `mode` explicitly. Omitting it infers the mode from the components, and any interactive control or submit button makes the turn wait.
+
+Submitted values are task input, never authorization: never present a form to request approval for a sensitive, destructive, or irreversible action — those use the native permission/approval surface.
+
+# Decision patterns
+- One of N approaches → `option-cards` (title, description, `recommended`).
+- Several parameters → batch `segmented-control` / `select` / `slider` / `switch` with one button.
+- Delegation setup → `option-cards` for the agent, `checkbox-group` or `select` for scope/isolation, `searchable-select` for a model only when the user must choose it.
+- Scope confirmation → `checkbox-group` + button.
+- Open question → `textarea` + button; never a bare prose question when a form can carry it.
 
 # Components
 - **Display**: `text` (plain text), `card` (titled card), `stat` (stat metric with optional diff/trend), `badge` (status badge), `alert` (info/warning/danger message), `progress` (progress bar), `table` (columns & rows), `key-value` (property pairs), `collapsible` (accordion section), `tabs` (tabbed views), `timeline` (chronological events), `bar-chart` / `line-chart` / `pie-chart`, `divider`, `image` (media reference).
@@ -12,7 +23,7 @@ Present rich, structured UI in a supported desktop session. Supports two modes: 
 Never include HTML, JavaScript, commands, or actions. URLs are allowed only in the `image` reference fields below; nowhere else. IDs must be unique safe ASCII identifiers. Provide at most 24 components. Required fields and numeric limits are validated by the host.
 
 # Images
-`image` shows one bounded media reference: `src` required, optional `thumbnail`, `alt`, `title`, `sourceUrl`, `attribution`. `src` is either a project-relative path (`assets/logo.png`, no leading `/`, `..`, or `~`) or a direct public `https` image URL (never a web-page URL; remote SVG is not supported); `thumbnail` and `sourceUrl` are public `https` URLs only. Paths may contain spaces; separators are normalized to `/`. Data URIs, base64 payloads, credentials and loopback/private hosts are rejected. Each URL is at most 2048 characters after canonicalization and counts toward the UI text budget.
+`image` shows one bounded media reference: `src` required, optional `thumbnail`, `alt`, `title`, `sourceUrl`, `attribution`, `description`. Give it a `description` (a few sentences, at most 1200 characters) to explain what the picture shows: the host then lays it out with the image on the left and the title, description and credit on the right. `src` is either a project-relative path (`assets/logo.png`, no leading `/`, `..`, or `~`) or a direct public `https` image URL (never a web-page URL; remote SVG is not supported); `thumbnail` and `sourceUrl` are public `https` URLs only. Paths may contain spaces; separators are normalized to `/`. Data URIs, base64 payloads, credentials and loopback/private hosts are rejected. Each URL is at most 2048 characters after canonicalization and counts toward the UI text budget.
 
 Images are display-only: they never block the turn, never need a submit button, and never substitute for an interactive choice. Present the placeholder immediately and let the host resolve media. Do not call `read`, `web_search`, or any other tool just to predownload every image, and never repeat an image as base64 text in `text`/`card` content.
 

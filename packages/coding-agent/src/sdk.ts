@@ -250,7 +250,7 @@ import {
 import type { AgentDefinition } from "./task/types";
 import { AgentOutputManager } from "./task/output-manager";
 import { wrapStreamFnWithProviderConcurrency } from "./task/provider-concurrency";
-import { sessionDelegationBias } from "./task/prompt-policy";
+import { sessionDelegationBias, sessionPromptProfile } from "./task/prompt-policy";
 import { isScoutSpawnable } from "./task/spawn-policy";
 import type { StructuredSubagentSchemaMode } from "@oh-my-pi/pi-tui/tools/task";
 import {
@@ -4240,6 +4240,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				taskMaxConcurrency: getSubagentConcurrencyLimit(settings),
 				scoutAvailable: isScoutSpawnable(cfgTaskDisabledAgents.get(settings), options.spawns ?? "*"),
 				delegationBias: sessionDelegationBias(toolSession),
+				promptProfile: sessionPromptProfile(toolSession),
 				taskIrcEnabled: !restrictToolNames && isIrcEnabled(settings, options.taskDepth ?? 0),
 				autoQaEnabled: !restrictToolNames && isAutoQaEnabled(settings),
 				writeTransportOnly:

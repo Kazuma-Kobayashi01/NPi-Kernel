@@ -655,8 +655,8 @@ describe("Composer prepaint", () => {
 			await terminal.waitForRender();
 			expect(mode.editor.getExpandedText()).toBe(draft);
 			expect(draft.split("\n")).toHaveLength(18);
-			// blank, one draft row, blank, mode/model label, hint row
-			expect(mode.editor.render(80).length).toBeLessThanOrEqual(5);
+			// blank, one draft row, blank, mode/model label, closing edge, hint row
+			expect(mode.editor.render(80).length).toBeLessThanOrEqual(6);
 			expect(terminal.getViewport().join("\n")).not.toContain("Starting OMP");
 		} finally {
 			mode.stop();

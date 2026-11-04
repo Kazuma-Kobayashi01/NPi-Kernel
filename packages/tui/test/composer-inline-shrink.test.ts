@@ -867,7 +867,7 @@ describe("composer inline shrink (#11007)", () => {
 			await scheduler.advance(terminal, 300);
 			const view = terminal.getViewport().map(row => Bun.stripANSI(row));
 			expect(view.some(row => row.includes("draft1"))).toBe(false);
-			expect(view.findIndex(row => row.includes("EDITOR"))).toBeGreaterThanOrEqual(rows - 3);
+			expect(view.findIndex(row => row.includes("EDITOR"))).toBeGreaterThanOrEqual(rows - 4);
 			expect(blankBand(terminal)).toBeLessThanOrEqual(2);
 			const history = terminal
 				.getScrollBuffer()

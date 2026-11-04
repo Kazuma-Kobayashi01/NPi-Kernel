@@ -17,7 +17,7 @@ export const railComposerStyle: ComposerStyle = {
 	id: "rail",
 	filledSurface: true,
 	sideBorders: true,
-	verticalChrome: 3,
+	verticalChrome: 4,
 	statusAttachment: "bottom-label",
 	bottomBar: "full",
 	bottomBarGap: true,
@@ -48,9 +48,16 @@ export const railComposerStyle: ComposerStyle = {
 		return [rail + ctx.surfaceColor(leftFill + ctx.pad + padding(rightFillCells))];
 	},
 
-	/** The panel closes with a blank surface row; the mode / model label sits under it, outside the fill. */
+	/**
+	 * OpenCode-style panel: a blank row, the mode / model label inside the fill,
+	 * then a half-block edge that closes the panel against the background.
+	 */
 	renderBottom(ctx: ComposerChromeContext): string {
 		const content = ctx.topBorder?.content ?? "";
-		return `${blankSurfaceRow(ctx)}\n${padding(2)}${content}`;
+		const label =
+			ctx.accentColor(ACCENT_RAIL) +
+			ctx.surfaceColor(" " + content + padding(Math.max(0, ctx.width - 2 - (ctx.topBorder?.width ?? 0))));
+		const edge = " " + ctx.surfaceEdge("▀".repeat(Math.max(0, ctx.width - 1)));
+		return [blankSurfaceRow(ctx), label, edge].join("\n");
 	},
 };

@@ -547,8 +547,64 @@ function matchesKeypadKey(data: string, keyId: KeyId): boolean | undefined {
  * @param keyId - Key identifier (e.g., "ctrl+c", "escape", Key.ctrl("c"))
  */
 export function matchesKey(data: string, keyId: KeyId): boolean {
+	data = macOptionAsMeta(data);
 	if (matchesRawBackspace(data, 4)) return keyId === "ctrl+backspace";
 	return matchesKeypadKey(data, keyId) ?? matchesKeyNative(data, keyId, kittyProtocolActive);
+}
+
+/**
+ * What a US-layout Option+letter types on macOS when the terminal does not send
+ * Option as Meta (the default in Terminal.app and iTerm2). Dead keys (Option+E, I,
+ * N, U) compose with the next key and cannot be recovered. `\uF8FF` is Option+Shift+K.
+ */
+const MAC_OPTION_LETTERS: Readonly<Record<string, string>> = {
+	"å": "a", "∫": "b", "ç": "c", "∂": "d", "ƒ": "f", "©": "g", "˙": "h", "∆": "j", "˚": "k", "¬": "l",
+	"µ": "m", "ø": "o", "π": "p", "œ": "q", "®": "r", "ß": "s", "†": "t", "√": "v", "∑": "w", "≈": "x",
+	"¥": "y", "Ω": "z",
+	"Å": "A", "ı": "B", "Ç": "C", "Î": "D", "Ï": "F", "˝": "G", "Ó": "H", "Ô": "J", "\uF8FF": "K", "Ò": "L",
+	"Â": "M", "Ø": "O", "∏": "P", "Œ": "Q", "‰": "R", "Í": "S", "ˇ": "T", "◊": "V", "„": "W", "˛": "X",
+	"Á": "Y", "¸": "Z",
+};
+
+/** Layouts whose Option layer is the US one the table above describes. */
+const MAC_US_LIKE_LAYOUT = /KeyboardLayout Name"? = "?(U\.S\.|US|ABC|British|Australian|Canadian)\b/;
+
+let macOptionAsAlt: boolean | undefined;
+
+/** Force the macOS Option-as-Alt mapping on or off; `undefined` returns to auto-detection. */
+export function setMacOptionAsAlt(enabled: boolean | undefined): void {
+	macOptionAsAlt = enabled === undefined ? undefined : enabled && process.platform === "darwin";
+}
+
+/**
+ * Auto mode: on for a US-like layout or an input method, off for other layouts, where the same characters are
+ * direct keys (å on a Nordic keyboard) and must stay typeable.
+ * `NPI_MAC_OPTION_AS_ALT=0|1` overrides the detection.
+ */
+function resolveMacOptionAsAlt(): boolean {
+	if (process.platform !== "darwin") return false;
+	const forced = Bun.env.NPI_MAC_OPTION_AS_ALT;
+	if (forced === "0" || forced === "1") return forced === "1";
+	try {
+		const result = Bun.spawnSync(["defaults", "read", "com.apple.HIToolbox", "AppleSelectedInputSources"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const sources = result.stdout.toString();
+		// Input methods (Pinyin, Kana) report no keyboard layout and type the US Option layer.
+		return !sources.includes("KeyboardLayout Name") || MAC_US_LIKE_LAYOUT.test(sources);
+	} catch {
+		return true;
+	}
+}
+
+/** The legacy Alt encoding (`ESC` + letter) for a single macOS Option-layer character, else `data` unchanged. */
+function macOptionAsMeta(data: string): string {
+	if (data.length === 0 || data.length > 2) return data;
+	const letter = MAC_OPTION_LETTERS[data];
+	if (letter === undefined) return data;
+	macOptionAsAlt ??= resolveMacOptionAsAlt();
+	return macOptionAsAlt ? `\x1b${letter}` : data;
 }
 
 /**
@@ -560,6 +616,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
  * @param data - Raw input data from terminal
  */
 export function parseKey(data: string): string | undefined {
+	data = macOptionAsMeta(data);
 	if (matchesRawBackspace(data, 4)) return "ctrl+backspace";
 	return decodeKittyKeypadText(data) ?? parseKeyNative(data, kittyProtocolActive) ?? undefined;
 }

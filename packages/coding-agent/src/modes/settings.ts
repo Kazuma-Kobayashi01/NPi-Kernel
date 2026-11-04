@@ -47,7 +47,7 @@ export const cfgInteractionPolicy = register({
 	id: "interactionPolicy",
 	type: "enum",
 	values: ["standard", "aggressive", "minimal"] as const,
-	default: "aggressive",
+	default: "standard",
 	ui: {
 		tab: "interaction",
 		group: "Execution",

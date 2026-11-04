@@ -390,6 +390,11 @@ export class Theme {
 		return `\x1b[1m${bgAnsi(accent, this.mode)}${fgAnsi(this.terminalBackground, this.mode)}${text}\x1b[0m`;
 	}
 
+	/** Foreground drawn in a background colour: the half-block edge that closes a filled panel. */
+	bgAsFg(color: ThemeBg, text: string): string {
+		return `${fgAnsi(this.getBgHex(color), this.mode)}${text}\x1b[39m`;
+	}
+
 	bg(color: ThemeBg, text: string): string {
 		const ansi = this.#bgColors[color];
 		if (!ansi) throw new Error(`Unknown theme background color: ${color}`);

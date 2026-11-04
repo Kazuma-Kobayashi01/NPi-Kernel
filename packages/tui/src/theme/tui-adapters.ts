@@ -369,6 +369,7 @@ export function getEditorTheme(): EditorTheme {
 			borderColor: (text: string) => text,
 			accentColor: (text: string) => text,
 			surfaceColor: (text: string) => text,
+			surfaceEdge: (text: string) => text,
 			selectList: getSelectListTheme(),
 			symbols: getSymbolTheme(),
 			hintStyle: (text: string) => text,
@@ -379,6 +380,7 @@ export function getEditorTheme(): EditorTheme {
 		accentColor: (text: string) => theme.fg("accent", text),
 		surfaceColor: (text: string) =>
 			theme.bgFill("userMessageBg", theme.fgOnBg("userMessageText", "userMessageBg", text)),
+		surfaceEdge: (text: string) => theme.bgAsFg("userMessageBg", text),
 		textColor: (text: string) => theme.fgResolved("text", text),
 		selectList: getSelectListTheme(),
 		symbols: getSymbolTheme(),

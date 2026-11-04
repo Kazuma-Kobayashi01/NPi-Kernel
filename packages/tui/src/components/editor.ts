@@ -657,6 +657,8 @@ export interface EditorTheme {
 	accentColor?: (str: string) => string;
 	/** Background fill used by filled composer styles. */
 	surfaceColor?: (str: string) => string;
+	/** Foreground in the surface colour, for half-block edges that close a filled panel. */
+	surfaceEdge?: (str: string) => string;
 	/** Foreground used when the composer shape leaves its text surface transparent. */
 	textColor?: (str: string) => string;
 	selectList: SelectListTheme;
@@ -1585,6 +1587,7 @@ export class Editor implements Component, Focusable {
 			borderColor: (str: string) => this.borderColor(str),
 			accentColor: this.#theme.accentColor ?? this.borderColor,
 			surfaceColor: this.#theme.surfaceColor ?? PASSTHROUGH_COLOR,
+			surfaceEdge: this.#theme.surfaceEdge ?? PASSTHROUGH_COLOR,
 			box,
 			topBorder,
 		};
@@ -1604,6 +1607,11 @@ export class Editor implements Component, Focusable {
 		const inlineHint = placeholder ? null : this.#getInlineHint();
 		const hintStyle = this.#theme.hintStyle ?? ((t: string) => `\x1b[2m${t}\x1b[0m`);
 		const hintTail = (avail: number): { text: string; width: number } | undefined => {
+			if (placeholder && style.id === "rail") {
+				// The rail panel reads like OpenCode's: the placeholder sits right after the cursor.
+				const shown = truncateToWidth(placeholder, Math.max(0, avail - 1));
+				return avail > 1 ? { text: padding(1) + shown, width: 1 + visibleWidth(shown) } : undefined;
+			}
 			if (placeholder) {
 				const gap = avail - visibleWidth(placeholder);
 				return gap >= PLACEHOLDER_MIN_GAP ? { text: padding(gap) + placeholder, width: avail } : undefined;

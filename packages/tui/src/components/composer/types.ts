@@ -50,6 +50,8 @@ export interface ComposerChromeContext {
 	accentColor: (str: string) => string;
 	/** Background fill for composer surfaces; preserves the fill across nested SGR resets. */
 	surfaceColor: (str: string) => string;
+	/** Foreground in the surface colour (half-block edges closing a filled panel). */
+	surfaceEdge: (str: string) => string;
 	/** Box-drawing glyph set (theme's `boxRound`). */
 	box: ComposerBox;
 	/** Status content for the top chrome; box embeds it after the corner while
@@ -87,7 +89,7 @@ export interface ComposerStyle {
 	 *  column, IME-safe layout, and the right-border scrollbar. */
 	readonly sideBorders: boolean;
 	/** Rows consumed by top+bottom chrome (drives maxHeight budgeting). */
-	readonly verticalChrome: 0 | 1 | 2 | 3;
+	readonly verticalChrome: 0 | 1 | 2 | 3 | 4;
 	/** Where the host should attach the status bar: embedded in the top border,
 	 * rendered as a flush soft-capped band above the input, docked onto a top rule, or detached into a standalone bottom bar. */
 	readonly statusAttachment: "top-border" | "top-band" | "top-rule-chip" | "bottom-label" | "none";

@@ -15,8 +15,11 @@ MODERATE appetite: delegate only when there is a clear, material gain in speed o
 {{#when delegationAppetite "==" "conservative"}}
 CONSERVATIVE appetite: default to working inline. Delegate only a substantial, strongly independent slice whose exceptional value clearly outweighs startup, context transfer, and integration costs; avoid exploratory or marginal delegations.
 {{/when}}
+- When the setup is the user's call, present ONE Interactive UI form before spawning (`ui.present`, `mode: "interactive"`): `option-cards` for the agent, fields for scope breadth and isolation, and a model/thinking selector only when the user must choose one. Spawn with the submitted values and never call `ask` for this.
+- Auto subagent mode: the task tool itself performs the model/thinking Ask. Do not pre-ask or duplicate it; cancellation starts no agent.
+- Per-task `model`/`effort` carry only the user's explicit form answer or request. Never use them to override the configured subagent mode on your own.
 - At most {{MAX_CONCURRENCY}} subagents may run concurrently across task, eval agents, and workpool. This is a hard ceiling, not a target: never pad work, create unnecessary agents, or delegate on every request merely to fill slots. “Unlimited” is the highest appetite label, not unbounded concurrency.
 - Decide the scope and shared contracts before spawning; delegate genuine self-contained slices, not ownership of the top-level plan. Supply each worker with the requirements and context it cannot see.
 - Fan independent slices {{#if taskBatch}}in one task batch{{else}}concurrently{{/if}}. Keep useful main-session work moving while agents run. Avoid overlapping file ownership and unnecessary sequential delegations.
-- Model and thinking choices come from the user's configured subagent mode. Auto requires the user's answers before any spawn; cancellation or unavailable UI means no spawn. Sync follows the current main-session model and thinking; Custom stays fixed. Do not override these choices through agent defaults, per-task selectors, hooks, or fallback models.
+- User says `parallel` or `parallelize` → MUST use subagents; parallel tool calls are insufficient.
 {{/when}}

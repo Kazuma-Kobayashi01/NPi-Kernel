@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- On macOS, Option+letter shortcuts (such as Option+A for Agents) now work in terminals that type the Option character instead of sending Meta; non-US layouts keep those characters typeable, and `NPI_MAC_OPTION_AS_ALT=0|1` overrides the detection.
+
 ### Changed
 
+- The rail composer's hint row leads with the session's context usage (`10.1K (5%)`) before the shortcut hints.
+- The rail prompt now follows the OpenCode panel layout: blank row, text, blank row, the mode / model label inside the fill, a half-block edge closing the panel, then the hint row.
 - The Rail composer shows mode, model and provider inside the input, with shortcuts outside and a directory/version footer on the welcome screen. Command, settings, session and provider lists share dialog chrome; settings values support Left/Right and Ctrl+Left/Right changes tabs.
 - ANSI thinking is collapsed by default with a one-line summary; expanding preserves the original reasoning and streaming replies stay folded.
 

@@ -15,7 +15,7 @@ const component = type.or(
 	{ type: "'timeline'", id: "string", "title?": "string", items: type({ time: "string", title: "string", "description?": "string", "status?": "'pending' | 'current' | 'done' | 'failed'" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'bar-chart' | 'line-chart' | 'pie-chart'", id: "string", "title?": "string", "unit?": "string", data: type({ label: "string", value: "number", "color?": "string" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'divider'", id: "string", "label?": "string", "visibleWhen?": visibleWhen },
-	{ type: "'image'", id: "string", src: "string", "thumbnail?": "string", "alt?": "string", "title?": "string", "sourceUrl?": "string", "attribution?": "string", "visibleWhen?": visibleWhen },
+	{ type: "'image'", id: "string", src: "string", "thumbnail?": "string", "alt?": "string", "title?": "string", "sourceUrl?": "string", "attribution?": "string", "description?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'button'", id: "string", label: "string" },
 	{ type: "'input'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'textarea'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "rows?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
@@ -64,7 +64,7 @@ export type UiComponent =
 	| { type: "timeline"; id: string; title?: string; items: UiTimelineItem[]; visibleWhen?: UiVisibleWhen }
 	| { type: "bar-chart" | "line-chart" | "pie-chart"; id: string; title?: string; unit?: string; data: UiChartDataPoint[]; visibleWhen?: UiVisibleWhen }
 	| { type: "divider"; id: string; label?: string; visibleWhen?: UiVisibleWhen }
-	| { type: "image"; id: string; src: string; thumbnail?: string; alt?: string; title?: string; sourceUrl?: string; attribution?: string; visibleWhen?: UiVisibleWhen }
+	| { type: "image"; id: string; src: string; thumbnail?: string; alt?: string; title?: string; sourceUrl?: string; attribution?: string; description?: string; visibleWhen?: UiVisibleWhen }
 	// Interactive components
 	| { type: "button"; id: string; label: string }
 	| { type: "input" | "textarea"; id: string; label: string; default: string; required: boolean; minLength: number; maxLength: number; rows?: number; placeholder?: string; visibleWhen?: UiVisibleWhen }
@@ -424,7 +424,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				return { type: "divider", id, ...(c.label === undefined ? {} : { label: text(c.label, 120, "divider.label") }), ...condProp };
 			}
 			case "image": {
-				keys(c, ["type", "id", "src", "thumbnail", "alt", "title", "sourceUrl", "attribution", "visibleWhen"]);
+				keys(c, ["type", "id", "src", "thumbnail", "alt", "title", "sourceUrl", "attribution", "description", "visibleWhen"]);
 				const src = imageSource(c.src);
 				const thumbnail = c.thumbnail === undefined ? undefined : imageUrl(c.thumbnail, "image.thumbnail");
 				const sourceUrl = c.sourceUrl === undefined ? undefined : imageUrl(c.sourceUrl, "image.sourceUrl");
@@ -438,6 +438,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 					...(c.title === undefined ? {} : { title: text(c.title, 160, "image.title") }),
 					...(sourceUrl === undefined ? {} : { sourceUrl }),
 					...(c.attribution === undefined ? {} : { attribution: text(c.attribution, 200, "image.attribution") }),
+					...(c.description === undefined ? {} : { description: text(c.description, 1200, "image.description") }),
 					...condProp,
 				};
 			}

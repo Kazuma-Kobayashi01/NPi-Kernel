@@ -79,6 +79,7 @@ export function renderComposerShapePreview(
 		accentColor: (str: string) => theme.fg("accent", str),
 		surfaceColor: (str: string) =>
 			theme.bgFill("userMessageBg", theme.fgOnBg("userMessageText", "userMessageBg", str)),
+		surfaceEdge: (str: string) => theme.bgAsFg("userMessageBg", str),
 		box: theme.boxRound,
 		topBorder,
 	};

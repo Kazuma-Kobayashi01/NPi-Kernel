@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Small fast models (Gemini Flash and Lite) get a shorter, tool-first system prompt through the new catalog `prompt-profile` axis; other models keep the full prompt.
+
+### Changed
+
+- Interaction policy now defaults to Standard, and the workflow tells the agent to call tools first and ask only when blocked. Overlapping rules in the system prompt were merged.
+
 ### Fixed
 
 - Startup no longer lists every mounted MCP tool by default; mount details remain in debug logs and can be shown with `tools.xdevNotices`.
