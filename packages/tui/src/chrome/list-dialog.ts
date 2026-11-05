@@ -1,16 +1,10 @@
 import { bottomBorder, divider, row, topBorder } from "./overlay-box";
 import { editorKey, editorKeys } from "./keybinding-hints";
 import { theme } from "../theme";
-import { padding, truncateToWidth, visibleWidth } from "../utils";
 
 /** A single title row preserves the selectors' existing mouse-coordinate offsets. */
 export function listDialogHeader(width: number, title: string): string {
-	const escape = `${editorKey("tui.select.cancel")} close`;
-	const label = truncateToWidth(title, Math.max(0, width - visibleWidth(escape) - 8));
-	return topBorder(
-		width,
-		label + padding(Math.max(1, width - visibleWidth(label) - visibleWidth(escape) - 6)) + escape,
-	);
+	return topBorder(width, title, undefined, `${editorKey("tui.select.cancel")} close`);
 }
 
 export function listDialogHint(): string {

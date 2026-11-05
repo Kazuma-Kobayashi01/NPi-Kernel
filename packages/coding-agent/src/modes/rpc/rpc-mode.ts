@@ -84,7 +84,12 @@ import {
 import { initializeExtensions } from "../runtime-init";
 import { cfgInteractionPolicy, cfgSpellingAutocomplete } from "../settings";
 import { isRpcHostToolResult, isRpcHostToolUpdate, RpcHostToolBridge } from "./host-tools";
-import { UiContinuationAdmissionError, UiPresentTool, generativeUiHistoryMessage, uiContinuationMessage } from "./generative-ui";
+import {
+	UiContinuationAdmissionError,
+	UiPresentTool,
+	generativeUiHistoryMessage,
+	uiContinuationMessage,
+} from "./generative-ui";
 import { isRpcHostUriResult, RpcHostUriBridge } from "./host-uris";
 import { MAX_RPC_FRAME_BYTES, MAX_RPC_REASSEMBLED_BYTES, RpcFrameEncoder } from "./rpc-frame";
 import { claimRpcInput, readRpcInputFrames } from "./rpc-input";
@@ -1485,7 +1490,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	const generativeUi = session.generativeUi;
 	generativeUi.setAvailable(() => generativeUiEnabled && sessionChangesInProgress === 0 && !shutdownState.requested);
 	const uiPresentTool = new UiPresentTool(generativeUi);
-	const refreshHostTools = (uiEnabled = generativeUiEnabled) => session.refreshRpcHostTools([...externalHostTools, ...(uiEnabled ? [uiPresentTool] : [])]);
+	const refreshHostTools = (uiEnabled = generativeUiEnabled) =>
+		session.refreshRpcHostTools([...externalHostTools, ...(uiEnabled ? [uiPresentTool] : [])]);
 	const hostUriBridge = new RpcHostUriBridge(output);
 	// Live frames go straight to `output`, so `set_event_filter` (session events only) never drops them.
 	const liveBridge = new RpcLiveBridge(session, output, createLiveSession);
@@ -2256,6 +2262,17 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 				return success(id, "set_label");
 			}
 
+			case "plan_file_restore": {
+				if (typeof command.entryId !== "string") return error(id, "plan_file_restore", "entryId must be a string");
+				const changes = await session.planFileRestore(command.entryId);
+				return success(id, "plan_file_restore", { changes: changes ?? null });
+			}
+
+			case "restore_files": {
+				if (typeof command.entryId !== "string") return error(id, "restore_files", "entryId must be a string");
+				return success(id, "restore_files", { changed: await session.restoreFiles(command.entryId) });
+			}
+
 			case "open_session": {
 				const requestedModel = await resolveRequestedRpcModel(session, command);
 				await stopDictationForSessionChange();
@@ -2444,7 +2461,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "set_host_tools": {
 				const tools = normalizeHostToolDefinitions(command.tools);
-				if (tools.some(tool => tool.name === "ui.present")) throw new Error("ui.present is reserved for Generative UI");
+				if (tools.some(tool => tool.name === "ui.present"))
+					throw new Error("ui.present is reserved for Generative UI");
 				externalHostTools = hostToolBridge.setTools(tools);
 				await refreshHostTools();
 				return success(id, "set_host_tools", { toolNames: tools.map(tool => tool.name) });
@@ -2479,13 +2497,22 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 				let admitted = false;
 				await watchAndReportPromptResult({
 					ticket,
-					startPrompt: onPromptAdmitted => generativeUi.continueSubmission(details, () => session.promptCustomMessage(
-						{ ...uiContinuationMessage, details: { ui_id: details.ui_id, task_id: details.task_id, message_id: details.message_id } },
-						{
-							streamingBehavior: "followUp",
-							onPromptAdmitted: () => { admitted = true; onPromptAdmitted(); },
-						},
-					)),
+					startPrompt: onPromptAdmitted =>
+						generativeUi.continueSubmission(details, () =>
+							session.promptCustomMessage(
+								{
+									...uiContinuationMessage,
+									details: { ui_id: details.ui_id, task_id: details.task_id, message_id: details.message_id },
+								},
+								{
+									streamingBehavior: "followUp",
+									onPromptAdmitted: () => {
+										admitted = true;
+										onPromptAdmitted();
+									},
+								},
+							),
+						),
 					results: promptResults,
 					onError: promptError => {
 						if (admitted) onPromptError(id, "submit_ui")(promptError);

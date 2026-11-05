@@ -4,10 +4,21 @@
 
 ### Added
 
+- Added the international Alibaba Model Studio provider (`alibaba`, `dashscope-intl.aliyuncs.com`, `DASHSCOPE_INTL_API_KEY`) beside the China one; keys are region-locked, so an international key now has somewhere to go.
+- `tui.clearOnExit` clears the screen and scrollback when npi exits, on by default; the resume hint still prints afterwards.
+- The first Ctrl+C on an idle prompt shows `Press Ctrl+C again to exit`, and the second press now has a full second to land.
+- The home screen plays a short reveal at startup: a band of light brightens the logo, the prompt types itself out, then the hints appear. `startup.animation` turns it off.
+- Terminals at least 116 columns wide show a side panel laid out like the desktop rail: environment, context meter, subscription limits with resets, this conversation's spend and tokens, and open todos; `tui.sidePanel` turns it off. The status line leaves out what the panel shows.
+- File checkpoints: the project's files are snapshotted before each prompt (`checkpoints.files`, on by default) in content-addressed copies under the agent directory, without touching the project's repository. Rewinding to a prompt with Esc Esc offers to restore them, and RPC gains `plan_file_restore` and `restore_files`.
 - Small fast models (Gemini Flash and Lite) get a shorter, tool-first system prompt through the new catalog `prompt-profile` axis; other models keep the full prompt.
 
 ### Changed
 
+- Overlays, dialogs and hubs drop their drawn boxes for a raised panel with an accent rail, matching the composer; fullscreen hubs keep a title band, a quiet column divider and a footer band.
+- In settings, left and right always switch tabs. Every setting opens a second-level menu on Enter and Esc returns without changing it, so arrow keys and Space can no longer change a value by accident.
+- The screen background follows the active theme's page colour instead of one fixed near-black or near-white, including live theme previews.
+- Consecutive read, grep, glob, find and ast_grep calls fold into one line (`Explored 3 files, 2 searches`); Ctrl+O expands them and failures stay visible.
+- With the Rail composer, the default status line no longer repeats the model and the composer label shows the thinking level. Label and hint rows drop their least important parts as the terminal narrows, and the home screen drops the tip and the version beside the logo. The Rail composer panel is one step lighter than the page; on the home screen it stands taller, is 75 columns wide and centred, its footer sits on the bottom row, and connected MCP servers show there instead of as a notice.
 - Interaction policy now defaults to Standard, and the workflow tells the agent to call tools first and ask only when blocked. Overlapping rules in the system prompt were merged.
 
 ### Fixed

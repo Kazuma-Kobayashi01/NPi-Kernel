@@ -29,6 +29,7 @@ import { CustomEditor } from "./custom-editor";
 import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
 import { WelcomeComponent } from "./welcome";
+import type { SidePanelRows } from "../chrome/side-panel";
 import { stripPromptZones } from "../chat/transcript-outline";
 import { StatusNotice } from "../chrome/status-notice";
 import { isComposerDockInput } from "./dock-input";
@@ -56,6 +57,8 @@ export interface ComposerPreferences {
 	readonly paintBackground?: boolean;
 	/** Widest the conversation column gets, centred on a wider terminal; 0 or unset keeps the full width. */
 	readonly contentWidth?: number;
+	/** Dock the session side panel right of the conversation when the terminal has room. Off unless `true`. */
+	readonly sidePanel?: boolean;
 }
 
 /** Settings-schema-compatible defaults used when constructing a dependency-free composer. */
@@ -160,6 +163,28 @@ class StatusHost implements Component {
 		if (home !== undefined) return ["", home];
 		return this.#component?.render(width) ?? [];
 	}
+}
+
+/** Widest the home screen's column gets, so the composer reads as a centred card. */
+const HOME_COLUMN = 75;
+
+/** Reveal positions at which the home chrome starts to appear and reaches full strength. */
+const HOME_CHROME_FROM = 0.55;
+const HOME_CHROME_FULL = 0.8;
+
+/** Share of the spare rows above the home scene; a little above true centre, for optical balance. */
+const HOME_TOP_SHARE = 0.45;
+
+/** Cells of the docked side panel, its padding included, and the gap left of it. */
+const SIDE_PANEL_COLUMNS = 34;
+const SIDE_PANEL_PADDING = 2;
+const SIDE_PANEL_GAP = 2;
+/** The conversation keeps at least this many cells beside the panel. */
+const SIDE_PANEL_MIN_CONVERSATION = 80;
+
+/** Rows carrying kitty, sixel or iTerm images: their cells are the terminal's, so nothing is added to them. */
+function hasTerminalGraphics(row: string): boolean {
+	return row.includes("\x1b_G") || row.includes("\x1bP") || row.includes("\x1b]1337");
 }
 
 /** One click target's row span within the mutable viewport (half-open `[start, end)`). */
@@ -267,6 +292,10 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	readonly #now: () => number;
 	#preferences: ComposerPreferences;
 	#welcome: WelcomeComponent | undefined;
+	#sidePanel: ((width: number) => SidePanelRows) | undefined;
+	#onSidePanelShown: ((shown: boolean) => void) | undefined;
+	#sidePanelShown = false;
+	#homeStatus: string | undefined;
 	#version = "";
 	#headerBefore: readonly Component[] = [];
 	#headerAfter: readonly Component[] = [];
@@ -426,27 +455,16 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		if (!this.#preferences.quiet) this.#ensureWelcome();
 		this.#rebuildHeader();
 		this.#statusHost.homeFooter = width => {
-			if (this.editor.getBorderStyle() !== "rail") return undefined;
-			if (
-				this.#runtimeMounted &&
-				!this.#runtimeChildren.some(
-					root => root === this.editor || (root instanceof Container && root.children.includes(this.editor)),
-				)
-			)
-				return undefined;
-			const transcript = this.#runtimeChildren.find(child => child instanceof TranscriptContainer);
-			if (
-				!this.#welcome ||
-				this.#headerRetired ||
-				this.#runActive ||
-				(transcript instanceof TranscriptContainer &&
-					!transcript.children.every(child => child instanceof StatusNotice || child instanceof Spacer))
-			)
-				return undefined;
+			if (this.editor.getBorderStyle() !== "rail" || !this.#onHomeScreen()) return undefined;
 			const version = this.#version ? `v${this.#version}` : "";
-			const path = truncateToWidth(shortenPath(getProjectDir()), Math.max(0, width - version.length - 2));
-			return theme.fg("dim", path + " ".repeat(Math.max(0, width - visibleWidth(path) - version.length)) + version);
+			const status = this.#homeStatus ? `  ${this.#homeStatus}` : "";
+			const room = Math.max(0, width - version.length - visibleWidth(status) - 2);
+			const path = truncateToWidth(shortenPath(getProjectDir()), room);
+			const gap = " ".repeat(Math.max(0, width - visibleWidth(path) - visibleWidth(status) - version.length));
+			return this.#revealHomeChrome(`${theme.fg("dim", path)}${status}${gap}${theme.fg("dim", version)}`);
 		};
+		this.editor.footerHintReveal = hint => this.#revealHomeChrome(hint);
+		this.editor.tallComposer = () => this.#onHomeScreen();
 		this.ui.addChild(this.#header);
 		this.ui.addChild(this.#bootstrapInputGap);
 		this.ui.addChild(this.editor);
@@ -465,14 +483,97 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		return this.#rowsBelow.get(root);
 	}
 
+	/** The empty welcome scene: logo and composer, before anything has run. */
+	#onHomeScreen(): boolean {
+		if (
+			this.#runtimeMounted &&
+			!this.#runtimeChildren.some(
+				root => root === this.editor || (root instanceof Container && root.children.includes(this.editor)),
+			)
+		)
+			return false;
+		const transcript = this.#runtimeChildren.find(child => child instanceof TranscriptContainer);
+		return (
+			this.#welcome !== undefined &&
+			!this.#headerRetired &&
+			!this.#runActive &&
+			(!(transcript instanceof TranscriptContainer) ||
+				transcript.children.every(child => child instanceof StatusNotice || child instanceof Spacer))
+		);
+	}
+
+	/** Hidden, then faint, then whole as the welcome reveal plays; unchanged once it settles. */
+	#revealHomeChrome(row: string): string {
+		const progress = this.#welcome?.introProgress ?? 1;
+		if (progress >= HOME_CHROME_FULL) return row;
+		if (progress < HOME_CHROME_FROM) return "";
+		return `\x1b[2m${row.replaceAll("\x1b[0m", "\x1b[0m\x1b[2m")}\x1b[22m`;
+	}
+
+	/** Whether the empty welcome scene is on screen. */
+	get onHomeScreen(): boolean {
+		return this.#onHomeScreen();
+	}
+
+	/** Welcome reveal position in [0, 1]; 1 when settled or absent. */
+	get welcomeProgress(): number {
+		return this.#welcome?.introProgress ?? 1;
+	}
+
+	/** A short status for the home footer, such as connected MCP servers. */
+	setHomeStatus(status: string | undefined): void {
+		this.#homeStatus = status;
+		this.ui.requestRender();
+	}
+
+	/**
+	 * Supply the side panel's rows. `onShownChange` runs before the frame that
+	 * first shows or hides it, so chrome repeating its facts can yield in step.
+	 */
+	setSidePanel(rows: (width: number) => SidePanelRows, onShownChange: (shown: boolean) => void): void {
+		this.#sidePanel = rows;
+		this.#onSidePanelShown = onShownChange;
+	}
+
+	/** Cells the side panel takes from a terminal `columns` wide; 0 when it stays out. */
+	#sidePanelRoom(columns: number): number {
+		if (!this.#sidePanel || this.#preferences.sidePanel !== true) return 0;
+		const room = SIDE_PANEL_COLUMNS + SIDE_PANEL_GAP;
+		return columns - room >= SIDE_PANEL_MIN_CONVERSATION ? room : 0;
+	}
+
 	/**
 	 * The conversation column of a terminal `columns` wide: its width and the cells of margin on
-	 * its left. A column cap of 0 (or a terminal narrower than the cap) is the full width.
+	 * its left. A column cap of 0 (or a terminal narrower than the cap) is the full width. The side
+	 * panel's room comes out of that width even on the home screen, so the first message moves the
+	 * column without reflowing it.
 	 */
-	#column(columns: number): { width: number; margin: number } {
+	#column(columns: number): { width: number; margin: number; panel: boolean } {
 		const cap = this.#preferences.contentWidth ?? 0;
-		if (!Number.isFinite(cap) || cap < 40 || columns <= cap) return { width: Math.max(1, columns), margin: 0 };
-		return { width: cap, margin: Math.floor((columns - cap) / 2) };
+		const room = this.#sidePanelRoom(columns);
+		const available = Math.max(1, columns - room);
+		const conversation = Number.isFinite(cap) && cap >= 40 ? Math.min(cap, available) : available;
+		const home = this.#onHomeScreen();
+		const width =
+			home && this.editor.getBorderStyle() === "rail" ? Math.min(HOME_COLUMN, conversation) : conversation;
+		const panel = room > 0 && !home;
+		return { width, margin: Math.floor(((panel ? available : columns) - width) / 2), panel };
+	}
+
+	/** `rows` with the side panel docked on the terminal's right edge, for the mutable viewport only. */
+	#dockSidePanel(rows: readonly string[], columns: number): readonly string[] {
+		const inner = SIDE_PANEL_COLUMNS - SIDE_PANEL_PADDING * 2;
+		const panel = this.#sidePanel?.(inner);
+		if (!panel) return rows;
+		const start = columns - SIDE_PANEL_COLUMNS;
+		const bottomAt = rows.length - panel.bottom.length - 1;
+		const side = " ".repeat(SIDE_PANEL_PADDING);
+		return rows.map((row, index) => {
+			if (hasTerminalGraphics(row)) return row;
+			const line = (index >= bottomAt ? panel.bottom[index - bottomAt] : panel.top[index - 1]) ?? "";
+			const cell = `${side}${line}${" ".repeat(Math.max(0, inner - visibleWidth(line)))}${side}`;
+			return `${row}\x1b[0m${" ".repeat(Math.max(0, start - visibleWidth(row)))}${theme.bgFill("userMessageBg", cell)}`;
+		});
 	}
 
 	/** Cells of margin left of the conversation column at the terminal's current width (0 when it is full width). */
@@ -499,7 +600,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		if (this.#preferences.paintBackground !== true) return rows;
 		const bg = theme.terminalBackgroundAnsi;
 		return rows.map(row => {
-			if (row.includes("\x1b_G") || row.includes("\x1bP") || row.includes("\x1b]1337")) return row;
+			if (hasTerminalGraphics(row)) return row;
 			const resumed = row
 				.replaceAll("\x1b[0m", `\x1b[0m${bg}`)
 				.replaceAll("\x1b[m", `\x1b[m${bg}`)
@@ -516,23 +617,37 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	/** Place the empty welcome scene in the upper middle, keeping short terminals usable. */
 	#welcomeTopPadding(rows: number, contentRows: number): number {
 		if (!this.#welcome || this.#headerRetired || isComposerDockInput()) return 0;
-		return Math.max(0, Math.floor((rows - contentRows) / 3));
+		return Math.max(0, Math.floor((rows - contentRows) * HOME_TOP_SHARE));
 	}
 
 	/** Compose the bounded mutable viewport and the next ordered history append, in the centred, painted column. */
 	renderFrame(viewport: ViewportSize): TerminalFramePlan {
-		const { width, margin } = this.#column(viewport.columns);
+		const { width, margin, panel } = this.#column(viewport.columns);
+		if (panel !== this.#sidePanelShown) {
+			this.#sidePanelShown = panel;
+			this.#onSidePanelShown?.(panel);
+		}
 		const plan = this.#renderColumnFrame({ ...viewport, columns: width });
 		const painting = this.#preferences.paintBackground === true;
-		if (margin <= 0 && !painting) return plan;
+		if (margin <= 0 && !painting && !panel) return plan;
 		const lay = (rows: readonly string[]) => this.#paint(Composer.#indent(rows, margin), viewport.columns);
+		const live = this.#composeViewport(plan.viewport, viewport.rows, painting);
+		const indented = Composer.#indent(live, margin);
 		return {
 			...plan,
-			viewport: lay(
-				painting && plan.viewport.length > 0 ? Composer.#fill(plan.viewport, viewport.rows) : plan.viewport,
-			),
+			viewport: this.#paint(panel ? this.#dockSidePanel(indented, viewport.columns) : indented, viewport.columns),
 			...(plan.history ? { history: { ...plan.history, rows: lay(plan.history.rows) } } : {}),
 		};
+	}
+
+	/** The painted viewport, screen tall; the home footer sits on the bottom of it, one row of air below. */
+	#composeViewport(rows: readonly string[], height: number, painting: boolean): readonly string[] {
+		if (!painting || rows.length === 0) return rows;
+		const footerAt = rows.length - 1;
+		if (this.editor.getBorderStyle() !== "rail" || !this.#onHomeScreen() || footerAt + 2 >= height) {
+			return Composer.#fill(rows, height);
+		}
+		return [...Composer.#fill(rows.slice(0, footerAt), height - 2), rows[footerAt]!, ""];
 	}
 
 	#renderColumnFrame(viewport: ViewportSize): TerminalFramePlan {
@@ -1271,7 +1386,10 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#editor.nativeTypeahead = options.deferInput === true;
 		this.ui.start({ clearScrollback: options.clearScrollback === true, deferInput: options.deferInput === true });
 		this.#applyBackgroundPaint();
-		if (options.playWelcomeIntro !== false) this.playWelcomeIntro();
+		// The prepaint runs before module loading blocks the event loop: hold the
+		// reveal's first frame until InteractiveMode can animate it.
+		if (options.deferInput === true) this.#welcome?.holdIntro();
+		else if (options.playWelcomeIntro !== false) this.playWelcomeIntro();
 		// Deferred input identifies the CLI prepaint handoff. Flush the queued
 		// forced frame before returning so subsequent dynamic-import evaluation
 		// cannot monopolize the event loop ahead of the speculative status chrome.
@@ -1289,6 +1407,11 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#terminal.setDefaultBackground?.(
 			this.#preferences.paintBackground === true ? theme.terminalBackground : undefined,
 		);
+	}
+
+	/** Repaint the terminal's background after a theme change. */
+	refreshBackgroundPaint(): void {
+		this.#applyBackgroundPaint();
 	}
 
 	/** Apply settings changes without replacing the editor or welcome component. */
@@ -1423,7 +1546,17 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 	/** Play or replay the welcome intro against the stable header render target. */
 	playWelcomeIntro(): void {
-		this.#welcome?.playIntro(() => this.ui.requestComponentRender(this.#header));
+		this.#welcome?.playIntro(() => {
+			this.editor.invalidate();
+			this.ui.requestRender();
+		});
+	}
+
+	/** Drop any held or running reveal and show the resting welcome. */
+	settleWelcome(): void {
+		this.#welcome?.stopIntro();
+		this.editor.invalidate();
+		this.ui.requestRender();
 	}
 
 	/** Transfer terminal ownership to InteractiveMode without stopping the composer. */
@@ -1449,6 +1582,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 	#ensureWelcome(): void {
 		this.#welcome ??= new WelcomeComponent(this.#version);
+		this.#welcome.setMinimal(this.#preferences.composerShape === "rail");
 	}
 
 	#rebuildHeader(): void {

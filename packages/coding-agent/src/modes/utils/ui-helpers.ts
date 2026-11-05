@@ -34,6 +34,7 @@ import {
 	routeLateDiagnostics,
 } from "@oh-my-pi/pi-tui/chat/late-diagnostics-message";
 import {
+	collapsesIntoActivityGroup,
 	groupedReadUsageCallIds,
 	ReadToolGroupComponent,
 	readArgsCollapseIntoGroup,
@@ -708,6 +709,27 @@ export class UiHelpers {
 							if (assistantComponent) {
 								readToolCallAssistantComponents.set(content.id, assistantComponent);
 							}
+						}
+						appendAssistantSegment(content.id);
+						continue;
+					}
+					if (collapsesIntoActivityGroup(renderToolName, content.arguments)) {
+						if (!readGroup) {
+							readGroup = new ReadToolGroupComponent({
+								showContentPreview: cfgReadToolResultPreview.get(this.ctx.settings),
+							});
+							readGroup.setExpanded(this.ctx.toolOutputExpanded);
+							this.ctx.chatContainer.addChild(readGroup);
+						}
+						readGroup.updateSearch(renderToolName, content.arguments, content.id);
+						if (hasErrorStop && errorMessage) {
+							readGroup.updateResult(
+								{ content: [{ type: "text", text: errorMessage }], isError: true },
+								false,
+								content.id,
+							);
+						} else {
+							this.ctx.pendingTools.set(content.id, readGroup);
 						}
 						appendAssistantSegment(content.id);
 						continue;

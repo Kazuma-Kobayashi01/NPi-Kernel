@@ -5,7 +5,6 @@ import type { AssistantMessage, ToolCall, ToolResultMessage, Usage } from "@oh-m
 import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-message";
 import { ReadToolGroupComponent } from "@oh-my-pi/pi-tui/chat/read-tool-group";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-tui/chat/tool-execution";
 import { EventController } from "@oh-my-pi/pi-coding-agent/modes/controllers/event-controller";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
@@ -504,11 +503,12 @@ describe("EventController mixed assistant text/tool rendering", () => {
 		const assistants = chatContainer.children.filter(
 			(child): child is AssistantMessageComponent => child instanceof AssistantMessageComponent,
 		);
+		// Each reasoning block closes the activity run, so the calls keep their order around it.
 		const tools = chatContainer.children.filter(
-			(child): child is ToolExecutionComponent => child instanceof ToolExecutionComponent,
+			(child): child is ReadToolGroupComponent => child instanceof ReadToolGroupComponent,
 		);
 		expect(tools).toHaveLength(3);
-		for (const tool of tools) {
+		for (const tool of tools.slice(0, -1)) {
 			expect(tool.isTranscriptBlockFinalized()).toBe(true);
 		}
 		expect(assistants.length).toBeGreaterThanOrEqual(3);
@@ -518,8 +518,8 @@ describe("EventController mixed assistant text/tool rendering", () => {
 		expect(assistants.at(-1)!.isTranscriptBlockFinalized()).toBe(false);
 
 		const flushed = Bun.stripANSI(chatContainer.peekFlushBatch(120)?.rows.join("\n") ?? "");
-		expect(flushed).toContain("GREP_RESULT_1_UNIQUE");
-		expect(flushed).toContain("GREP_RESULT_2_UNIQUE");
+		expect(flushed).toContain("pattern-1");
+		expect(flushed).toContain("pattern-2");
 	});
 
 	for (const arrival of ["early", "buffered"] as const) {

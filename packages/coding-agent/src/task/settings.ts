@@ -87,6 +87,19 @@ export const cfgWorktreeClone = register({
 	},
 });
 
+export const cfgFileCheckpoints = register({
+	id: "checkpoints.files",
+	protocolDefault: ["rpc", "acp"],
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "tasks",
+		group: "Isolation",
+		label: "File Checkpoints",
+		description: "Snapshot the project's files before each prompt, so a rewind can restore them",
+	},
+});
+
 export const cfgWorktreeCleanSource = register({
 	id: "worktree.cleanSource",
 	protocolDefault: ["rpc", "acp"],

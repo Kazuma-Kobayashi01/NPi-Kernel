@@ -11,6 +11,7 @@ import { detectCacheInvalidation } from "@oh-my-pi/pi-tui/chat/cache-invalidatio
 import {
 	groupedReadUsageCallIds,
 	ReadToolGroupComponent,
+	collapsesIntoActivityGroup,
 	readArgsCollapseIntoGroup,
 	readArgsHaveTarget,
 } from "@oh-my-pi/pi-tui/chat/read-tool-group";
@@ -836,6 +837,8 @@ export class EventController {
 			existing.updateContent(segment, opts);
 			return existing;
 		}
+		// Visible content closes the activity run, or later calls would fold above it (mirrors rebuild).
+		this.#resetReadGroup();
 		const component = createAssistantMessageComponent(this.ctx, undefined, linkTargets, contentOffset);
 		component.updateContent(segment, opts);
 		this.#postToolAssistantComponents.set(toolCallId, component);
@@ -1644,6 +1647,19 @@ export class EventController {
 						continue;
 					}
 					// Other internal-URL reads fall through to ToolExecutionComponent below.
+				} else if (collapsesIntoActivityGroup(renderToolName, content.arguments)) {
+					const existing = this.ctx.pendingTools.get(content.id);
+					if (existing) {
+						existing.updateArgs(content.arguments, content.id);
+					} else if (!this.#toolTimelineComponents.has(content.id)) {
+						this.#resolveDisplaceablePoll(renderToolName);
+						const group = this.#getReadGroup();
+						group.updateSearch(renderToolName, content.arguments, content.id);
+						this.ctx.pendingTools.set(content.id, group);
+						this.#toolTimelineComponents.set(content.id, group);
+						this.#settleHeldCompletionIfPresent(content.id, group);
+					}
+					continue;
 				}
 
 				// Preserve the raw partial JSON only for renderers that need to surface fields before the JSON object closes.
@@ -1992,6 +2008,18 @@ export class EventController {
 				if (!this.#toolTimelineComponents.has(event.toolCallId)) {
 					const group = this.#getReadGroup();
 					group.updateArgs(event.args, event.toolCallId);
+					this.ctx.pendingTools.set(event.toolCallId, group);
+					this.#toolTimelineComponents.set(event.toolCallId, group);
+					this.#settleHeldCompletionIfPresent(event.toolCallId, group);
+				}
+				this.#startToolApprovalPreview(event.toolCallId);
+				this.ctx.ui.requestRender();
+				return;
+			}
+			if (collapsesIntoActivityGroup(renderToolName, event.args) && renderToolName !== "read") {
+				if (!this.#toolTimelineComponents.has(event.toolCallId)) {
+					const group = this.#getReadGroup();
+					group.updateSearch(renderToolName, event.args, event.toolCallId);
 					this.ctx.pendingTools.set(event.toolCallId, group);
 					this.#toolTimelineComponents.set(event.toolCallId, group);
 					this.#settleHeldCompletionIfPresent(event.toolCallId, group);

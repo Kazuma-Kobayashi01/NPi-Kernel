@@ -563,7 +563,15 @@ import {
 	cfgThemeDark,
 	cfgThemeLight,
 } from "../modes/settings";
-import { cfgTaskBatch, cfgTaskDisabledAgents } from "../task/settings";
+import { cfgFileCheckpoints, cfgTaskBatch, cfgTaskDisabledAgents } from "../task/settings";
+import {
+	FILE_CHECKPOINT_CUSTOM_TYPE,
+	type FileCheckpointChange,
+	type FileCheckpointRef,
+	planFileRestore,
+	restoreFileCheckpoint,
+	takeFileCheckpoint,
+} from "./file-checkpoints";
 import {
 	cfgBranchSummaryReserveTokens,
 	cfgCompactionModelThresholds,
@@ -909,6 +917,7 @@ export class AgentSession implements SettingsScope {
 	/** Session-start policy, independent of the selected project memory backend. */
 	readonly memoryEnabled: boolean;
 	#costGate: CostGate;
+	readonly #isSubagentSession: boolean;
 	/** False for a subagent, whose gate belongs to its session tree's root. */
 	readonly #ownsCostGate: boolean;
 	#costCapRefusal: CostCapRefusal | undefined;
@@ -1977,6 +1986,7 @@ export class AgentSession implements SettingsScope {
 		);
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
+		this.#isSubagentSession = config.isSubagentSession === true;
 		this.#ownsCostGate = config.costGate === undefined;
 		this.#costGate = config.costGate ?? this.#createCostGate();
 		this.#skillDescriptions = config.skillDescriptions ?? new SkillDescriptionCatalog();
@@ -5620,8 +5630,13 @@ export class AgentSession implements SettingsScope {
 	}
 
 	#afterToolCall(ctx: AfterToolCallContext): AfterToolCallResult | undefined {
-		if (!ctx.isError && ctx.toolCall.name === "ui.present" && isRecord(ctx.result.details) &&
-			ctx.result.details.task_id === ctx.toolCall.id && typeof ctx.result.details.ui_id === "string") {
+		if (
+			!ctx.isError &&
+			ctx.toolCall.name === "ui.present" &&
+			isRecord(ctx.result.details) &&
+			ctx.result.details.task_id === ctx.toolCall.id &&
+			typeof ctx.result.details.ui_id === "string"
+		) {
 			// Display mode does not wait for user input; the turn continues naturally.
 			// Only interactive mode pauses the agent turn to wait for user input.
 			if (ctx.result.details.status === "waiting_input") {
@@ -5654,13 +5669,15 @@ export class AgentSession implements SettingsScope {
 	 * execution still emit there).
 	 */
 	async #beforeToolCall(ctx: BeforeToolCallContext, signal?: AbortSignal): Promise<BeforeToolCallResult | undefined> {
-		const firstInteractiveUiPresent = ctx.assistantMessage.content.find(
-			(block): block is ToolCall => {
-				if (block.type !== "toolCall" || block.name !== "ui.present" || !this.generativeUi.canPresent(block.arguments)) return false;
-				const raw = isRecord(block.arguments) && "schema" in block.arguments ? (block.arguments.schema as Record<string, unknown>) : null;
-				return raw?.mode !== "display";
-			},
-		);
+		const firstInteractiveUiPresent = ctx.assistantMessage.content.find((block): block is ToolCall => {
+			if (block.type !== "toolCall" || block.name !== "ui.present" || !this.generativeUi.canPresent(block.arguments))
+				return false;
+			const raw =
+				isRecord(block.arguments) && "schema" in block.arguments
+					? (block.arguments.schema as Record<string, unknown>)
+					: null;
+			return raw?.mode !== "display";
+		});
 		if (firstInteractiveUiPresent && ctx.toolCall.id !== firstInteractiveUiPresent.id) {
 			return { block: true, reason: "Deferred until interactive UI input is submitted" };
 		}
@@ -8844,6 +8861,47 @@ export class AgentSession implements SettingsScope {
 		throw new AgentStartPolicyChangedError();
 	}
 
+	/** Snapshots the project for the prompt about to go out; the entry lands just before it (see {@link fileCheckpointAt}). */
+	async #recordFileCheckpoint(): Promise<void> {
+		const appMode = Bun.env.NPI_APP_MODE;
+		if (this.#isSubagentSession || appMode === "chat" || appMode === "academic") return;
+		if (!cfgFileCheckpoints.get(this.settings) || !this.sessionManager.getSessionFile()) return;
+		try {
+			const ref = await takeFileCheckpoint(this.sessionManager.getCwd());
+			if (ref) this.sessionManager.appendCustomEntry(FILE_CHECKPOINT_CUSTOM_TYPE, ref);
+		} catch (error) {
+			logger.warn("file checkpoint failed", { error: String(error) });
+		}
+	}
+
+	/** The snapshot taken just before the prompt at `entryId`, if it has one. */
+	fileCheckpointAt(entryId: string): FileCheckpointRef | undefined {
+		let parentId = this.sessionManager.getEntry(entryId)?.parentId ?? null;
+		while (parentId) {
+			const entry = this.sessionManager.getEntry(parentId);
+			if (!entry || entry.type === "message") return undefined;
+			if (entry.type === "custom" && entry.customType === FILE_CHECKPOINT_CUSTOM_TYPE) {
+				return entry.data as FileCheckpointRef;
+			}
+			parentId = entry.parentId;
+		}
+		return undefined;
+	}
+
+	/** What going back to before the prompt at `entryId` would change on disk; `undefined` with no snapshot. */
+	async planFileRestore(entryId: string): Promise<FileCheckpointChange[] | undefined> {
+		const ref = this.fileCheckpointAt(entryId);
+		return ref ? planFileRestore(ref) : undefined;
+	}
+
+	/** Puts the files back as they were before the prompt at `entryId`; returns how many changed. */
+	async restoreFiles(entryId: string): Promise<number> {
+		this.#assertIdleForSnapshot("restore files");
+		const ref = this.fileCheckpointAt(entryId);
+		if (!ref) throw new Error("That message has no file snapshot.");
+		return restoreFileCheckpoint(ref);
+	}
+
 	async #promptWithMessage(
 		message: AgentMessage,
 		expandedText: string,
@@ -8871,6 +8929,10 @@ export class AgentSession implements SettingsScope {
 		this.#promptSetupAbortController = setupAbort;
 		try {
 			options?.onPromptAdmitted?.();
+			// Here, not at the callers: the in-flight claim above is what keeps a concurrent submission out while this waits.
+			if ((message.role === "user" || message.role === "custom") && message.attribution === "user") {
+				await this.#recordFileCheckpoint();
+			}
 			await this.#recovery.maybeRestoreRetryFallbackPrimary();
 			// Auto-prewalk: return from the previous task's handoff before the usage preflight checks the model,
 			// then judge this task alongside the rest of setup; the decision is applied right before dispatch.

@@ -87,7 +87,13 @@ export type RpcCommand =
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
 	| { id?: string; type: "set_host_tools"; tools: RpcHostToolDefinition[] }
 	| { id?: string; type: "set_generative_ui"; enabled: boolean }
-	| { id?: string; type: "submit_ui"; ui_id: string; session_id: string; values: Record<string, string | number | boolean | string[]> }
+	| {
+			id?: string;
+			type: "submit_ui";
+			ui_id: string;
+			session_id: string;
+			values: Record<string, string | number | boolean | string[]>;
+	  }
 	| { id?: string; type: "render_ui"; ui_id: string; session_id: string }
 	| { id?: string; type: "cancel_ui"; ui_id: string; session_id: string }
 	| { id?: string; type: "set_interaction_policy"; policy: "standard" | "aggressive" | "minimal" }
@@ -149,6 +155,8 @@ export type RpcCommand =
 	| { id?: string; type: "navigate_tree"; entryId: string; summarize?: boolean; customInstructions?: string }
 	| { id?: string; type: "abort_branch_summary" }
 	| { id?: string; type: "set_label"; entryId: string; label?: string }
+	| { id?: string; type: "plan_file_restore"; entryId: string }
+	| { id?: string; type: "restore_files"; entryId: string }
 	| { id?: string; type: "get_branch_messages" }
 	| { id?: string; type: "get_last_assistant_text" }
 	| { id?: string; type: "set_session_name"; name: string }
@@ -518,7 +526,13 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "submit_ui"; success: true; data: UiStateDetails }
 	| { id?: string; type: "response"; command: "render_ui"; success: true; data: UiStateDetails }
 	| { id?: string; type: "response"; command: "cancel_ui"; success: true; data: UiStateDetails }
-	| { id?: string; type: "response"; command: "set_interaction_policy"; success: true; data: { policy: "standard" | "aggressive" | "minimal" } }
+	| {
+			id?: string;
+			type: "response";
+			command: "set_interaction_policy";
+			success: true;
+			data: { policy: "standard" | "aggressive" | "minimal" };
+	  }
 	| { id?: string; type: "response"; command: "set_host_uri_schemes"; success: true; data: { schemes: string[] } }
 	| {
 			id?: string;
@@ -628,6 +642,14 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "navigate_tree"; success: true; data: RpcNavigateTreeResult }
 	| { id?: string; type: "response"; command: "abort_branch_summary"; success: true }
 	| { id?: string; type: "response"; command: "set_label"; success: true }
+	| {
+			id?: string;
+			type: "response";
+			command: "plan_file_restore";
+			success: true;
+			data: { changes: { path: string; removes: boolean }[] | null };
+	  }
+	| { id?: string; type: "response"; command: "restore_files"; success: true; data: { changed: number } }
 	| {
 			id?: string;
 			type: "response";

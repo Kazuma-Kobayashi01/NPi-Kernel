@@ -5,6 +5,81 @@ provider "alibaba-coding-plan" {
 	env "ALIBABA_CODING_PLAN_API_KEY"
 	discovery label="Alibaba Coding Plan"
 
+	seed api="openai-completions" base-url="https://coding-intl.dashscope.aliyuncs.com/v1" bundle="fallback" precedence="seed" {
+		model "glm-4.7" name="GLM-4.7" {
+			reasoning #true
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=202752 max-tokens=16384
+		}
+		model "glm-5" name="GLM-5" {
+			reasoning #true
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=202752 max-tokens=16384
+		}
+		model "kimi-k2.5" name="Kimi K2.5" {
+			reasoning #true
+			input "text" "image"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=32768
+		}
+		model "MiniMax-M2.5" name="MiniMax-M2.5" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=196608 max-tokens=24576
+		}
+		model "qwen3-coder-next" name="Qwen3 Coder Next" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=65536
+		}
+		model "qwen3-coder-plus" name="Qwen3 Coder Plus" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3-max-2026-01-23" name="Qwen3 Max" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=32768
+		}
+		model "qwen3.5-plus" name="Qwen3.5 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.6-flash" name="Qwen3.6 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.6-plus" name="Qwen3.6 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.7-max" name="Qwen3.7 Max" {
+			reasoning #true
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.7-plus" name="Qwen3.7 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=64000
+		}
+	}
+
 	// Replaces the Alibaba-compatible thinking-format branch.
 	thinking-format "qwen"
 	// Replaces the provider-wide completions stream-idle baseline.
@@ -13,12 +88,14 @@ provider "alibaba-coding-plan" {
 	class "glm" {
 		thinking-efforts "minimal" "low" "medium" "high"
 	}
-	// residue: taxonomy ranks and exact globs do not isolate these models.
-	models "*.5" {
-		thinking-format "qwen"
-	}
-	// residue: taxonomy ranks and exact globs do not isolate these models.
-	models "glm-5" {
+
+	// Thinking support follows models.dev as shipped in OpenCode 2.2.5: a binary switch shows one
+	// level, effort models send reasoning_effort with enable_thinking, and always-on models with no
+	// control (reasoning #false in the seed) send no thinking parameter.
+	models "glm-4.7" "glm-5" "kimi-k2.5" "qwen3.5-plus" "qwen3.6-flash" "qwen3.6-plus" "qwen3.7-max" "qwen3.7-plus" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "medium"
+		thinking-requires-effort #false
 		thinking-format "qwen"
 	}
 }

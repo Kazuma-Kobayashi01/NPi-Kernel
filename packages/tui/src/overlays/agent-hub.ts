@@ -84,7 +84,18 @@ import { sanitizeDisplaySingleLine } from "./extensions/display-text";
 import { AgentTranscriptViewer, type AgentTranscriptSource } from "./agent-transcript-viewer";
 import type { AgentRoleDisplay } from "./agent-hub-renderer";
 import { fuzzyMatch } from "../fuzzy";
-import { bottomBorder, divider, dividerSplit, PanelRows, row, topBorder, topBorderSplit } from "../chrome/overlay-box";
+import {
+	bottomBorder,
+	divider,
+	dividerSplit,
+	PanelRows,
+	row,
+	splitPaneDivider,
+	splitPanePrefix,
+	splitPaneSuffix,
+	topBorder,
+	topBorderSplit,
+} from "../chrome/overlay-box";
 import { SplitPane } from "../components/layout/split-pane";
 import { Stack } from "../components/layout/stack";
 import { node, span, stableKey, text } from "../native/describe";
@@ -438,9 +449,9 @@ export class AgentHubOverlayComponent<TRecord extends AgentRecordLike = AgentRec
 		rightMinWidth: DETAIL_MIN_WIDTH,
 		splitAt: SPLIT_MIN_WIDTH,
 		narrowPane: "left",
-		prefix: () => `${theme.fg("border", theme.boxRound.vertical)} `,
-		divider: () => ` ${theme.fg("border", theme.boxRound.vertical)} `,
-		suffix: () => ` ${theme.fg("border", theme.boxRound.vertical)}`,
+		prefix: splitPanePrefix,
+		divider: splitPaneDivider,
+		suffix: splitPaneSuffix,
 	});
 	readonly #frameTop = new PanelRows();
 	readonly #frameDivider = new PanelRows();
@@ -1229,7 +1240,7 @@ export class AgentHubOverlayComponent<TRecord extends AgentRecordLike = AgentRec
 						[span("Finished, parked, and killed subagents remain with the session that created them.", "dim")],
 						{ wrap: "word" },
 					),
-					text([span("Resume that session with omp-dev --continue, or spawn a task here.", "dim")], {
+					text([span("Resume that session with npi --continue, or spawn a task here.", "dim")], {
 						wrap: "word",
 					}),
 				],
@@ -1870,7 +1881,7 @@ export class AgentHubOverlayComponent<TRecord extends AgentRecordLike = AgentRec
 				const emptyState = [
 					`${theme.fg("muted", theme.status.shadowed)} ${theme.bold("No agents in this session")}`,
 					theme.fg("dim", "Finished, parked, and killed subagents remain with the session that created them."),
-					theme.fg("dim", "Resume that session with omp-dev --continue, or spawn a task here."),
+					theme.fg("dim", "Resume that session with npi --continue, or spawn a task here."),
 				];
 				for (const line of emptyState.slice(0, budget)) {
 					lines.push(line);

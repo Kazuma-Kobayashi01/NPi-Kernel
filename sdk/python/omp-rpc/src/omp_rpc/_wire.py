@@ -864,6 +864,12 @@ class BranchMessage:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class FileRestoreChange:
+    path: str
+    removes: bool
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class BranchResult:
     text: str
     cancelled: bool
@@ -1770,6 +1776,16 @@ class GetSessionLeaseResult:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class PlanFileRestoreResult:
+    changes: tuple[FileRestoreChange, ...] | None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class RestoreFilesResult:
+    changed: float
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class LogoutResult:
     remaining_source: str | None = None
 
@@ -2356,6 +2372,14 @@ def parse_branch_message(value: object, path: str = "BranchMessage") -> BranchMe
     return BranchMessage(
         entry_id=required(payload, "entryId", decode_str, path),
         text=required(payload, "text", decode_str, path),
+    )
+
+
+def parse_file_restore_change(value: object, path: str = "FileRestoreChange") -> FileRestoreChange:
+    payload = expect_object(value, path)
+    return FileRestoreChange(
+        path=required(payload, "path", decode_str, path),
+        removes=required(payload, "removes", decode_bool, path),
     )
 
 
@@ -3392,6 +3416,20 @@ def parse_get_session_lease_result(value: object, path: str = "GetSessionLeaseRe
     )
 
 
+def parse_plan_file_restore_result(value: object, path: str = "PlanFileRestoreResult") -> PlanFileRestoreResult:
+    payload = expect_object(value, path)
+    return PlanFileRestoreResult(
+        changes=required(payload, "changes", nullable(array(parse_file_restore_change)), path),
+    )
+
+
+def parse_restore_files_result(value: object, path: str = "RestoreFilesResult") -> RestoreFilesResult:
+    payload = expect_object(value, path)
+    return RestoreFilesResult(
+        changed=required(payload, "changed", decode_float, path),
+    )
+
+
 def parse_logout_result(value: object, path: str = "LogoutResult") -> LogoutResult:
     payload = expect_object(value, path)
     return LogoutResult(
@@ -3951,6 +3989,18 @@ class WireClient:
             params["label"] = label
         self._command("set_label", params)
 
+    def plan_file_restore(self, entry_id: str) -> PlanFileRestoreResult:
+        """List what going back to before a prompt would change on disk; null when it has no file snapshot."""
+        params: dict[str, object] = {}
+        params["entryId"] = entry_id
+        return parse_plan_file_restore_result(self._command("plan_file_restore", params), "plan_file_restore")
+
+    def restore_files(self, entry_id: str) -> RestoreFilesResult:
+        """Put the project's files back as they were before a prompt; refused while the session is busy."""
+        params: dict[str, object] = {}
+        params["entryId"] = entry_id
+        return parse_restore_files_result(self._command("restore_files", params), "restore_files")
+
     def get_branch_messages(self) -> tuple[BranchMessage, ...]:
         """List user messages that can be branched from."""
         params: dict[str, object] = {}
@@ -4358,6 +4408,7 @@ __all__ = [
     "FastModeResult",
     "FileMentionItem",
     "FileMentionMessage",
+    "FileRestoreChange",
     "GetSessionLeaseResult",
     "Goal",
     "GoalModeState",
@@ -4403,6 +4454,7 @@ __all__ = [
     "OpenSessionResult",
     "OpenUrlUiRequest",
     "PendingUi",
+    "PlanFileRestoreResult",
     "PromoteQueuedMessageResult",
     "PromptAck",
     "PromptError",
@@ -4416,6 +4468,7 @@ __all__ = [
     "ReadyEvent",
     "RedactedThinkingContent",
     "RemoveQueuedMessageResult",
+    "RestoreFilesResult",
     "RestoredQueuedMessage",
     "RetryFallbackAppliedEvent",
     "RetryFallbackSucceededEvent",
@@ -4559,6 +4612,7 @@ __all__ = [
     "parse_fast_mode_result",
     "parse_file_mention_item",
     "parse_file_mention_message",
+    "parse_file_restore_change",
     "parse_get_session_lease_result",
     "parse_goal",
     "parse_goal_mode_state",
@@ -4597,6 +4651,7 @@ __all__ = [
     "parse_open_session_result",
     "parse_open_url_ui_request",
     "parse_pending_ui",
+    "parse_plan_file_restore_result",
     "parse_promote_queued_message_result",
     "parse_prompt_ack",
     "parse_prompt_error",
@@ -4607,6 +4662,7 @@ __all__ = [
     "parse_ready_event",
     "parse_redacted_thinking_content",
     "parse_remove_queued_message_result",
+    "parse_restore_files_result",
     "parse_restored_queued_message",
     "parse_retry_fallback_applied_event",
     "parse_retry_fallback_succeeded_event",

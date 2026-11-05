@@ -1,10 +1,11 @@
 /**
- * Shared box-drawing chrome for overlays — string helpers for fullscreen
- * surfaces (the `/copy` picker, the plan-review overlay, …) and the
- * {@link OverlayPanel} container for inline overlays hosted in the editor slot
- * or an anchored container. Everything paints with `theme.boxRound` glyphs
- * (rounded corners, sharp tee/cross junctions) and the `border`/`accent` theme
- * colors so all outlined overlays read identically.
+ * Shared panel chrome for overlays — string helpers for fullscreen surfaces (the
+ * `/copy` picker, the plan-review overlay, …) and the {@link OverlayPanel}
+ * container for inline overlays hosted in the editor slot or an anchored
+ * container. A panel is a raised surface with an accent rail on its left edge,
+ * the composer's look, instead of a drawn box. Every helper keeps the row and
+ * column geometry of the frame it replaced: one column of rail, content inset
+ * by a further column, two columns closing the right side.
  */
 import type { DescribeContext, NativeChild, NativeNode } from "../native/node";
 import { node } from "../native/describe";
@@ -14,50 +15,43 @@ import { Ellipsis, truncateToWidth } from "../utils";
 import { padToWidth } from "../render/utils";
 import { type ThemeColor, theme } from "../theme/index";
 
-function paint(s: string, color: ThemeColor = "border"): string {
-	return theme.fg(color, s);
+const ACCENT_RAIL = "▎";
+
+/** The left edge of a panel row, on the panel's fill so bar and surface read as one edge. */
+function railCell(color: ThemeColor = "accent"): string {
+	return theme.raisedFill(theme.fg(color, ACCENT_RAIL));
 }
 
-/** Top border with an optional title inset into the rule. `color` recolors border and title (default border/accent). */
-export function topBorder(width: number, title: string, color?: ThemeColor): string {
-	const box = theme.boxRound;
-	const inner = Math.max(0, width - 2);
-	if (!title) return paint(box.topLeft + box.horizontal.repeat(inner) + box.topRight, color);
-	const shown = truncateToWidth(` ${title} `, Math.max(0, inner - 2));
-	const fillWidth = Math.max(0, inner - 1 - visibleWidth(shown));
-	return (
-		paint(box.topLeft + box.horizontal, color) +
-		theme.bold(theme.fg(color ?? "accent", shown)) +
-		paint(box.horizontal.repeat(fillWidth) + box.topRight, color)
-	);
+/** A whole panel row: the rail, then `content` padded to the row's width on the raised surface. */
+function surfaceRow(width: number, content: string, color?: ThemeColor): string {
+	if (width <= 1) return width === 1 ? railCell(color) : "";
+	return railCell(color) + theme.raisedFill(padToWidth(content, width - 1));
 }
 
-/** A horizontal rule with left/right tees, splitting overlay sections. */
+/** The title row: `title` on the panel's surface, with an optional dim note at its right edge. */
+export function topBorder(width: number, title: string, color?: ThemeColor, aside = ""): string {
+	const asideWidth = visibleWidth(aside);
+	const inner = Math.max(0, width - 3);
+	if (!title && !aside) return surfaceRow(width, "", color);
+	const shown = truncateToWidth(title, Math.max(0, inner - (asideWidth > 0 ? asideWidth + 2 : 0)));
+	const gap = " ".repeat(Math.max(0, inner - visibleWidth(shown) - asideWidth));
+	const note = aside ? theme.fg("dim", aside) : "";
+	return surfaceRow(width, ` ${theme.bold(theme.fg(color ?? "accent", shown))}${gap}${note}`, color);
+}
+
+/** A quiet rule splitting a panel's sections. */
 export function divider(width: number): string {
-	const box = theme.boxRound;
-	return paint(box.teeRight + box.horizontal.repeat(Math.max(0, width - 2)) + box.teeLeft);
+	return surfaceRow(width, ` ${theme.fg("borderMuted", "─".repeat(Math.max(0, width - 3)))}`);
 }
 
+/** The panel's last row: an empty stretch of its surface. */
 export function bottomBorder(width: number, color?: ThemeColor): string {
-	const box = theme.boxRound;
-	return paint(box.bottomLeft + box.horizontal.repeat(Math.max(0, width - 2)) + box.bottomRight, color);
+	return surfaceRow(width, "", color);
 }
 
-/** Wrap pre-styled content in vertical borders with single-column insets. */
+/** Pre-styled content on the panel's surface, inset by a single column. */
 export function row(content: string, width: number, color?: ThemeColor): string {
-	const box = theme.boxRound;
-	return `${paint(box.vertical, color)} ${width > 4 ? padToWidth(content, width - 4) : ""} ${paint(box.vertical, color)}`;
-}
-
-/**
- * Column index (0-based) of the inner divider for a two-column layout whose
- * sidebar content area is `sidebarWidth` columns wide. The layout is
- * `│ sidebar │ body │` with a single-column inset on every side, so the divider
- * vertical sits at `sidebarWidth + 3` and the body content area is
- * {@link splitBodyWidth} columns.
- */
-function splitDividerCol(sidebarWidth: number): number {
-	return sidebarWidth + 3;
+	return surfaceRow(width, ` ${width > 4 ? padToWidth(content, width - 4) : ""}`, color);
 }
 
 /** Body content width for a two-column overlay of total `width`. */
@@ -65,43 +59,37 @@ export function splitBodyWidth(width: number, sidebarWidth: number): number {
 	return Math.max(0, width - sidebarWidth - 7);
 }
 
-/** Top border carrying the title, split by a `┬` over the column divider. */
-export function topBorderSplit(width: number, title: string, sidebarWidth: number): string {
-	const box = theme.boxRound;
-	const dividerCol = splitDividerCol(sidebarWidth);
-	const leftLen = Math.max(0, dividerCol - 1);
-	const rightLen = Math.max(0, width - 2 - dividerCol);
-	let left: string;
-	if (!title) {
-		left = paint(box.topLeft + box.horizontal.repeat(leftLen));
-	} else {
-		const shown = truncateToWidth(` ${title} `, Math.max(0, leftLen - 1));
-		const fillWidth = Math.max(0, leftLen - 1 - visibleWidth(shown));
-		left =
-			paint(box.topLeft + box.horizontal) +
-			theme.bold(theme.fg("accent", shown)) +
-			paint(box.horizontal.repeat(fillWidth));
-	}
-	return left + paint(box.teeDown + box.horizontal.repeat(rightLen) + box.topRight);
+/** Left edge of a split pane's rows: the rail on the bare page. */
+export function splitPanePrefix(): string {
+	return `${theme.fg("accent", ACCENT_RAIL)} `;
 }
 
-/** Section rule that closes the sidebar column with a `┴` over the divider. */
-export function dividerSplit(width: number, sidebarWidth: number): string {
-	const box = theme.boxRound;
-	const dividerCol = splitDividerCol(sidebarWidth);
-	const leftLen = Math.max(0, dividerCol - 1);
-	const rightLen = Math.max(0, width - 2 - dividerCol);
-	return paint(
-		box.teeRight + box.horizontal.repeat(leftLen) + box.teeUp + box.horizontal.repeat(rightLen) + box.teeLeft,
-	);
+/** The column between a split pane's sidebar and body. */
+export function splitPaneDivider(): string {
+	return ` ${theme.fg("borderMuted", "│")} `;
 }
 
-/** A two-column content row: `│ sidebar │ body │`, each inset by one column. */
+/** Right edge of a split pane's rows; the width of the frame it replaced, drawn empty. */
+export function splitPaneSuffix(): string {
+	return "  ";
+}
+
+/** Title band over a two-column layout. */
+export function topBorderSplit(width: number, title: string, _sidebarWidth: number): string {
+	return topBorder(width, title);
+}
+
+/** Half-block edge opening the footer band under a two-column layout. */
+export function dividerSplit(width: number, _sidebarWidth: number): string {
+	return `${theme.fg("accent", ACCENT_RAIL)}${theme.raisedEdge("▄".repeat(Math.max(0, width - 1)))}`;
+}
+
+/** A two-column content row: `▎ sidebar │ body`, each inset by one column. */
 export function splitRow(sidebar: string, body: string, width: number, sidebarWidth: number): string {
-	const box = theme.boxRound;
 	const bodyWidth = splitBodyWidth(width, sidebarWidth);
-	const bar = paint(box.vertical);
-	return `${bar} ${sidebarWidth > 0 ? padToWidth(sidebar, sidebarWidth) : ""} ${bar} ${bodyWidth > 0 ? padToWidth(body, bodyWidth) : ""} ${bar}`;
+	const left = sidebarWidth > 0 ? padToWidth(sidebar, sidebarWidth) : "";
+	const right = bodyWidth > 0 ? padToWidth(body, bodyWidth) : "";
+	return `${splitPanePrefix()}${left}${splitPaneDivider()}${right}${splitPaneSuffix()}`;
 }
 
 const NO_LINES: readonly string[] = [];
@@ -174,7 +162,7 @@ export class PanelRows implements Component {
 
 const RULE_NODE: NativeNode = node("rule");
 
-/** Sentinel child rendered by {@link OverlayPanel} as a `├───┤` section rule (a `rule` natively). */
+/** Sentinel child rendered by {@link OverlayPanel} as a section rule (a `rule` natively). */
 export class PanelDivider implements Component {
 	render(): readonly string[] {
 		return NO_LINES;
@@ -205,10 +193,9 @@ function collapseTitle(title: string): string {
 }
 
 /**
- * Rounded-box container for inline overlays (selectors, run panels). Children
- * render inside `│ … │` rows between a titled top border and a bottom border,
- * so inline overlays share the chrome of fullscreen overlays. The top border
- * is exactly one row — `routeMouse` offsets written for a one-line top rule
+ * Raised panel for inline overlays (selectors, run panels). Children render on
+ * the panel's surface between a title row and a closing row, so inline overlays
+ * share the chrome of fullscreen overlays. The title is exactly one row — `routeMouse` offsets written for a one-line top rule
  * stay valid — and content is inset two columns on each side.
  *
  * Natively the panel is a root `card` (`head` = title, `role` =
@@ -276,9 +263,9 @@ export class OverlayPanel implements Component {
 
 	/**
 	 * Body rows at the given content width, without border chrome —
-	 * {@link render} draws exactly these (4 columns narrower) inside `│ … │`
-	 * rows. Lets callers and tests assert on component-content coordinates
-	 * instead of reverse-parsing box glyphs. `PanelDivider` children contribute
+	 * {@link render} draws exactly these (4 columns narrower) on the panel's
+	 * surface. Lets callers and tests assert on component-content coordinates
+	 * instead of reverse-parsing chrome. `PanelDivider` children contribute
 	 * no rows here (their rule is border chrome).
 	 */
 	renderContent(width: number): string[] {

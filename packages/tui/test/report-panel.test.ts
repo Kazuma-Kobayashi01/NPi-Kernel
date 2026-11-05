@@ -119,7 +119,7 @@ describe("ReportPanel in text mode", () => {
 		const composer = new Composer({
 			terminal,
 			tuiOptions: { renderScheduler: scheduler },
-			preferences: { ...COMPOSER_DEFAULTS, quiet: false },
+			preferences: { ...COMPOSER_DEFAULTS, quiet: false, composerShape: "box" },
 		});
 		const transcript = new TranscriptContainer();
 		let transcriptRows = 0;

@@ -1,0 +1,9 @@
+auth "alibaba" {
+	name "Alibaba (International)"
+	login "api-key" {
+		auth-url "https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key"
+		instructions "Create or copy your API key from the Alibaba Cloud Model Studio console (Singapore)"
+		prompt "Paste your Alibaba API key" placeholder="sk-..."
+		validate "models-endpoint" label="Alibaba" url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models"
+	}
+}

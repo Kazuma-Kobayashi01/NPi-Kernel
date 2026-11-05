@@ -645,4 +645,40 @@ describe("SettingsList", () => {
 		expect(list.routeSubmenuMouse({ leftClick: true } as never, 2, 7)).toBe(true);
 		expect(routed).toEqual([[2, 7, true]]);
 	});
+
+	it("opens a second-level menu on Enter only and leaves the value alone on Esc", () => {
+		const changes: Array<[string, string]> = [];
+		let finish: ((value?: string) => void) | undefined;
+		const list = new SettingsList(
+			[
+				{
+					id: "mode",
+					label: "Mode",
+					currentValue: "off",
+					values: ["off", "on"],
+					submenu: (_current, done) => {
+						finish = done;
+						return { render: () => [], invalidate: () => {} };
+					},
+				},
+			],
+			5,
+			testTheme,
+			(id, value) => changes.push([id, value]),
+			() => {},
+		);
+
+		list.handleInput(" ");
+		expect(list.hasOpenSubmenu()).toBe(false);
+
+		list.handleInput("\r");
+		expect(list.hasOpenSubmenu()).toBe(true);
+		finish?.();
+		expect(list.hasOpenSubmenu()).toBe(false);
+		expect(changes).toEqual([]);
+
+		list.handleInput("\r");
+		finish?.("on");
+		expect(changes).toEqual([["mode", "on"]]);
+	});
 });

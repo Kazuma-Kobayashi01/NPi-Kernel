@@ -70,7 +70,7 @@ function rosterEntryMatch(cell: string | undefined): RegExpExecArray | null {
 
 function rosterCell(raw: string): string | undefined {
 	const line = Bun.stripANSI(raw);
-	if (!line.startsWith("│ ")) return undefined;
+	if (!line.startsWith("▎ ")) return undefined;
 	const divider = line.indexOf("│", Math.max(2, Math.floor(line.length / 3)));
 	if (divider < 0) return undefined;
 	return line.slice(2, Math.max(2, divider - 1));
@@ -146,7 +146,7 @@ describe("Agent hub row ordering", () => {
 			const rendered = Bun.stripANSI(hub.render(120).join("\n"));
 			expect(rendered).toContain("No agents in this session");
 			expect(rendered).toContain("Finished, parked, and killed subagents remain with the session");
-			expect(rendered).toContain("Resume that session with omp-dev --continue, or spawn a task here.");
+			expect(rendered).toContain("Resume that session with npi --continue, or spawn a task here.");
 		} finally {
 			hub.dispose();
 		}
@@ -530,7 +530,7 @@ describe("Agent hub row ordering", () => {
 			expect(selectedAgentId(hub)).toBe("Beta");
 
 			const frame = hub.render(120);
-			const alphaRow = frame.findIndex(line => /^│ {3}\S+ Alpha/u.test(Bun.stripANSI(line)));
+			const alphaRow = frame.findIndex(line => /^▎ {3}\S+ Alpha/u.test(Bun.stripANSI(line)));
 			expect(alphaRow).toBeGreaterThanOrEqual(0);
 			hub.handleInput(`\x1b[<0;110;${alphaRow + 1}M`);
 			expect(selectedAgentId(hub)).toBe("Beta");

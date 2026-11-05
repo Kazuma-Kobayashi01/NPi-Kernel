@@ -1576,8 +1576,8 @@ describe("AskDialogComponent", () => {
 		const lines = output.split("\n");
 		const first = lines.find(line => line.includes("This is a deliberately")) ?? "";
 		const continuation = lines.find(line => line.includes("option label") && !line.includes("❯")) ?? "";
-		expect(first).toMatch(/│ ❯/);
-		expect(continuation).toMatch(/│ {3}/);
+		expect(first).toMatch(/▎ {1,2}❯/);
+		expect(continuation).toMatch(/▎ {3}/);
 	});
 
 	it("does not wrap an option label that fits the dialog content width", () => {

@@ -14,6 +14,7 @@ import { cfgDoubleEscapeAction } from "@oh-my-pi/pi-coding-agent/modes/settings"
 type Spy = Mock<(...args: unknown[]) => unknown>;
 type StartPendingSubmissionSpy = Mock<InteractiveModeContext["startPendingSubmission"]>;
 type FakeEditor = {
+	invalidate: () => void;
 	onEscape?: () => void;
 	onSubmit?: (text: string) => Promise<void>;
 	onClear?: () => void;
@@ -124,6 +125,7 @@ function createContext(): {
 		},
 	);
 	const editor: FakeEditor = {
+		invalidate: vi.fn(),
 		setText(text: string) {
 			editorText = text;
 		},
@@ -1218,7 +1220,7 @@ describe("InputController Ctrl+C behavior", () => {
 
 		controller.setupKeyHandlers();
 		editor.onClear?.(); // first Ctrl+C
-		editor.onClear?.(); // second Ctrl+C within 500ms → shutdown
+		editor.onClear?.(); // second Ctrl+C within the exit window → shutdown
 
 		expect(spies.shutdown).toHaveBeenCalledTimes(1);
 		// flushSync fires on both presses; the first-press flush is the

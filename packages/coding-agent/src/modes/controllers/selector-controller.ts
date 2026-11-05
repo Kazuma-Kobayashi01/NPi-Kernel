@@ -1448,10 +1448,24 @@ export class SelectorController {
 			}
 			done();
 			this.ctx.showStatus("Rewound to selected point");
+			if (isUserTarget) await this.#offerFileRestore(entryId);
 		} catch (error) {
 			done();
 			this.ctx.showError(error instanceof Error ? error.message : String(error));
 		}
+	}
+
+	/** After a rewind to a prompt: files changed since it can go back too. */
+	async #offerFileRestore(entryId: string): Promise<void> {
+		const changes = await this.ctx.session.planFileRestore(entryId);
+		if (!changes?.length) return;
+		const restore = await this.ctx.showHookConfirm(
+			"Restore files too?",
+			`${changes.length} files changed since this message. Ignored files and changes outside the project stay.`,
+		);
+		if (!restore) return;
+		const changed = await this.ctx.session.restoreFiles(entryId);
+		this.ctx.showStatus(`Restored ${changed} files`);
 	}
 
 	showCopySelector(): void {

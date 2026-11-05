@@ -212,8 +212,44 @@ export class WelcomeComponent implements Component {
 	#cachedWidth = -1;
 	#cachedLines: string[] | undefined;
 	#native: { tip: string | undefined; node: NativeNode } | undefined;
+	#minimal = false;
+	#held = false;
 
 	constructor(private version: string) {}
+
+	/**
+	 * Show the reveal's first frame until {@link playIntro} or {@link stopIntro}:
+	 * startup loading blocks the event loop, so a clock started now would skip
+	 * straight to its last frame.
+	 */
+	holdIntro(): void {
+		if (!this.#revealsLockup() || this.#animStart != null) return;
+		this.#held = true;
+		this.invalidate();
+	}
+
+	/** Reveal position in [0, 1]; 1 once settled. */
+	get introProgress(): number {
+		if (this.#held) return 0;
+		if (this.#animStart == null) return 1;
+		return Math.min(1, (performance.now() - this.#animStart) / this.#introMs());
+	}
+
+	#revealsLockup(): boolean {
+		return this.#minimal && TERMINAL.trueColor && !isNativeRendering();
+	}
+
+	#introMs(): number {
+		return this.#revealsLockup() ? REVEAL_MS : INTRO_MS;
+	}
+
+	/** The logo alone, for layouts whose footer already carries the version. */
+	setMinimal(minimal: boolean): void {
+		if (this.#minimal === minimal) return;
+		this.#minimal = minimal;
+		this.invalidate();
+	}
+
 	get tip(): string | undefined {
 		this.#nagRoll ??= Math.random();
 		this.#tipRoll ??= Math.random();
@@ -258,7 +294,7 @@ export class WelcomeComponent implements Component {
 
 	/** The intro keeps the welcome block mutable; settling lets it retire to history. */
 	isTranscriptBlockFinalized(): boolean {
-		return this.#animTimer == null;
+		return this.#animTimer == null && !this.#held;
 	}
 
 	/**
@@ -280,7 +316,7 @@ export class WelcomeComponent implements Component {
 		this.#animTimer = setInterval(() => {
 			const elapsed = performance.now() - (this.#animStart ?? 0);
 			const requestRender = this.#requestRender;
-			if (elapsed >= INTRO_MS) {
+			if (elapsed >= this.#introMs()) {
 				this.#stopAnimation();
 			}
 			// Stopping clears the callback, but the settled frame must still paint
@@ -290,6 +326,7 @@ export class WelcomeComponent implements Component {
 	}
 
 	#stopAnimation(): void {
+		this.#held = false;
 		if (this.#animTimer != null) {
 			clearInterval(this.#animTimer);
 			this.#animTimer = null;
@@ -342,12 +379,21 @@ export class WelcomeComponent implements Component {
 		// Content keeps a column clear on each side; everything centers in the full width.
 		const room = termWidth - 2;
 		if (room < 4) return [];
-		const logo = this.#currentLogoFrame();
-		const version = theme.fg("dim", `v${this.version}`);
+		const version = this.#minimal ? "" : theme.fg("dim", `v${this.version}`);
 		const lockupWidth = LOGO_WIDTH + LOCKUP_GAP + Math.max(WORDMARK_WIDTH, visibleWidth(version));
-		const art = room >= lockupWidth ? lockup(logo, version) : room >= LOGO_WIDTH ? logo : [];
+		const fits = room >= lockupWidth;
+		const logo = this.#currentLogoFrame();
+		const art = this.#revealsLockup()
+			? room > LOGO_WIDTH
+				? paintLockup(this.introProgress, fits)
+				: []
+			: fits
+				? lockup(logo, version)
+				: room >= LOGO_WIDTH
+					? logo
+					: [];
 		const lines = centerBlock(art, termWidth);
-		const tip = termWidth >= TIP_MIN_COLUMNS ? this.#renderTip(room) : [];
+		const tip = !this.#minimal && termWidth >= TIP_MIN_COLUMNS ? this.#renderTip(room) : [];
 		if (tip.length > 0) lines.push("", ...tip.flatMap(line => centerBlock([line], termWidth)));
 		return lines;
 	}
@@ -474,21 +520,23 @@ export interface ShineConfig {
  * Shared by {@link gradientLogo} and the setup splash so both stay
  * color-identical (truecolor when available, 256-color ramp otherwise).
  */
+function gradientRgb(t: number): [number, number, number] {
+	const stops = GRADIENT_STOPS;
+	const seg = t * (stops.length - 1);
+	const i = Math.min(stops.length - 2, Math.floor(seg));
+	const f = seg - i;
+	const a = stops[i];
+	const b = stops[i + 1];
+	return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
 export function gradientEscape(t: number, shine?: ShineConfig): string {
 	const shineStrength = shine && shine.strength > 0 ? shine.strength : 0;
 	const shinePos = shine ? shine.pos : 0;
 	if (TERMINAL.trueColor) {
 		// 5-stop palette widens the visible color range and avoids the
 		// deep-blue valley a naive HSL lerp falls into.
-		const stops = GRADIENT_STOPS;
-		const seg = t * (stops.length - 1);
-		const i = Math.min(stops.length - 2, Math.floor(seg));
-		const f = seg - i;
-		const a = stops[i];
-		const b = stops[i + 1];
-		let r = a[0] + (b[0] - a[0]) * f;
-		let g = a[1] + (b[1] - a[1]) * f;
-		let bl = a[2] + (b[2] - a[2]) * f;
+		let [r, g, bl] = gradientRgb(t);
 		if (shineStrength > 0) {
 			const dist = Math.abs(t - shinePos);
 			const intensity = Math.max(0, 1 - dist / SHINE_HALF_WIDTH) * shineStrength;
@@ -569,6 +617,89 @@ function introLogoFrame(progress: number): string[] {
 	return gradientLogo(PI_LOGO, phase, {
 		strength: shineStrength,
 		pos: shinePos,
+	});
+}
+
+/** Total length of the home screen's reveal. */
+const REVEAL_MS = 1200;
+/** Share of the reveal the light takes to cross the lockup; the rest is the settle. */
+const REVEAL_SWEEP = 0.8;
+/** How much of its colour the lockup keeps before the light reaches it. */
+const REVEAL_GHOST = 0.12;
+/** Width of the soft edge behind the light, and of its bright band, across the lockup. */
+const REVEAL_FEATHER = 0.28;
+const REVEAL_SHINE = 0.1;
+/** Assumed backdrop when the theme reports no exact terminal background. */
+const REVEAL_FALLBACK_BACKDROP: readonly [number, number, number] = [16, 16, 20];
+
+type Rgb = readonly [number, number, number];
+
+function revealBackdrop(): Rgb {
+	const match = /48;2;(\d+);(\d+);(\d+)/.exec(theme.terminalBackgroundAnsi);
+	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : REVEAL_FALLBACK_BACKDROP;
+}
+
+/** One painted cell of the lockup. */
+interface LockupCell {
+	x: number;
+	y: number;
+	char: string;
+	rgb: Rgb;
+	bold: boolean;
+}
+
+/** The lockup's cells with their resting colours. */
+function lockupCells(wordmark: boolean): LockupCell[] {
+	const art = PI_LOGO.map((row, y) =>
+		wordmark ? row.padEnd(LOGO_WIDTH + LOCKUP_GAP) + (WORDMARK[y - 1] ?? "") : row,
+	);
+	const faces: LockupCell[] = [];
+	const ySpan = Math.max(1, art.length - 1);
+	const xSpan = Math.max(1, LOGO_WIDTH - 1);
+	for (const [y, row] of art.entries()) {
+		for (let x = 0; x < row.length; x++) {
+			const char = row[x]!;
+			if (char === " ") continue;
+			const inLogo = x < LOGO_WIDTH;
+			const t = inLogo ? (x / xSpan + y / ySpan) / 2 : 0;
+			faces.push({ x, y, char, rgb: gradientRgb(t), bold: !inLogo });
+		}
+	}
+	return faces;
+}
+
+/**
+ * The lockup at reveal `progress` in [0, 1]: a faint ghost brightened by
+ * a band of light moving left to right, the wordmark lit last. At 1 it is the
+ * resting lockup. Truecolor only.
+ */
+function paintLockup(progress: number, wordmark: boolean): string[] {
+	const backdrop = revealBackdrop();
+	const sweep = Math.min(1, progress / REVEAL_SWEEP);
+	const eased = sweep * sweep * (3 - 2 * sweep);
+	const front = -REVEAL_SHINE + eased * (1 + REVEAL_FEATHER + REVEAL_SHINE * 2);
+	const cells = lockupCells(wordmark);
+	const span = Math.max(1, Math.max(...cells.map(cell => cell.x)) - 1);
+	const rows = Array.from({ length: Math.max(...cells.map(cell => cell.y)) + 1 }, () => [] as LockupCell[]);
+	for (const cell of cells) rows[cell.y]!.push(cell);
+	return rows.map(row => {
+		let out = "";
+		let column = 0;
+		for (const cell of row.sort((left, right) => left.x - right.x)) {
+			out += padding(cell.x - column);
+			column = cell.x + 1;
+			const behind = front - cell.x / span;
+			const edge = Math.min(1, Math.max(0, behind / REVEAL_FEATHER));
+			const lit = REVEAL_GHOST + (1 - REVEAL_GHOST) * edge * edge * (3 - 2 * edge);
+			const shine = Math.max(0, 1 - Math.abs(behind) / REVEAL_SHINE);
+			const channel = (i: 0 | 1 | 2): number => {
+				const colour = backdrop[i] + (cell.rgb[i] - backdrop[i]) * lit;
+				return Math.round(colour + (255 - colour) * shine * 0.8);
+			};
+			const weight = cell.bold ? "\x1b[1m" : "";
+			out += `\x1b[38;2;${channel(0)};${channel(1)};${channel(2)}m${weight}${cell.char}\x1b[0m`;
+		}
+		return out;
 	});
 }
 

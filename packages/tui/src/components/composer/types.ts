@@ -52,6 +52,10 @@ export interface ComposerChromeContext {
 	surfaceColor: (str: string) => string;
 	/** Foreground in the surface colour (half-block edges closing a filled panel). */
 	surfaceEdge: (str: string) => string;
+	/** Fill of the raised Rail panel; other shapes keep the surface. */
+	panelColor?: (str: string) => string;
+	/** The home screen's taller panel: an extra row of air under the prompt. */
+	tall?: boolean;
 	/** Box-drawing glyph set (theme's `boxRound`). */
 	box: ComposerBox;
 	/** Status content for the top chrome; box embeds it after the corner while

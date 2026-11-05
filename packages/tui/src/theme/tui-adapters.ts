@@ -381,6 +381,7 @@ export function getEditorTheme(): EditorTheme {
 		surfaceColor: (text: string) =>
 			theme.bgFill("userMessageBg", theme.fgOnBg("userMessageText", "userMessageBg", text)),
 		surfaceEdge: (text: string) => theme.bgAsFg("userMessageBg", text),
+		panelColor: (text: string) => theme.raisedFill(theme.fgResolved("text", text)),
 		textColor: (text: string) => theme.fgResolved("text", text),
 		selectList: getSelectListTheme(),
 		symbols: getSymbolTheme(),

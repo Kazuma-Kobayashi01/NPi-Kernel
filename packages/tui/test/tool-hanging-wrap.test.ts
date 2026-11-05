@@ -45,6 +45,7 @@ describe("prefixed tool rows", () => {
 			group.updateArgs({ path }, `r${i}`);
 			group.updateResult({ content: [{ type: "text", text: "ok" }] }, false, `r${i}`);
 		}
+		group.setExpanded(true);
 		const rows = plain(group.render(width));
 		expect(rows.find(row => row.startsWith("   ├─ "))).toContain("https://example.com/docs");
 		expect(rows.find(row => row.startsWith("   │  "))).toContain("that-overflows-the-row");

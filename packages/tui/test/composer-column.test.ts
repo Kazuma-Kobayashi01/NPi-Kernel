@@ -78,10 +78,11 @@ describe("centred conversation column", () => {
 				await updated.promise;
 				const frame = c.renderFrame({ columns, rows: 24 }).viewport;
 				const menuRow = frame.findIndex(row => row.includes("/example0"));
-				const inputRow = frame.findIndex(row => row.includes("▎"));
+				// The popup is a panel too, so the input is the rail after the blank row below it.
+				const gapRow = frame.findIndex((row, index) => index > menuRow && Bun.stripANSI(row).trim() === "");
 				expect(menuRow).toBeGreaterThanOrEqual(0);
-				expect(inputRow).toBeGreaterThan(menuRow + 1);
-				expect(Bun.stripANSI(frame[inputRow - 1]!).trim()).toBe("");
+				expect(gapRow).toBeGreaterThan(menuRow);
+				expect(frame[gapRow + 1]).toContain("▎");
 				for (const row of frame) expect(visibleWidth(row)).toBeLessThanOrEqual(columns);
 				c.editor.handleInput("\x1b");
 				expect(c.renderFrame({ columns, rows: 24 }).viewport.join("\n")).not.toContain("/example0");

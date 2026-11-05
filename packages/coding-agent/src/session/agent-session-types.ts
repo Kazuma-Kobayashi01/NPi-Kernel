@@ -237,6 +237,8 @@ export interface AgentSessionConfig {
 	 * it when the context changes; side-channel requests never arm it.
 	 */
 	cacheWarmer?: CacheWarmer;
+	/** A task subagent: it edits within its parent's prompt, so no file checkpoints of its own. */
+	isSubagentSession?: boolean;
 	/** Returns the current enabled eval prelude definitions. */
 	getEvalPreludes?: () => readonly EvalPreludeDefinition[];
 	/** Tool bridge context used by user-initiated Python cells to project enabled eval preludes. */

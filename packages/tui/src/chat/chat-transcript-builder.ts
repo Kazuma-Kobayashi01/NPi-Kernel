@@ -64,7 +64,12 @@ import {
 	LateDiagnosticsMessageComponent,
 	routeLateDiagnostics,
 } from "./late-diagnostics-message";
-import { groupedReadUsageCallIds, ReadToolGroupComponent, readArgsCollapseIntoGroup } from "./read-tool-group";
+import {
+	collapsesIntoActivityGroup,
+	groupedReadUsageCallIds,
+	ReadToolGroupComponent,
+	readArgsCollapseIntoGroup,
+} from "./read-tool-group";
 import { isReplyWrite, ReplyWriteComponent, replyDisplayMessage, toolResultReplies } from "./reply-write";
 import { SkillMessageComponent } from "./skill-message";
 import { ToolExecutionComponent, type ToolExecutionHandle } from "./tool-execution";
@@ -492,9 +497,25 @@ export class ChatTranscriptBuilder {
 				continue;
 			}
 
+			const builtIn = this.#deps.isBuiltInTool?.(content.name) ?? true;
+			if (builtIn && collapsesIntoActivityGroup(content.name, content.arguments)) {
+				const group = this.#ensureReadGroup();
+				group.updateSearch(content.name, content.arguments, content.id);
+				if (hasErrorStop && errorMessage) {
+					group.updateResult(
+						{ content: [{ type: "text", text: errorMessage }], isError: true },
+						false,
+						content.id,
+					);
+				} else {
+					this.#pendingTools.set(content.id, group);
+				}
+				appendAssistantSegment(afterToolSegment);
+				continue;
+			}
+
 			this.#readGroup?.seal();
 			this.#readGroup = null;
-			const builtIn = this.#deps.isBuiltInTool?.(content.name) ?? true;
 			let component: ToolExecutionHandle;
 			if (builtIn && isReplyWrite(content.name, content.arguments) === true) {
 				const reply = new ReplyWriteComponent({

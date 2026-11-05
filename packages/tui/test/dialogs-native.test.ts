@@ -319,7 +319,7 @@ describe("dialogs under a native surface", () => {
 				const props = choices().node.p;
 				return props && "selected" in props ? props.selected : undefined;
 			};
-			expect(rows().map(line => line.replace(/[│❯>\s]+/g, " ").trim())).toEqual([
+			expect(rows().map(line => line.replace(/[│▎❯>\s]+/g, " ").trim())).toEqual([
 				"Approve",
 				"Approve bash for this session",
 				"Deny",
@@ -357,7 +357,7 @@ describe("dialogs under a native surface", () => {
 				stripVTControlCharacters(dialog.render(80).join("\n"))
 					.split("\n")
 					.filter(line => /Approve|Deny|Remember/.test(line))
-					.map(line => line.replace(/[│❯>\s]+/g, " ").trim());
+					.map(line => line.replace(/[│▎❯>\s]+/g, " ").trim());
 			expect(rows().slice(1)).toEqual(["Approve Directory: ~/src", "Approve File", "Approve Once", "Deny"]);
 			now.mockReturnValue(1_000 + APPROVE_ARM_MS);
 			// Approve Once is highlighted on mount: the least the call can be granted.
@@ -520,7 +520,7 @@ describe("dialogs under a native surface", () => {
 				draft: { hasDraft: () => true, handleInput: key => routed.push(key) },
 			},
 		);
-		const body = () => stripVTControlCharacters(dialog.render(60).join("\n")).replace(/[│\s]+/g, "");
+		const body = () => stripVTControlCharacters(dialog.render(60).join("\n")).replace(/[│▎\s]+/g, "");
 		expect(body()).not.toContain("rm-rf~");
 		// Ctrl+O belongs to the dialog, not the draft that holds the other keys.
 		dialog.handleInput("\x0f");

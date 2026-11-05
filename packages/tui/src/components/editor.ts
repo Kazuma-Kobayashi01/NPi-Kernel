@@ -659,6 +659,8 @@ export interface EditorTheme {
 	surfaceColor?: (str: string) => string;
 	/** Foreground in the surface colour, for half-block edges that close a filled panel. */
 	surfaceEdge?: (str: string) => string;
+	/** Fill of the raised Rail panel. */
+	panelColor?: (str: string) => string;
 	/** Foreground used when the composer shape leaves its text surface transparent. */
 	textColor?: (str: string) => string;
 	selectList: SelectListTheme;
@@ -949,7 +951,11 @@ export class Editor implements Component, Focusable {
 	 *  it from live state. */
 	placeholder?: () => string | undefined;
 	/** Host-provided shortcuts outside the input, using active keybindings. */
-	footerHint?: () => string;
+	footerHint?: (width: number) => string;
+	/** Whether the composer shape should stand taller, as on the home screen. */
+	tallComposer?: () => boolean;
+	/** Dresses the footer hint for the home screen's reveal; its row stays reserved. */
+	footerHintReveal?: (hint: string) => string;
 	/** Whole-message prediction for the next prompt, painted as ghost text after the cursor while
 	 *  the single-line buffer is a strict prefix of it, the cursor sits at its end, and no
 	 *  autocomplete is open. A shown prediction replaces the {@link placeholder}; Tab or Right inserts
@@ -1588,6 +1594,8 @@ export class Editor implements Component, Focusable {
 			accentColor: this.#theme.accentColor ?? this.borderColor,
 			surfaceColor: this.#theme.surfaceColor ?? PASSTHROUGH_COLOR,
 			surfaceEdge: this.#theme.surfaceEdge ?? PASSTHROUGH_COLOR,
+			panelColor: this.#theme.panelColor,
+			tall: this.tallComposer?.() === true,
 			box,
 			topBorder,
 		};
@@ -1606,12 +1614,9 @@ export class Editor implements Component, Focusable {
 		const placeholder = this.#getPlaceholder();
 		const inlineHint = placeholder ? null : this.#getInlineHint();
 		const hintStyle = this.#theme.hintStyle ?? ((t: string) => `\x1b[2m${t}\x1b[0m`);
+		// The empty Rail prompt lines up with the label below it: the cursor rests on its first letter.
+		const railPrompt = style.id === "rail" && placeholder ? Bun.stripANSI(placeholder) : "";
 		const hintTail = (avail: number): { text: string; width: number } | undefined => {
-			if (placeholder && style.id === "rail") {
-				// The rail panel reads like OpenCode's: the placeholder sits right after the cursor.
-				const shown = truncateToWidth(placeholder, Math.max(0, avail - 1));
-				return avail > 1 ? { text: padding(1) + shown, width: 1 + visibleWidth(shown) } : undefined;
-			}
 			if (placeholder) {
 				const gap = avail - visibleWidth(placeholder);
 				return gap >= PLACEHOLDER_MIN_GAP ? { text: padding(gap) + placeholder, width: avail } : undefined;
@@ -1721,6 +1726,10 @@ export class Editor implements Component, Focusable {
 						// right so that insertion cannot shift box chrome onto the next row.
 						displayText = before + marker;
 						imeSafeCursorTail = true;
+					} else if (railPrompt && !before && after.length === 0) {
+						const shown = truncateToWidth(railPrompt, lineContentWidth);
+						displayText = marker + hintStyle(shown);
+						displayWidth = visibleWidth(shown);
 					} else if (tail) {
 						displayText = before + marker + tail.text;
 						displayWidth += tail.width;
@@ -1774,7 +1783,12 @@ export class Editor implements Component, Focusable {
 				} else {
 					// Cursor is at the end - add thin cursor glyph
 					const { text: cursor, width: cursorWidth } = this.#getStyledInputCursor();
-					if (!isSideBordered && displayWidth + cursorWidth > lineContentWidth) {
+					if (railPrompt && !before) {
+						const [first = ""] = railPrompt;
+						const rest = truncateToWidth(railPrompt.slice(first.length), Math.max(0, lineContentWidth - 1));
+						displayText = marker + this.#cursorCell(first) + hintStyle(rest);
+						displayWidth = visibleWidth(first) + visibleWidth(rest);
+					} else if (!isSideBordered && displayWidth + cursorWidth > lineContentWidth) {
 						// Borderless editors have no spare padding cell for an end-of-line cursor glyph.
 						// Highlight the last grapheme so the cursor stays visible without consuming width.
 						const widthLimitedCursor = this.#renderEndOfLineCursorAtWidthLimit(before, marker, lineContentWidth);
@@ -1855,9 +1869,9 @@ export class Editor implements Component, Focusable {
 				result.push(...autocompleteList.render(width));
 			}
 		}
-		const footer = this.footerHint?.();
+		const footer = this.footerHint?.(width);
 		if (style.id === "rail" && footer) {
-			const shown = truncateToWidth(footer, width);
+			const shown = this.footerHintReveal?.(truncateToWidth(footer, width)) ?? truncateToWidth(footer, width);
 			result.push(padding(Math.max(0, width - visibleWidth(shown))) + shown);
 		}
 

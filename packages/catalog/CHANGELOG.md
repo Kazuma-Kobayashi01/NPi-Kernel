@@ -4,6 +4,19 @@
 
 ### Added
 
+- `alibaba` provider for international Model Studio pay-as-you-go keys.
+- `alibaba` and `alibaba-cn` carry published names, limits, prices, image input and per-model thinking controls, because `/models` only lists ids. Models that always think and expose no control send no thinking parameter.
+
+### Changed
+
+- Alibaba Coding Plan and Token Plan models carry published limits and thinking controls: binary models no longer show effort levels they ignore, always-on models send no thinking parameter, and Token Plan lists its full chat roster when discovery is unavailable.
+
+### Fixed
+
+- DashScope image models (`qwen-image-*`) are no longer listed as chat models.
+
+### Added
+
 - Added Alibaba(China) pay-as-you-go provider (`alibaba-cn`) for DashScope / platform.qianwenai.com API keys, supporting dynamic model discovery, API key login and validation, and environment variables `DASHSCOPE_API_KEY` / `QIANWEN_API_KEY`.
 
 ### Changed

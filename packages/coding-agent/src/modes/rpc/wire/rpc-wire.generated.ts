@@ -686,6 +686,11 @@ export interface BranchMessage {
 	text: string;
 }
 
+export interface FileRestoreChange {
+	path: string;
+	removes: boolean;
+}
+
 export interface BranchResult {
 	text: string;
 	cancelled: boolean;
@@ -1938,6 +1943,22 @@ export interface SetLabelParams {
 	label?: string;
 }
 
+export interface PlanFileRestoreParams {
+	entryId: string;
+}
+
+export interface PlanFileRestoreResult {
+	changes: FileRestoreChange[] | null;
+}
+
+export interface RestoreFilesParams {
+	entryId: string;
+}
+
+export interface RestoreFilesResult {
+	changed: number;
+}
+
 export interface GetBranchMessagesResult {
 	messages: BranchMessage[];
 }
@@ -2105,6 +2126,8 @@ export interface RpcWireCommands {
 	navigate_tree: { params: NavigateTreeParams; result: NavigateTreeResult };
 	abort_branch_summary: { params: undefined; result: undefined };
 	set_label: { params: SetLabelParams; result: undefined };
+	plan_file_restore: { params: PlanFileRestoreParams; result: PlanFileRestoreResult };
+	restore_files: { params: RestoreFilesParams; result: RestoreFilesResult };
 	get_branch_messages: { params: undefined; result: GetBranchMessagesResult };
 	get_last_assistant_text: { params: undefined; result: GetLastAssistantTextResult };
 	set_session_name: { params: SetSessionNameParams; result: undefined };

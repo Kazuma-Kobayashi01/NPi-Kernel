@@ -1,4 +1,7 @@
 // Catalog entry for "alibaba-cn" (Alibaba Cloud DashScope pay-as-you-go).
+// Model metadata and thinking support follow models.dev as shipped in OpenCode 2.2.5.
+// The seed supplies names, limits, prices and image input for discovered ids;
+// the `models` blocks declare which thinking control each id really has.
 
 provider "alibaba-cn" {
 	default-model "qwen-plus"
@@ -6,14 +9,616 @@ provider "alibaba-cn" {
 	dynamic-models-authoritative #true
 	discovery label="Alibaba(China)"
 
-	// Model Studio's documented hybrid models have a binary switch, not an
-	// effort ladder. Exact IDs avoid assigning capabilities to unknown SKUs.
-	models "qwen-plus" "qwen-plus-latest" "qwen-plus-2025-04-28" "qwen-flash" "qwen-flash-2025-07-28" \
-		"qwen3.5-plus" "qwen3.5-plus-2026-02-15" "qwen3.5-flash" "qwen3.5-flash-2026-02-23" \
-		"qwen3.5-397b-a17b" "qwen3.5-122b-a10b" "qwen3.5-27b" "qwen3.5-35b-a3b" \
-		"qwen3.6-plus" "qwen3.6-plus-2026-04-02" "qwen3.6-flash" "qwen3.6-flash-2026-04-16" \
-		"qwen3.7-max" "qwen3.7-max-2026-05-20" "qwen3.7-max-2026-06-08" \
-		"qwen3.7-plus" "qwen3.7-plus-2026-05-26" "qwen3.7-flash" "qwen3.7-flash-2026-07-15" {
+	seed api="openai-completions" base-url="https://dashscope.aliyuncs.com/compatible-mode/v1" bundle="fallback" {
+		model "deepseek-r1" name="DeepSeek R1" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=2.294 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=16384
+		}
+		model "deepseek-r1-0528" name="DeepSeek R1 0528" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=2.294 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=16384
+		}
+		model "deepseek-r1-distill-llama-70b" name="DeepSeek R1 Distill Llama 70B" {
+			reasoning #false
+			input "text"
+			cost input=0.287 output=0.861 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-r1-distill-llama-8b" name="DeepSeek R1 Distill Llama 8B" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-r1-distill-qwen-1-5b" name="DeepSeek R1 Distill Qwen 1.5B" {
+			reasoning #false
+			input "text"
+			cost input=0 output=0 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-r1-distill-qwen-14b" name="DeepSeek R1 Distill Qwen 14B" {
+			reasoning #false
+			input "text"
+			cost input=0.144 output=0.431 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-r1-distill-qwen-32b" name="DeepSeek R1 Distill Qwen 32B" {
+			reasoning #false
+			input "text"
+			cost input=0.287 output=0.861 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-r1-distill-qwen-7b" name="DeepSeek R1 Distill Qwen 7B" {
+			reasoning #false
+			input "text"
+			cost input=0.072 output=0.144 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=16384
+		}
+		model "deepseek-v3" name="DeepSeek V3" {
+			reasoning #false
+			input "text"
+			cost input=0.287 output=1.147 cache-read=0 cache-write=0
+			limits context=65536 max-tokens=8192
+		}
+		model "deepseek-v3-1" name="DeepSeek V3.1" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=1.721 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=65536
+		}
+		model "deepseek-v3-2-exp" name="DeepSeek V3.2 Exp" {
+			reasoning #false
+			input "text"
+			cost input=0.287 output=0.431 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=65536
+		}
+		model "deepseek-v4-flash" name="DeepSeek V4 Flash" {
+			reasoning #true
+			input "text"
+			cost input=0.14 output=0.28 cache-read=0.0028 cache-write=0
+			limits context=1000000 max-tokens=384000
+		}
+		model "deepseek-v4-pro" name="DeepSeek V4 Pro" {
+			reasoning #true
+			input "text"
+			cost input=1.65 output=3.301 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=384000
+		}
+		model "deepseek-v4-pro-0813" name="DeepSeek V4 Pro 0813" {
+			reasoning #true
+			input "text"
+			cost input=1.272 output=3.816 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=384000
+		}
+		model "deepseek-v4.1-flash" name="DeepSeek V4.1 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.2975 output=1.1902 cache-read=0.0149 cache-write=0
+			limits context=1000000 max-tokens=384000
+		}
+		model "deepseek-v4.1-flash-1017" name="DeepSeek V4.1 Flash 1017" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.283 output=1.131 cache-read=0.0283 cache-write=0
+			limits context=1000000 max-tokens=384000
+		}
+		model "glm-5" name="GLM-5" {
+			reasoning #true
+			input "text"
+			cost input=0.573 output=2.58 cache-read=0 cache-write=0
+			limits context=202752 max-tokens=16384
+		}
+		model "glm-5.1" name="GLM-5.1" {
+			reasoning #true
+			input "text"
+			cost input=0.825 output=3.301 cache-read=0.165 cache-write=1.0313
+			limits context=202752 max-tokens=128000
+		}
+		model "glm-5.2" name="GLM-5.2" {
+			reasoning #true
+			input "text"
+			cost input=1.1 output=3.851 cache-read=0.275 cache-write=0
+			limits context=1000000 max-tokens=128000
+		}
+		model "glm-5.3" name="GLM-5.3" {
+			reasoning #true
+			input "text"
+			cost input=1.1 output=3.851 cache-read=0.275 cache-write=0
+			limits context=1000000 max-tokens=131072
+		}
+		model "kimi-k2-thinking" name="Moonshot Kimi K2 Thinking" {
+			reasoning #true
+			input "text"
+			cost input=0.574 output=2.294 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=16384
+		}
+		model "kimi-k2.5" name="Moonshot Kimi K2.5" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.574 output=3.011 cache-read=0.1148 cache-write=0.7175
+			limits context=262144 max-tokens=32768
+		}
+		model "kimi-k2.6" name="Moonshot Kimi K2.6" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.929 output=3.858 cache-read=0.1858 cache-write=1.1612
+			limits context=262144 max-tokens=16384
+		}
+		model "kimi-k2.7-code" name="Kimi K2.7 Code" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.894 output=3.713 cache-read=0.1788 cache-write=1.1175
+			limits context=262144 max-tokens=262144
+		}
+		model "kimi-k3" name="Kimi K3" {
+			reasoning #true
+			input "text" "image"
+			cost input=2.827 output=14.133 cache-read=0.283 cache-write=0
+			limits context=1048576 max-tokens=1048576
+		}
+		model "kimi/kimi-k2.5" name="kimi/kimi-k2.5" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.6 output=3 cache-read=0.1 cache-write=0
+			limits context=262144 max-tokens=262144
+		}
+		model "MiniMax-M2.5" name="MiniMax-M2.5" {
+			reasoning #false
+			input "text"
+			cost input=0.3 output=1.2 cache-read=0 cache-write=0
+			limits context=204800 max-tokens=131072
+		}
+		model "MiniMax/MiniMax-M2.7" name="MiniMax-M2.7" {
+			reasoning #false
+			input "text"
+			cost input=0.3 output=1.2 cache-read=0.06 cache-write=0
+			limits context=204800 max-tokens=131072
+		}
+		model "moonshot-kimi-k2-instruct" name="Moonshot Kimi K2 Instruct" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=2.294 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qvq-max" name="QVQ Max" {
+			reasoning #false
+			input "text" "image"
+			cost input=1.147 output=4.588 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen-deep-research" name="Qwen Deep Research" {
+			reasoning #false
+			input "text"
+			cost input=7.742 output=23.367 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=32768
+		}
+		model "qwen-doc-turbo" name="Qwen Doc Turbo" {
+			reasoning #false
+			input "text"
+			cost input=0.087 output=0.144 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen-flash" name="Qwen Flash" {
+			reasoning #true
+			input "text"
+			cost input=0.022 output=0.216 cache-read=0.0044 cache-write=0.0275
+			limits context=1000000 max-tokens=32768
+		}
+		model "qwen-long" name="Qwen Long" {
+			reasoning #false
+			input "text"
+			cost input=0.072 output=0.287 cache-read=0 cache-write=0
+			limits context=10000000 max-tokens=8192
+		}
+		model "qwen-math-plus" name="Qwen Math Plus" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=1.721 cache-read=0 cache-write=0
+			limits context=4096 max-tokens=3072
+		}
+		model "qwen-math-turbo" name="Qwen Math Turbo" {
+			reasoning #false
+			input "text"
+			cost input=0.287 output=0.861 cache-read=0 cache-write=0
+			limits context=4096 max-tokens=3072
+		}
+		model "qwen-max" name="Qwen Max" {
+			reasoning #false
+			input "text"
+			cost input=0.345 output=1.377 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen-mt-plus" name="Qwen-MT Plus" {
+			reasoning #false
+			input "text"
+			cost input=0.259 output=0.775 cache-read=0 cache-write=0
+			limits context=16384 max-tokens=8192
+		}
+		model "qwen-mt-turbo" name="Qwen-MT Turbo" {
+			reasoning #false
+			input "text"
+			cost input=0.101 output=0.28 cache-read=0 cache-write=0
+			limits context=16384 max-tokens=8192
+		}
+		model "qwen-omni-turbo" name="Qwen-Omni Turbo" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.058 output=0.23 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=2048
+		}
+		model "qwen-plus" name="Qwen Plus" {
+			reasoning #true
+			input "text"
+			cost input=0.115 output=0.287 cache-read=0.023 cache-write=0.144
+			limits context=1000000 max-tokens=32768
+		}
+		model "qwen-plus-character" name="Qwen Plus Character" {
+			reasoning #false
+			input "text"
+			cost input=0.115 output=0.287 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=4096
+		}
+		model "qwen-turbo" name="Qwen Turbo" {
+			reasoning #true
+			input "text"
+			cost input=0.044 output=0.087 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=16384
+		}
+		model "qwen-vl-max" name="Qwen-VL Max" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.23 output=0.574 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen-vl-ocr" name="Qwen-VL OCR" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.043 output=0.072 cache-read=0 cache-write=0
+			limits context=34096 max-tokens=4096
+		}
+		model "qwen-vl-plus" name="Qwen-VL Plus" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.115 output=0.287 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen2-5-omni-7b" name="Qwen2.5-Omni 7B" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.087 output=0.345 cache-read=0 cache-write=0
+			limits context=32768 max-tokens=2048
+		}
+		model "qwen3-14b" name="Qwen3 14B" {
+			reasoning #true
+			input "text"
+			cost input=0.144 output=0.574 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen3-235b-a22b" name="Qwen3 235B-A22B" {
+			reasoning #true
+			input "text"
+			cost input=0.287 output=1.147 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=16384
+		}
+		model "qwen3-32b" name="Qwen3 32B" {
+			reasoning #true
+			input "text"
+			cost input=0.287 output=1.147 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=16384
+		}
+		model "qwen3-8b" name="Qwen3 8B" {
+			reasoning #true
+			input "text"
+			cost input=0.072 output=0.287 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "qwen3-coder-30b-a3b-instruct" name="Qwen3-Coder 30B-A3B Instruct" {
+			reasoning #false
+			input "text"
+			cost input=0.216 output=0.861 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=65536
+		}
+		model "qwen3-coder-480b-a35b-instruct" name="Qwen3-Coder 480B-A35B Instruct" {
+			reasoning #false
+			input "text"
+			cost input=0.861 output=3.441 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=65536
+		}
+		model "qwen3-coder-flash" name="Qwen3 Coder Flash" {
+			reasoning #false
+			input "text"
+			cost input=0.144 output=0.574 cache-read=0.0288 cache-write=0.18
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3-coder-plus" name="Qwen3 Coder Plus" {
+			reasoning #false
+			input "text"
+			cost input=0.574 output=2.296 cache-read=0 cache-write=0
+			limits context=1048576 max-tokens=65536
+		}
+		model "qwen3-max" name="Qwen3 Max" {
+			reasoning #true
+			input "text"
+			cost input=0.359 output=1.434 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=65536
+		}
+		model "qwen3-next-80b-a3b-instruct" name="Qwen3-Next 80B-A3B Instruct" {
+			reasoning #false
+			input "text"
+			cost input=0.144 output=0.574 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=32768
+		}
+		model "qwen3-next-80b-a3b-thinking" name="Qwen3-Next 80B-A3B (Thinking)" {
+			reasoning #true
+			input "text"
+			cost input=0.144 output=1.434 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=32768
+		}
+		model "qwen3-omni-flash" name="Qwen3-Omni Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.258 output=0.989 cache-read=0 cache-write=0
+			limits context=65536 max-tokens=16384
+		}
+		model "qwen3-vl-235b-a22b" name="Qwen3-VL 235B-A22B" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.2867 output=1.1468 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=32768
+		}
+		model "qwen3-vl-30b-a3b" name="Qwen3-VL 30B-A3B" {
+			reasoning #false
+			input "text" "image"
+			cost input=0.108 output=0.431 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=32768
+		}
+		model "qwen3-vl-plus" name="Qwen3-VL Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.1434 output=1.4335 cache-read=0.0287 cache-write=0.1792
+			limits context=262144 max-tokens=32768
+		}
+		model "qwen3.5-397b-a17b" name="Qwen3.5 397B-A17B" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.172 output=1.032 cache-read=0 cache-write=0
+			limits context=262144 max-tokens=65536
+		}
+		model "qwen3.5-flash" name="Qwen3.5 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.029 output=0.287 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.5-plus" name="Qwen3.5 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.115 output=0.688 cache-read=0 cache-write=0
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.6-flash" name="Qwen3.6 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.165 output=0.99 cache-read=0.0165 cache-write=0.2063
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.6-max-preview" name="Qwen3.6 Max Preview" {
+			reasoning #true
+			input "text"
+			cost input=1.32 output=7.9 cache-read=0.132 cache-write=0
+			limits context=245800 max-tokens=65536
+		}
+		model "qwen3.6-plus" name="Qwen3.6 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.276 output=1.651 cache-read=0.0276 cache-write=0.345
+			limits context=1000000 max-tokens=65536
+		}
+		model "qwen3.7-flash" name="Qwen3.7 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.0296 output=0.1185 cache-read=0.0059 cache-write=0.037
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.7-max" name="Qwen3.7 Max" {
+			reasoning #true
+			input "text"
+			cost input=1.65 output=4.951 cache-read=0.33 cache-write=2.0625
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.7-plus" name="Qwen3.7 Plus" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.276 output=1.101 cache-read=0.0552 cache-write=0.345
+			limits context=1000000 max-tokens=64000
+		}
+		model "qwen3.8-2.4t-a95b" name="Qwen3.8 2.4T A95B" {
+			reasoning #true
+			input "text"
+			cost input=1.65 output=4.951 cache-read=0.2063 cache-write=2.0625
+			limits context=262144 max-tokens=131072
+		}
+		model "qwen3.8-27b" name="Qwen3.8 27B" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.424 output=1.696 cache-read=0.0848 cache-write=0.53
+			limits context=262144 max-tokens=32768
+		}
+		model "qwen3.8-flash" name="Qwen3.8 Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.1188 output=0.4007 cache-read=0.0148 cache-write=0.1855
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.8-max" name="Qwen3.8 Max" {
+			reasoning #true
+			input "text" "image"
+			cost input=1.7774 output=5.3323 cache-read=0.2222 cache-write=2.2218
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.8-max-0902" name="Qwen3.8 Max 0902" {
+			reasoning #true
+			input "text" "image"
+			cost input=1.65 output=4.951 cache-read=0.2063 cache-write=2.0625
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwen3.8-omni-flash" name="Qwen3.8 Omni Flash" {
+			reasoning #true
+			input "text" "image"
+			cost input=0.113 output=0.382 cache-read=0.014 cache-write=0
+			limits context=1000000 max-tokens=131072
+		}
+		model "qwq-plus" name="QwQ Plus" {
+			reasoning #false
+			input "text"
+			cost input=0.23 output=0.574 cache-read=0 cache-write=0
+			limits context=131072 max-tokens=8192
+		}
+		model "siliconflow/deepseek-r1-0528" name="siliconflow/deepseek-r1-0528" {
+			reasoning #false
+			input "text"
+			cost input=0.5 output=2.18 cache-read=0 cache-write=0
+			limits context=163840 max-tokens=32768
+		}
+		model "siliconflow/deepseek-v3-0324" name="siliconflow/deepseek-v3-0324" {
+			reasoning #false
+			input "text"
+			cost input=0.25 output=1 cache-read=0 cache-write=0
+			limits context=163840 max-tokens=163840
+		}
+		model "siliconflow/deepseek-v3.1-terminus" name="siliconflow/deepseek-v3.1-terminus" {
+			reasoning #true
+			input "text"
+			cost input=0.27 output=1 cache-read=0 cache-write=0
+			limits context=163840 max-tokens=65536
+		}
+		model "siliconflow/deepseek-v3.2" name="siliconflow/deepseek-v3.2" {
+			reasoning #true
+			input "text"
+			cost input=0.27 output=0.42 cache-read=0 cache-write=0
+			limits context=163840 max-tokens=65536
+		}
+		model "tongyi-intent-detect-v3" name="Tongyi Intent Detect V3" {
+			reasoning #false
+			input "text"
+			cost input=0.058 output=0.144 cache-read=0 cache-write=0
+			limits context=8192 max-tokens=1024
+		}
+	}
+
+	// A binary enable_thinking switch shows one level; effort models send
+	// reasoning_effort with enable_thinking. Models that always think and take no control
+	// (reasoning #false in the seed) send no thinking parameter at all.
+	models "deepseek-v4-flash" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "high" "max"
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "deepseek-v4-pro" "glm-5.2" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "high" "max"
+		thinking-default-level "high"
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "deepseek-v4-pro-0813" "deepseek-v4.1-flash" "deepseek-v4.1-flash-1017" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "low" "high" "max"
+		thinking-default-level "high"
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "glm-5" "glm-5.1" "kimi-k2.5" "kimi-k2.6" "kimi/kimi-k2.5" "qwen-flash" "qwen-plus" "qwen-turbo" "qwen3-14b" "qwen3-235b-a22b" "qwen3-32b" "qwen3-8b" "qwen3-max" "qwen3-omni-flash" "qwen3-vl-plus" "qwen3.5-397b-a17b" "qwen3.5-flash" "qwen3.5-plus" "qwen3.6-flash" "qwen3.6-max-preview" "qwen3.6-plus" "qwen3.7-flash" "qwen3.7-max" "qwen3.7-plus" "siliconflow/deepseek-v3.1-terminus" "siliconflow/deepseek-v3.2" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "medium"
+		thinking-requires-effort #false
+		thinking-format "qwen"
+	}
+	models "glm-5.3" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "low" "high" "max"
+		thinking-default-level "max"
+		thinking-requires-effort #true
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "kimi-k2-thinking" "kimi-k2.7-code" "qwen3-next-80b-a3b-thinking" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "medium"
+		thinking-requires-effort #true
+		thinking-format "qwen"
+	}
+	models "kimi-k3" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "low" "high" "max"
+		thinking-default-level "max"
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "qwen3.8-2.4t-a95b" "qwen3.8-omni-flash" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "low" "medium" "xhigh"
+		thinking-default-level "xhigh"
+		thinking-requires-effort #true
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	models "qwen3.8-27b" "qwen3.8-flash" "qwen3.8-max" "qwen3.8-max-0902" {
+		thinking-upgrade-neutral #true
+		thinking-efforts "low" "medium" "xhigh"
+		thinking-default-level "xhigh"
+		thinking-format "qwen"
+		supports-reasoning-effort #true
+		when-thinking {
+			thinking-format "openai"
+			extra-body {
+				enable_thinking #true
+			}
+		}
+	}
+	// Aliases and dated snapshots the published list leaves out keep their reviewed contract.
+	models "qwen-plus-latest" "qwen-plus-2025-04-28" "qwen-flash-2025-07-28" "qwen3.5-plus-2026-02-15" "qwen3.5-flash-2026-02-23" "qwen3.5-122b-a10b" "qwen3.5-27b" "qwen3.5-35b-a3b" "qwen3.6-plus-2026-04-02" "qwen3.6-flash-2026-04-16" "qwen3.7-max-2026-05-20" "qwen3.7-max-2026-06-08" "qwen3.7-plus-2026-05-26" "qwen3.7-flash-2026-07-15" {
 		thinking-upgrade-neutral #true
 		thinking-efforts "medium"
 		thinking-requires-effort #false
@@ -24,21 +629,5 @@ provider "alibaba-cn" {
 		thinking-efforts "medium"
 		thinking-requires-effort #true
 		thinking-format "qwen"
-	}
-	// These exact text models expose the documented native effort vocabulary.
-	models "qwen3.8-max" "qwen3.8-max-0902" "qwen3.8-flash" "qwen3.8-27b" "qwen3.8-2.4t-a95b" {
-		thinking-upgrade-neutral #true
-		thinking-efforts "low" "medium" "xhigh"
-		thinking-format "qwen"
-		supports-reasoning-effort #true
-		when-thinking {
-			thinking-format "openai"
-			extra-body {
-				enable_thinking #true
-			}
-		}
-	}
-	models "qwen3.8-2.4t-a95b" {
-		thinking-requires-effort #true
 	}
 }

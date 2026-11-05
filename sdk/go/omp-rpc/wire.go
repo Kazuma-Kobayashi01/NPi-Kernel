@@ -3214,6 +3214,27 @@ func (v *BranchMessage) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type FileRestoreChange struct {
+	Path    string `json:"path"`
+	Removes bool   `json:"removes"`
+}
+
+func (v *FileRestoreChange) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "FileRestoreChange", v.decodeFrom)
+}
+
+func (v *FileRestoreChange) decodeFrom(raw map[string]json.RawMessage) error {
+	var out FileRestoreChange
+	d := fieldDecoder{raw: raw, owner: "FileRestoreChange"}
+	d.required("path", &out.Path)
+	d.required("removes", &out.Removes)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type BranchResult struct {
 	Text      string `json:"text"`
 	Cancelled bool   `json:"cancelled"`
@@ -7917,6 +7938,44 @@ func (v *ExportHtmlResult) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type PlanFileRestoreResult struct {
+	Changes []FileRestoreChange `json:"changes"`
+}
+
+func (v *PlanFileRestoreResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "PlanFileRestoreResult", v.decodeFrom)
+}
+
+func (v *PlanFileRestoreResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out PlanFileRestoreResult
+	d := fieldDecoder{raw: raw, owner: "PlanFileRestoreResult"}
+	d.nullable("changes", &out.Changes)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type RestoreFilesResult struct {
+	Changed float64 `json:"changed"`
+}
+
+func (v *RestoreFilesResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "RestoreFilesResult", v.decodeFrom)
+}
+
+func (v *RestoreFilesResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out RestoreFilesResult
+	d := fieldDecoder{raw: raw, owner: "RestoreFilesResult"}
+	d.required("changed", &out.Changed)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type GetBranchMessagesResult struct {
 	Messages []BranchMessage `json:"messages"`
 }
@@ -9007,6 +9066,30 @@ type SetLabelCommand struct {
 // SetLabel sends "set_label": Set or clear (omit `label`) an entry's label.
 func (c Commands) SetLabel(ctx context.Context, p SetLabelCommand) error {
 	return c.call(ctx, "set_label", p, 0, nil)
+}
+
+// PlanFileRestoreCommand holds the parameters of "plan_file_restore".
+type PlanFileRestoreCommand struct {
+	EntryID string `json:"entryId"`
+}
+
+// PlanFileRestore sends "plan_file_restore": List what going back to before a prompt would change on disk; null when it has no file snapshot.
+func (c Commands) PlanFileRestore(ctx context.Context, p PlanFileRestoreCommand) (PlanFileRestoreResult, error) {
+	var out PlanFileRestoreResult
+	err := c.call(ctx, "plan_file_restore", p, 0, &out)
+	return out, err
+}
+
+// RestoreFilesCommand holds the parameters of "restore_files".
+type RestoreFilesCommand struct {
+	EntryID string `json:"entryId"`
+}
+
+// RestoreFiles sends "restore_files": Put the project's files back as they were before a prompt; refused while the session is busy.
+func (c Commands) RestoreFiles(ctx context.Context, p RestoreFilesCommand) (RestoreFilesResult, error) {
+	var out RestoreFilesResult
+	err := c.call(ctx, "restore_files", p, 0, &out)
+	return out, err
 }
 
 // GetBranchMessages sends "get_branch_messages": List user messages that can be branched from.

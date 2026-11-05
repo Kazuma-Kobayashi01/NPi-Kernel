@@ -119,6 +119,7 @@ describe("UiHelpers.renderSessionContext token-usage row placement", () => {
 			(component): component is ReadToolGroupComponent => component instanceof ReadToolGroupComponent,
 		);
 		expect(groups).toHaveLength(1);
+		groups[0]!.setExpanded(true);
 		const lines = Bun.stripANSI(groups[0]!.render(120).join("\n")).split("\n");
 		const fooIndex = lines.findIndex(line => line.includes("src/foo.ts"));
 		const firstUsageIndex = lines.findIndex(line => line.includes(USAGE_TS_LABEL));
@@ -233,6 +234,7 @@ describe("ChatTranscriptBuilder token-usage row timestamp", () => {
 			(component): component is ReadToolGroupComponent => component instanceof ReadToolGroupComponent,
 		);
 		expect(groups).toHaveLength(1);
+		groups[0]!.setExpanded(true);
 		const rendered = groups[0]!.render(120).join("\n");
 		expect(rendered).toContain(USAGE_TS_LABEL);
 		expect(rendered).toContain(SECOND_USAGE_TS_LABEL);

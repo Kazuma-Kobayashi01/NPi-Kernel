@@ -37,7 +37,7 @@ async function renderFullJobs(running: AsyncJobSnapshotItem[]): Promise<string[]
 	return reportContainer
 		.render(WIDTH)
 		.map(line => Bun.stripANSI(line))
-		.filter(line => line.startsWith("│"))
+		.filter(line => line.startsWith("▎"))
 		.map(line => line.slice(2, -2).trimEnd());
 }
 
@@ -254,7 +254,7 @@ describe("/jobs in the native terminal", () => {
 			await mode.handleJobsCommand({ full: true });
 			const report = Bun.stripANSI(mode.reportContainer.render(120).join("\n"))
 				.split("\n")
-				.map(line => line.replace(/^│ ?|\s*│$/g, "").trimEnd())
+				.map(line => line.replace(/^▎ ?/, "").trimEnd())
 				.filter(line => /\S/.test(line));
 			const at = (text: string) => report.findIndex(line => line.includes(text));
 			// Worker's branch (Deep's header and job, then its own job) leads; main's own leaf trails.

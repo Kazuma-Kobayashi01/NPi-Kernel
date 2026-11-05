@@ -58,9 +58,9 @@ describe("PlanReviewOverlay", () => {
 		for (const option of APPROVAL_OPTIONS) expect(out).toContain(option);
 		expect(out).toContain("esc cancel");
 		// Outlined like the /copy overlay.
-		expect(out).toContain(theme.boxRound.topLeft);
-		expect(out).toContain("│");
-		expect(out).toContain(theme.boxRound.bottomLeft);
+		expect(out).toContain("▎");
+		expect(out).not.toContain(theme.boxRound.topLeft);
+		expect(out).not.toContain(theme.boxRound.bottomLeft);
 	});
 
 	it("confirms the highlighted option on Enter", () => {
@@ -352,9 +352,9 @@ describe("PlanReviewOverlay", () => {
 			{ onPick: vi.fn(), onCancel: vi.fn() },
 		);
 		const out = render(overlay);
-		// Two-column split chrome (┬ joins the title rule over the divider) and the
+		// Two-column split chrome (│ runs between sidebar and body) and the
 		// bare section list — no "Contents" label.
-		expect(out).toContain("┬");
+		expect(out).toContain("│");
 		expect(out).not.toContain("Contents");
 		expect(out).toContain("Overview");
 		// Tab into the ToC region surfaces its focus-specific help.
@@ -373,7 +373,7 @@ describe("PlanReviewOverlay", () => {
 		);
 		const sidebar = render(overlay)
 			.split("\n")
-			.map(line => line.split("│")[1] ?? "")
+			.map(line => (line.includes("│") ? (line.split("│")[0] ?? "").replace("▎", "") : ""))
 			.join("\n");
 		expect(sidebar).toContain("Design");
 		expect(sidebar).toContain("Rollout");

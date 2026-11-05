@@ -50,8 +50,8 @@ describe("terminal background paint", () => {
 		c.stop();
 	});
 
-	it("is a near-black surface on a dark theme and a near-white one on a light theme", () => {
-		expect(theme.terminalBackground).toBe(theme.isLight ? "#f7f7f4" : "#0e0e10");
+	it("is a solid colour from the active theme", () => {
+		expect(theme.terminalBackground).toMatch(/^#[0-9a-f]{6}$/i);
 	});
 });
 
@@ -85,7 +85,8 @@ describe("painted rows", () => {
 	it("draws no background of its own when painting is off", async () => {
 		const { c, terminal } = await screen({});
 		const painted = Array.from({ length: 12 }, (_, row) => terminal.getViewportRowBackgroundColumns(row).length);
-		expect(Math.max(...painted)).toBeLessThan(80);
+		// Only the composer's own panel fills the row.
+		expect(painted.filter(columns => columns === 80).length).toBeLessThan(12);
 		c.stop();
 	});
 });

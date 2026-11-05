@@ -782,6 +782,28 @@
 				"clientOmit": []
 			},
 			{
+				"name": "plan_file_restore",
+				"doc": "List what going back to before a prompt would change on disk; null when it has no file snapshot.",
+				"params": "PlanFileRestoreParams",
+				"result": "PlanFileRestoreResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "restore_files",
+				"doc": "Put the project's files back as they were before a prompt; refused while the session is busy.",
+				"params": "RestoreFilesParams",
+				"result": "RestoreFilesResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "get_branch_messages",
 				"doc": "List user messages that can be branched from.",
 				"params": null,
@@ -3430,6 +3452,21 @@
 			"required": [
 				"entryId",
 				"text"
+			]
+		},
+		"FileRestoreChange": {
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string"
+				},
+				"removes": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"path",
+				"removes"
 			]
 		},
 		"BranchResult": {
@@ -7522,6 +7559,60 @@
 			},
 			"required": [
 				"entryId"
+			]
+		},
+		"PlanFileRestoreParams": {
+			"type": "object",
+			"properties": {
+				"entryId": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"entryId"
+			]
+		},
+		"PlanFileRestoreResult": {
+			"type": "object",
+			"properties": {
+				"changes": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/FileRestoreChange"
+							}
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": [
+				"changes"
+			]
+		},
+		"RestoreFilesParams": {
+			"type": "object",
+			"properties": {
+				"entryId": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"entryId"
+			]
+		},
+		"RestoreFilesResult": {
+			"type": "object",
+			"properties": {
+				"changed": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"changed"
 			]
 		},
 		"GetBranchMessagesResult": {

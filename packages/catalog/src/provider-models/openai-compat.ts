@@ -3989,22 +3989,20 @@ export function alibabaCodingPlanModelManagerOptions(
 }
 
 // ---------------------------------------------------------------------------
-// Alibaba (China) — Pay-as-you-go DashScope
+// Alibaba — Pay-as-you-go DashScope, international and China (region-locked keys)
 // ---------------------------------------------------------------------------
 
-function isAlibabaCnChatModelId(id: string): boolean {
-	const normalized = id.trim().toLowerCase();
-	return normalized.length > 0 && !isExcludedModel("alibaba-cn", normalized);
-}
-
-function mapAlibabaCnModel(
+function mapDashscopeModel(
 	entry: OpenAICompatibleModelRecord,
 	defaults: ModelSpec<"openai-completions">,
 	reference: ModelSpec<"openai-completions"> | undefined,
+	seed: ModelSpec<"openai-completions"> | undefined,
 ): ModelSpec<"openai-completions"> {
-	const model = mapWithBundledReference(entry, defaults, reference);
+	// `/models` lists ids only; the seed carries what the region publishes about each.
+	const model = mapWithBundledReference(entry, defaults, reference ?? seed);
 	const reviewed = hasModelScopedEffortLadder(defaults);
-	if (!reviewed && classifyModel(defaults.provider, defaults.id).class !== "qwen") return model;
+	if (!reviewed && (seed !== undefined || classifyModel(defaults.provider, defaults.id).class !== "qwen"))
+		return model;
 	// A bundled row is already resolved metadata, not an explicit user
 	// override. Re-resolve reviewed contracts; an unreviewed Qwen row has no
 	// published Model Studio thinking capability to inherit from another host.
@@ -4018,22 +4016,41 @@ export interface AlibabaCnModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
-export function alibabaCnModelManagerOptions(
+function dashscopeModelManagerOptions(
+	providerId: "alibaba" | "alibaba-cn",
+	defaultBaseUrl: string,
 	config?: AlibabaCnModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
+	const seeds = new Map(seedModels<"openai-completions">(providerId).map(model => [model.id, model]));
 	return {
 		...createOpenAICompatibleModelManagerOptions({
 			api: "openai-completions",
-			providerId: "alibaba-cn",
-			defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			providerId,
+			defaultBaseUrl,
 			config,
 			dynamicModelsAuthoritative: true,
 			requireApiKey: true,
-			filterModel: (_entry, model) => isAlibabaCnChatModelId(model.id),
-			mapModel: mapAlibabaCnModel,
+			filterModel: (_entry, model) => {
+				const id = model.id.trim().toLowerCase();
+				return id.length > 0 && !isExcludedModel(providerId, id);
+			},
+			mapModel: (entry, defaults, reference) =>
+				mapDashscopeModel(entry, defaults, reference, seeds.get(defaults.id)),
 		}),
 		dynamicReasoningAuthoritative: true,
 	};
+}
+
+export function alibabaModelManagerOptions(
+	config?: AlibabaCnModelManagerConfig,
+): ModelManagerOptions<"openai-completions"> {
+	return dashscopeModelManagerOptions("alibaba", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", config);
+}
+
+export function alibabaCnModelManagerOptions(
+	config?: AlibabaCnModelManagerConfig,
+): ModelManagerOptions<"openai-completions"> {
+	return dashscopeModelManagerOptions("alibaba-cn", "https://dashscope.aliyuncs.com/compatible-mode/v1", config);
 }
 
 // ---------------------------------------------------------------------------

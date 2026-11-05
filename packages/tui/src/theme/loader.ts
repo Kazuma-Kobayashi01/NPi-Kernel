@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { adjustHsv } from "@oh-my-pi/pi-utils/color";
+import { adjustHsv, hexToRgb, type RGB, rgbToHex } from "@oh-my-pi/pi-utils/color";
 import { getCustomThemesDir } from "@oh-my-pi/pi-utils/dirs";
 import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
 import { detectColorMode, resolveThemeColors } from "./color";
@@ -145,6 +145,39 @@ export interface CreateThemeOptions {
 /** HSV adjustment to shift green toward blue for colorblind mode (red-green colorblindness) */
 const COLORBLIND_ADJUSTMENT = { h: 60, s: 0.71 };
 
+/** Summed channel distance below which a panel melts into the background behind it. */
+const MIN_SURFACE_CONTRAST = 12;
+
+/**
+ * The screen background a theme asks for (`export.pageBg`), shifted off the
+ * panel colour when a theme uses one value for both, so the composer stays a
+ * visible surface. Undefined when the theme names none.
+ */
+function terminalBackgroundFor(themeJson: ThemeJson, panel: string | number): string | undefined {
+	const pageBg = themeJson.export?.pageBg;
+	if (pageBg === undefined) return undefined;
+	const resolved = resolveThemeColors({ pageBg }, themeJson.vars).pageBg;
+	if (typeof resolved !== "string" || !resolved.startsWith("#")) return undefined;
+	if (typeof panel !== "string" || !panel.startsWith("#")) return resolved;
+	const page = hexToRgb(resolved);
+	const surface = hexToRgb(panel);
+	const separation = (color: RGB): number =>
+		Math.abs(color.r - surface.r) + Math.abs(color.g - surface.g) + Math.abs(color.b - surface.b);
+	if (separation(page) >= MIN_SURFACE_CONTRAST) return resolved;
+	const mapped = (shift: (channel: number) => number): RGB => ({
+		r: Math.round(shift(page.r)),
+		g: Math.round(shift(page.g)),
+		b: Math.round(shift(page.b)),
+	});
+	const dark = page.r + page.g + page.b < 382;
+	// Step away from the panel; black has no darker shade and white no lighter, so those turn back.
+	const darker = mapped(channel => channel * (dark ? 0.65 : 0.96));
+	const lighter = mapped(channel => (dark ? channel + 12 : channel + (255 - channel) * 0.5));
+	const preferred = dark ? [darker, lighter] : [lighter, darker];
+	const shifted = preferred.find(color => separation(color) >= MIN_SURFACE_CONTRAST) ?? preferred[1]!;
+	return rgbToHex(shifted);
+}
+
 export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = {}): Theme {
 	const { mode, symbolPresetOverride, colorBlindMode } = options;
 	const colorMode = mode ?? detectColorMode();
@@ -179,7 +212,15 @@ export function createTheme(themeJson: ThemeJson, options: CreateThemeOptions = 
 	const symbolPreset: SymbolPreset = symbolPresetOverride ?? themeJson.symbols?.preset ?? "unicode";
 	const symbolOverrides = themeJson.symbols?.overrides ?? {};
 	const spinnerFramesOverrides = normalizeSpinnerFramesOverride(themeJson.symbols?.spinnerFrames);
-	return new Theme(fgColors, bgColors, colorMode, symbolPreset, symbolOverrides, spinnerFramesOverrides);
+	return new Theme(
+		fgColors,
+		bgColors,
+		colorMode,
+		symbolPreset,
+		symbolOverrides,
+		spinnerFramesOverrides,
+		terminalBackgroundFor(themeJson, bgColors.userMessageBg),
+	);
 }
 
 export async function loadTheme(name: string, options: CreateThemeOptions = {}): Promise<Theme> {

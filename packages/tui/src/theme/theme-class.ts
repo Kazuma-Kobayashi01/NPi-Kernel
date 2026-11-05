@@ -1,4 +1,4 @@
-import { colorLuma, relativeLuminance } from "@oh-my-pi/pi-utils/color";
+import { colorLuma, hexToRgb, relativeLuminance, rgbToHex } from "@oh-my-pi/pi-utils/color";
 import * as logger from "@oh-my-pi/pi-utils/logger";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import { bgAnsi, colorToAnsi, fgAnsi, resolveToHex } from "./color";
@@ -135,6 +135,9 @@ const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 	"lang.julia": "#9558b2",
 };
 
+/** How far a raised surface moves from the page toward the text colour. */
+const RAISED_SURFACE_STEP = 0.07;
+
 const BACKGROUND_RESET_PATTERN = /\x1b\[(?:0|49)m/g;
 const FOREGROUND_RESET_PATTERN = /\x1b\[(?:0|39)m/g;
 
@@ -196,6 +199,7 @@ export class Theme {
 		private readonly symbolPreset: SymbolPreset,
 		symbolOverrides: Partial<Record<SymbolKey, string>>,
 		spinnerFramesOverrides: Partial<Record<SpinnerType, string[]>> = {},
+		private readonly screenBackground?: string,
 	) {
 		this.statusLineLuminance = colorLuma(bgColors.statusLineBg);
 		this.#statusLineContrastLuminance = relativeLuminance(bgColors.statusLineBg);
@@ -238,12 +242,39 @@ export class Theme {
 	}
 
 	/**
-	 * The terminal's own background while npi runs (OSC 11): near-black on a dark
-	 * theme, near-white on a light one, so the whole screen is one surface the
-	 * theme's panels sit on, whatever the user's terminal theme is.
+	 * The terminal's own background while npi runs (OSC 11): the theme's page
+	 * colour, so the whole screen is one surface its panels sit on, whatever the
+	 * user's terminal theme is. Themes without one get near-black or near-white.
 	 */
 	get terminalBackground(): string {
-		return this.isLight ? "#f7f7f4" : "#0e0e10";
+		return this.screenBackground ?? (this.isLight ? "#f7f7f4" : "#0e0e10");
+	}
+
+	/**
+	 * A surface one step above the page, for the second tier of layered chrome:
+	 * the page nudged toward the text colour, so it works on any theme.
+	 */
+	get raisedBackground(): string {
+		const page = hexToRgb(this.terminalBackground);
+		const textHex = this.getColorHex("text");
+		const text = textHex.startsWith("#")
+			? hexToRgb(textHex)
+			: this.isLight
+				? hexToRgb("#000000")
+				: hexToRgb("#ffffff");
+		const step = (from: number, to: number): number => Math.round(from + (to - from) * RAISED_SURFACE_STEP);
+		return rgbToHex({ r: step(page.r, text.r), g: step(page.g, text.g), b: step(page.b, text.b) });
+	}
+
+	/** `text` on {@link raisedBackground}; the fill survives nested resets. */
+	raisedFill(text: string): string {
+		const ansi = bgAnsi(this.raisedBackground, this.mode);
+		return `${ansi}${text.replace(BACKGROUND_RESET_PATTERN, `$&${ansi}`)}\x1b[49m`;
+	}
+
+	/** `text` in the colour of {@link raisedBackground}, for half-block edges. */
+	raisedEdge(text: string): string {
+		return `${fgAnsi(this.raisedBackground, this.mode)}${text}\x1b[39m`;
 	}
 
 	/** The escape that sets the background to {@link terminalBackground}. */

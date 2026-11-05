@@ -279,6 +279,8 @@ correlate it via `id`. Ordering across concurrent commands is not guaranteed
 - `{ id?, type: "navigate_tree", entryId: string, summarize?: boolean, customInstructions?: string }` → `data: { cancelled: boolean, aborted?: true, editorText?: string }`
 - `{ id?, type: "abort_branch_summary" }`
 - `{ id?, type: "set_label", entryId: string, label?: string }`
+- `{ id?, type: "plan_file_restore", entryId: string }` → `data: { changes: { path, removes }[] | null }`: what going back to before that prompt would change on disk; `null` when it has no snapshot
+- `{ id?, type: "restore_files", entryId: string }` → `data: { changed: number }`: puts the files back; refused while the session is busy
 - `{ id?, type: "get_branch_messages" }`
 - `{ id?, type: "get_last_assistant_text" }`
 - `{ id?, type: "set_session_name", name: string }`

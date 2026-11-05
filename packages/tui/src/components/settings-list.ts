@@ -362,7 +362,7 @@ export class SettingsList implements Component {
 	/** Applies `value` to a cycling (boolean/enum) row the way Enter does: the row shows it and `onChange` runs. */
 	applyValue(id: string, value: string): void {
 		const item = this.#items.find(candidate => !candidate.heading && candidate.id === id);
-		if (!item || item.submenu || !item.values?.includes(value)) return;
+		if (!item?.values?.includes(value)) return;
 		this.selectItem(id);
 		item.currentValue = value;
 		this.#onChange(item.id, value);
@@ -1039,9 +1039,10 @@ export class SettingsList implements Component {
 		} else if (kb.matches(data, "tui.select.pageUp")) {
 			this.#jumpSection(-1);
 		} else if (kb.matches(data, "tui.select.confirm") || data === " " || data === "\n") {
-			// Confirm on a focused heading drops into its first setting.
+			// Confirm on a focused heading drops into its first setting. Second-level
+			// menus open on Enter alone, so a stray space cannot enter one.
 			if (this.#sectionFocus) this.#sectionFocus = false;
-			else this.#activateItem();
+			else if (data !== " " || !this.#filteredItems[this.#selectedIndex]?.submenu) this.#activateItem();
 		}
 	}
 

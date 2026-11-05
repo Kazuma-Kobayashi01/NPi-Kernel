@@ -15,7 +15,7 @@ class "qwen" {
 			thinking-requires-effort #true
 		}
 	}
-	on "alibaba-cn" "alibaba-coding-plan" "alibaba-token-plan" "wafer-serverless" {
+	on "alibaba" "alibaba-cn" "alibaba-coding-plan" "alibaba-token-plan" "wafer-serverless" {
 		supports-developer-role #false
 	}
 	on "amazon-bedrock" "umans" "vercel-ai-gateway" {
@@ -58,7 +58,7 @@ class "qwen" {
 		}
 	}
 	// DashScope compatible-mode text-only families reject image_url content.
-	on "alibaba-cn" "alibaba-token-plan" {
+	on "alibaba" "alibaba-cn" "alibaba-token-plan" {
 		family "coder" {
 			strip-image-input #true
 		}

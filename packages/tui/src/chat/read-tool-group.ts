@@ -16,7 +16,8 @@ import {
 import { PREVIEW_LIMITS, shortenPath } from "../render/render-utils";
 import { fileHyperlink, renderCodeCell, renderMarkdownCell } from "../render";
 import { wrapTreeLine } from "../render/hanging-wrap";
-import { wrapTextWithAnsi } from "../utils";
+import { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "../utils";
+import { isNativeRendering } from "../native/state";
 import { canonicalizeMessage } from "./thinking-display";
 import { internalUrlSchemeSpec, splitUrlScheme } from "../tools/url-scheme-host";
 import type { ToolExecutionHandle } from "./tool-execution";
@@ -69,6 +70,49 @@ export function readArgsCollapseIntoGroup(args: unknown): boolean {
 	return spec === undefined || spec.compactTranscript === true;
 }
 
+/** Search-style tools that fold beside reads, with their row titles. */
+const SEARCH_ACTIVITY_TITLES = new Map([
+	["grep", "Grep"],
+	["glob", "Glob"],
+	["find", "Find"],
+	["ast_grep", "AST grep"],
+]);
+
+/** Output lines an expanded search row shows beneath itself. */
+const SEARCH_OUTPUT_LINES = 12;
+
+/**
+ * Whether a tool call folds into the exploration group. Native terminals draw
+ * their own tool cards, so only reads group there.
+ */
+export function collapsesIntoActivityGroup(toolName: string, args: unknown): boolean {
+	if (toolName === "read") return readArgsCollapseIntoGroup(args);
+	return SEARCH_ACTIVITY_TITLES.has(toolName) && !isNativeRendering();
+}
+
+/** `"pattern" in path`: a search call's row label, from whatever args have landed. */
+function searchActivityLabel(args: unknown): string {
+	const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+	const rawPattern = record.pattern ?? record.pat;
+	const pattern = typeof rawPattern === "string" ? rawPattern : Array.isArray(rawPattern) ? rawPattern.join(", ") : "";
+	const rawScope = record.path ?? record.paths;
+	const scope = typeof rawScope === "string" ? rawScope : Array.isArray(rawScope) ? rawScope.join(", ") : "";
+	const shown = pattern ? `"${replaceTabs(sanitizeText(pattern))}"` : "…";
+	return scope ? `${shown} in ${shortenPath(sanitizeText(scope))}` : shown;
+}
+
+function countLabel(count: number, singular: string, plural: string): string {
+	return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/** `12 matches` or `3 files`; undefined when the result reported neither. */
+function searchActivitySummary(details: unknown): string | undefined {
+	if (!details || typeof details !== "object") return undefined;
+	const { matchCount, fileCount } = details as { matchCount?: unknown; fileCount?: unknown };
+	if (typeof matchCount === "number") return countLabel(matchCount, "match", "matches");
+	return typeof fileCount === "number" ? countLabel(fileCount, "file", "files") : undefined;
+}
+
 /**
  * Return the collapsed read calls that can own a turn's usage row. Mixed-tool
  * turns and visible content after a read keep the standalone row so request
@@ -79,7 +123,7 @@ export function groupedReadUsageCallIds(message: AssistantMessage): string[] | u
 	let sawToolCall = false;
 	for (const content of message.content) {
 		if (content.type === "toolCall") {
-			if (content.name !== "read" || !readArgsCollapseIntoGroup(content.arguments)) return undefined;
+			if (!collapsesIntoActivityGroup(content.name, content.arguments)) return undefined;
 			sawToolCall = true;
 			toolCallIds.push(content.id);
 			continue;
@@ -130,6 +174,8 @@ type ReadEntry = {
 	conflictCount?: number;
 	codeStartLine?: number;
 	codeLineNumbers?: Array<number | null>;
+	/** Set for a search call folded beside the reads. */
+	search?: { title: string; label: string; summary?: string };
 };
 
 /**
@@ -435,8 +481,26 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		return this.#blockVersion;
 	}
 
+	/** Fold a search call into this group; repeat calls refresh its label as args stream. */
+	updateSearch(toolName: string, args: unknown, toolCallId: string): void {
+		const entry = this.#entries.get(toolCallId);
+		const label = searchActivityLabel(args);
+		if (entry?.search) entry.search.label = label;
+		else {
+			const title = SEARCH_ACTIVITY_TITLES.get(toolName) ?? toolName;
+			this.#entries.set(toolCallId, { toolCallId, path: "", status: "pending", search: { title, label } });
+		}
+		this.#updateDisplay();
+	}
+
 	updateArgs(args: ReadRenderArgs, toolCallId?: string): void {
 		if (!toolCallId) return;
+		const search = this.#entries.get(toolCallId)?.search;
+		if (search) {
+			search.label = searchActivityLabel(args);
+			this.#updateDisplay();
+			return;
+		}
 		const rawPath =
 			typeof args.file_path === "string" ? args.file_path : typeof args.path === "string" ? args.path : "";
 		const displayPath = sanitizeText(rawPath);
@@ -488,6 +552,13 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		if (!entry) return;
 		if (isPartial) return;
 		this.#blockVersion++;
+		if (entry.search) {
+			entry.status = result.isError ? "error" : "success";
+			entry.search.summary = searchActivitySummary(result.details);
+			entry.contentText = result.content?.find(c => c.type === "text")?.text;
+			this.#updateDisplay();
+			return;
+		}
 		// `details` can contain raw file text and filesystem paths. Keep the
 		// latter for links while only the sanitized copy supplies display labels.
 		const rawDetails = result.details as ReadToolDetails | undefined;
@@ -916,9 +987,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			if (!this.#shouldRenderPreviewRow(row)) {
 				const statusSymbol = this.#formatStatus(this.#statusForTargets(row.targets));
 				const pathDisplay = this.#formatRowPath(row);
-				const lines = [` ${statusSymbol} ${theme.fg("toolTitle", theme.bold("Read"))} ${pathDisplay}`.trimEnd()];
+				const title = row.targets[0]?.entry.search?.title ?? "Read";
+				const lines = [` ${statusSymbol} ${theme.fg("toolTitle", theme.bold(title))} ${pathDisplay}`.trimEnd()];
 				const usageRows = this.#usageRowsBySummaryRow(displayRows).get(0) ?? [];
 				this.#appendUsageRows(lines, usageRows, "   ");
+				if (this.#expanded) this.#appendSearchOutput(lines, row, "   ");
 				this.#text.setText(lines.join("\n"));
 				this.addChild(this.#text);
 			}
@@ -929,14 +1002,16 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 			return;
 		}
 
-		const header = `${theme.fg("toolTitle", theme.bold("Read"))}${theme.fg("dim", ` (${displayRows.length})`)}`;
-		const lines = [` ${theme.format.bullet} ${header}`];
 		const entriesWithoutPreview = entries.filter(entry => !this.#shouldRenderPreview(entry));
 		const summaryTargets = this.#displayTargetsForEntries(entriesWithoutPreview);
-		const rows = this.#buildSummaryRows(summaryTargets);
-		const usageRowsBySummaryRow = this.#usageRowsBySummaryRow(rows);
+		const allRows = this.#buildSummaryRows(summaryTargets);
+		const usageRowsBySummaryRow = this.#usageRowsBySummaryRow(allRows);
+		const lines = [this.#groupHeader(entries, displayRows.length)];
+		// Collapsed, one line stands for the run; a failure is never folded away.
+		const rows = this.#expanded ? allRows : allRows.filter(row => this.#statusForTargets(row.targets) === "error");
 		for (const [index, row] of rows.entries()) {
-			this.#appendSummaryRow(lines, row, index, rows.length, usageRowsBySummaryRow.get(index) ?? []);
+			const usage = this.#expanded ? (usageRowsBySummaryRow.get(index) ?? []) : [];
+			this.#appendSummaryRow(lines, row, index, rows.length, usage);
 		}
 
 		this.#text.setText(lines.join("\n"));
@@ -950,9 +1025,46 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 		}
 	}
 
+	/** `Explored 3 files, 2 searches`, `Read 3 files`, or `Exploring <latest call>` while one runs. */
+	#groupHeader(entries: readonly ReadEntry[], rowCount: number): string {
+		const searches = entries.filter(entry => entry.search).length;
+		const files = rowCount - searches;
+		const running = entries.findLast(entry => entry.status === "pending");
+		const failed = entries.some(entry => entry.status === "error");
+		const symbol = running
+			? this.#formatStatus("pending")
+			: failed
+				? this.#formatStatus("error")
+				: theme.format.bullet;
+		const counts = [
+			...(files > 0 ? [countLabel(files, "file", "files")] : []),
+			...(searches > 0 ? [countLabel(searches, "search", "searches")] : []),
+		].join(", ");
+		const title = searches === 0 ? "Read" : running ? "Exploring" : "Explored";
+		const detail =
+			running && searches > 0 ? (running.search?.label ?? shortenPath(splitPathAndSel(running.path).path)) : counts;
+		return ` ${symbol} ${theme.fg("toolTitle", theme.bold(title))} ${theme.fg("dim", detail)}`.trimEnd();
+	}
+
+	/** A search row's own output, shown only while the group is expanded. */
+	#appendSearchOutput(lines: string[], row: ReadSummaryRow, prefix: string): void {
+		const text = row.targets[0]?.entry.search ? row.targets[0].entry.contentText : undefined;
+		if (!text) return;
+		const output = replaceTabs(sanitizeText(text)).split("\n");
+		for (const line of output.slice(0, SEARCH_OUTPUT_LINES)) {
+			lines.push(theme.fg("dim", `${prefix}${truncateToWidth(line, 160)}`));
+		}
+		const hidden = output.length - SEARCH_OUTPUT_LINES;
+		if (hidden > 0) lines.push(theme.fg("dim", `${prefix}… ${countLabel(hidden, "more line", "more lines")}`));
+	}
+
 	#displayTargetsForEntries(entries: ReadEntry[]): ReadDisplayTarget[] {
 		const targets: ReadDisplayTarget[] = [];
 		for (const entry of entries) {
+			if (entry.search) {
+				targets.push({ entry, targetPath: entry.search.label, basePath: "" });
+				continue;
+			}
 			const pathSpecs: ReadDisplayPathSpec[] =
 				entry.displayPaths ?? splitReadDisplayPathSpecs(entry.path).map(path => ({ path }));
 			const useEntryLinkPath = pathSpecs.length === 1;
@@ -1040,6 +1152,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 				? " ".repeat(connectorWidth)
 				: `${theme.tree.vertical}${" ".repeat(Math.max(0, connectorWidth - Bun.stringWidth(theme.tree.vertical)))}`;
 		this.#appendUsageRows(lines, usageRows, `   ${continuation} `);
+		if (this.#expanded) this.#appendSearchOutput(lines, row, `   ${continuation} `);
 	}
 
 	#usageRowsBySummaryRow(rows: ReadSummaryRow[]): Map<number, ReadUsageRow[]> {
@@ -1085,6 +1198,11 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	}
 
 	#formatRowPath(row: ReadSummaryRow): string {
+		const search = row.targets[0]?.entry.search;
+		if (search) {
+			const summary = search.summary ? theme.fg("dim", ` · ${search.summary}`) : "";
+			return `${theme.fg("accent", search.label)}${summary}`;
+		}
 		return this.#formatPathValue(row.targetPath, {
 			correctedFrom: this.#correctedFromForTargets(row.targets),
 			conflictCount: this.#conflictCountForTargets(row.targets),
@@ -1250,7 +1368,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 	}
 
 	#shouldRenderPreview(entry: ReadEntry): boolean {
-		return this.#showContentPreview && entry.contentText !== undefined;
+		return this.#showContentPreview && entry.contentText !== undefined && !entry.search;
 	}
 
 	#formatStatus(status: ReadEntry["status"]): string {

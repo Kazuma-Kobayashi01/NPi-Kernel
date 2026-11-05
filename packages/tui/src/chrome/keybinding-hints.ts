@@ -10,6 +10,19 @@ import {
 	type KeybindingsManager,
 } from "../app-keybindings";
 import { theme } from "../theme/index";
+import { visibleWidth } from "../utils";
+
+/**
+ * The hint row that fits `width`: leading hints drop first, so `hints` lists
+ * the most expendable first and the one to keep last.
+ */
+export function fitHints(hints: readonly string[], width: number, separator = " · "): string {
+	for (let start = 0; start < hints.length; start++) {
+		const row = hints.slice(start).join(separator);
+		if (visibleWidth(row) <= width) return row;
+	}
+	return "";
+}
 
 /**
  * Primary (first) key bound to an editor action, formatted for footer hints;

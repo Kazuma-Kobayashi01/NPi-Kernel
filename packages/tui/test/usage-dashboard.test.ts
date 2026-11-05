@@ -423,7 +423,7 @@ describe("UsageDashboardComponent", () => {
 				lines
 					.slice(first, bar)
 					.join("")
-					.replace(/[│\s]/g, ""),
+					.replace(/[│▎\s]/g, ""),
 			).toBe(label.replace(/\s/g, ""));
 		} finally {
 			component.dispose();
@@ -472,7 +472,7 @@ describe("UsageDashboardComponent", () => {
 		try {
 			const output = Bun.stripANSI(component.render(100).join("\n"));
 			const title = output.split("\n").find(line => line.includes("2 accts"));
-			expect(title?.replace(/^[│\s]+/, "")).toStartWith(`${theme.status.error} Anthropic`);
+			expect(title?.replace(/^[│▎\s]+/, "")).toStartWith(`${theme.status.error} Anthropic`);
 		} finally {
 			component.dispose();
 		}

@@ -54,6 +54,7 @@ import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-de
 import { SnapcompactShapePreview } from "./snapcompact-shape-preview";
 import { themePickerOptions } from "./theme-selector";
 import type { SelectPickerOptions } from "../native/picker";
+import { isNativeRendering } from "../native/state";
 import { getPreset } from "../status-line/presets";
 import { FormField, SelectFormField, TextFormField } from "../components/form";
 import { formTheme } from "../chrome/form-theme";
@@ -705,7 +706,7 @@ export class SettingsSelectorComponent implements Component {
 		const confirm = editorKey("tui.select.confirm");
 		const cancel = editorKey("tui.select.cancel");
 		const tab = formatKeyHint("tab");
-		const switchTabs = `${formatKeyHints(["ctrl+left", "ctrl+right"])} tabs`;
+		const switchTabs = `${formatKeyHints(["left", "right"])} tabs`;
 		if (this.#searchList) {
 			return `${confirm} to change · ${tab} to jump tabs · ${cancel} to exit search`;
 		}
@@ -716,7 +717,7 @@ export class SettingsSelectorComponent implements Component {
 			return `${editorKeys("tui.select.up", "tui.select.down")} to jump sections · ${tab}/${confirm} to settings · ${switchTabs} · ${cancel} to close`;
 		}
 		const nav = this.#hasSectionJump ? `${tab} to jump sections · ${switchTabs}` : `${tab} to switch tabs`;
-		return `${confirm}/${formatKeyHint("space")}/${formatKeyHints(["left", "right"])} change · ${nav} · Type to search · ${cancel} close`;
+		return `${confirm} to open · ${nav} · Type to search · ${cancel} close`;
 	}
 
 	/** Single-line search banner: accent icon, editable query with live cursor, right-aligned match count. */
@@ -1486,10 +1487,26 @@ export class SettingsSelectorComponent implements Component {
 
 		switch (def.type) {
 			case "boolean":
-				return { ...item, currentValue: currentValue ? "true" : "false", values: ["true", "false"] };
+				return {
+					...item,
+					currentValue: currentValue ? "true" : "false",
+					values: ["true", "false"],
+					submenu: this.#choiceSubmenu(def, [
+						{ value: "true", label: "On" },
+						{ value: "false", label: "Off" },
+					]),
+				};
 
 			case "enum":
-				return { ...item, currentValue: String(currentValue ?? ""), values: [...def.values] };
+				return {
+					...item,
+					currentValue: String(currentValue ?? ""),
+					values: [...def.values],
+					submenu: this.#choiceSubmenu(
+						def,
+						def.values.map(value => ({ value, label: value })),
+					),
+				};
 
 			case "submenu":
 				return {
@@ -1519,6 +1536,16 @@ export class SettingsSelectorComponent implements Component {
 					submenu: (_cv, done) => this.#createMultiSelect(def, done),
 				};
 		}
+	}
+
+	/**
+	 * A second-level menu for a plain choice: a change needs Enter there and Esc
+	 * backs out. Native pages draw their own switches and menus, so they get none.
+	 */
+	#choiceSubmenu(def: SettingDef, options: ReadonlyArray<SelectItem>): SettingItem["submenu"] {
+		if (isNativeRendering()) return undefined;
+		return (currentValue, done) =>
+			createSettingsSelectField(def.label, def.description ?? "", options, currentValue, done, () => done());
 	}
 
 	/**
@@ -1954,14 +1981,6 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 		if (matchesKey(data, "left") || matchesKey(data, "right")) {
-			const selected = this.#currentList?.getSelectedItem();
-			if (selected?.values?.length && !selected.submenu && !this.#currentList?.sectionFocused) {
-				const values = selected.values;
-				const direction = matchesKey(data, "left") ? -1 : 1;
-				const index = (values.indexOf(selected.currentValue) + direction + values.length) % values.length;
-				this.#currentList?.applyValue(selected.id, values[index]!);
-				return;
-			}
 			this.#tabBar.handleInput(data);
 			return;
 		}

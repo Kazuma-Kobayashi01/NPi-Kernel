@@ -38,7 +38,8 @@ import {
 import { canReuseCachedPr, createPrCacheContext, isSamePrCacheContext, type PrCacheContext } from "./git-utils";
 import { summarizeUsageResetCredits } from "../overlays/usage-display";
 import { getPreset } from "./presets";
-import { describeSegment, renderSegment, type SegmentContext } from "./segments";
+import { describeSegment, renderSegment, type SegmentContext, thinkingLevelWord } from "./segments";
+import type { SidePanelLimit } from "../chrome/side-panel";
 import type { TspMeterMark, TspProps } from "@oh-my-pi/pi-wire";
 import type { NativeNode, NativeUiEvent } from "../native/node";
 import { col, node, span } from "../native/describe";
@@ -604,6 +605,40 @@ function hasPathSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return segments.includes("path");
 }
 
+/** The status bar's live facts, for the side panel. */
+export interface SidePanelUsage {
+	contextTokens?: number;
+	contextWindow?: number;
+	contextPercent?: number;
+	cost: number;
+	inputTokens: number;
+	outputTokens: number;
+	branch?: string;
+	tier?: string;
+	limits: SidePanelLimit[];
+}
+
+/**
+ * The Rail composer identity row at `width`: provider drops first, then the
+ * thinking level, then the model name is cut. The mode always survives.
+ */
+export function fitComposerLabel(
+	width: number,
+	facts: { mode: string; model: string; provider?: string; thinking?: string; fast?: string },
+): string {
+	const model = facts.fast ? `${facts.model} ${facts.fast}` : facts.model;
+	const candidates = [
+		[facts.mode, model, facts.provider, facts.thinking],
+		[facts.mode, model, facts.thinking],
+		[facts.mode, model],
+	];
+	for (const parts of candidates) {
+		const label = parts.filter(part => part !== undefined && part !== "").join(" · ");
+		if (visibleWidth(label) <= width) return label;
+	}
+	return truncateToWidth(`${facts.mode} · ${model}`, Math.max(0, width));
+}
+
 function hasGitBackedSegment(segments: readonly StatusLineSegmentId[]): boolean {
 	return hasGitSegment(segments) || hasPrSegment(segments);
 }
@@ -630,6 +665,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 {
 	#standalone: false | "full" | "left-only" = false;
 	#topAttachment: ComposerStyle["statusAttachment"] = "top-border";
+	#externallyShownSegments: ReadonlySet<StatusLineSegmentId> = new Set();
 	#standaloneGap = false;
 	#autocompleteActiveProbe: (() => boolean) | undefined;
 	#renderRevision = 0;
@@ -3034,6 +3070,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			if (subagentBadge && segId === "subagents") continue;
 			// The band composer relocates the title to the working row's trailer.
 			if (layout === "band" && segId === "session_name") continue;
+			if (this.#segmentShownElsewhere(segId)) continue;
 			const rendered = renderSegment(segId, ctx);
 			if (rendered.visible && rendered.content) {
 				leftParts.push(rendered.content);
@@ -3047,6 +3084,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 		for (const segId of rightSegmentIds) {
 			if (subagentBadge && segId === "subagents") continue;
 			if (layout === "band" && segId === "session_name") continue;
+			if (this.#segmentShownElsewhere(segId)) continue;
 			const rendered = renderSegment(segId, ctx);
 			if (rendered.visible && rendered.content) {
 				rightParts.push(rendered.content);
@@ -3493,11 +3531,72 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	getComposerLabel(width: number): { content: string; width: number; revision: number } {
 		const model = this.session.state.model ?? this.session.model;
 		const mode = this.#planModeStatus?.enabled ? "Plan" : this.#goalModeStatus?.enabled ? "Goal" : "Build";
-		const label = truncateToWidth(
-			`${mode} · ${model?.name ?? "Select model"}${model ? ` · ${model.provider}` : ""}`,
-			Math.max(0, width),
-		);
+		const label = fitComposerLabel(width, {
+			mode,
+			model: model?.name ?? "Select model",
+			provider: model?.provider,
+			thinking: model ? thinkingLevelWord(this.session) : undefined,
+			fast: this.session.isFastModeActive() ? theme.icon.fast : undefined,
+		});
 		return { content: theme.fg("accent", label), width: visibleWidth(label), revision: this.#renderRevision };
+	}
+
+	/**
+	 * The Rail composer names the model, its provider and thinking level, so the
+	 * default bars leave them out. An explicit `custom` layout keeps what it
+	 * asked for, and so does a model carrying a badge only the segment can show.
+	 */
+	#modelShownByComposer(): boolean {
+		if (this.#topAttachment !== "bottom-label" || this.#settings.preset === "custom") return false;
+		if (this.session.getAdvisorStatusOverview?.()?.configured) return false;
+		return !this.session.getAnthropicSlowModeLabel?.();
+	}
+
+	/** Context, spend and branch for the side panel, from the same sources as the bar. */
+	getSidePanelUsage(): SidePanelUsage {
+		const ctx = this.#buildSegmentContext(0, {}, false, true, false, Date.now());
+		const usage = ctx.usage;
+		const limit = (label: string, percent: number, resetMinutes?: number): SidePanelLimit => ({
+			label,
+			percent,
+			resetMinutes,
+		});
+		const hours = (value?: number): number | undefined => (value === undefined ? undefined : value * 60);
+		const limits = [
+			usage?.fiveHour && limit("5 Hour", usage.fiveHour.percent, usage.fiveHour.resetMinutes),
+			usage?.daily && limit("Daily", usage.daily.percent, usage.daily.resetMinutes),
+			usage?.sevenDay && limit("7 Day", usage.sevenDay.percent, hours(usage.sevenDay.resetHours)),
+			usage?.monthly && limit("Monthly", usage.monthly.percent, hours(usage.monthly.resetHours)),
+		].filter(entry => entry !== undefined && entry !== null);
+		return {
+			contextTokens: ctx.contextTokens > 0 ? ctx.contextTokens : undefined,
+			contextWindow: ctx.contextWindow > 0 ? ctx.contextWindow : undefined,
+			contextPercent: ctx.contextPercent ?? undefined,
+			cost: ctx.usageStats.cost + (ctx.subagentTreeCost ?? 0),
+			inputTokens: ctx.usageStats.input + ctx.usageStats.cacheWrite,
+			outputTokens: ctx.usageStats.output,
+			branch: ctx.git.branch ?? undefined,
+			tier: usage?.tier,
+			limits,
+		};
+	}
+
+	/** Facts another surface shows right now, so the bar stops repeating them. */
+	setExternallyShownSegments(segments: ReadonlySet<StatusLineSegmentId>): void {
+		if (
+			segments.size === this.#externallyShownSegments.size &&
+			[...segments].every(segment => this.#externallyShownSegments.has(segment))
+		) {
+			return;
+		}
+		this.#externallyShownSegments = segments;
+		this.#renderRevision++;
+	}
+
+	#segmentShownElsewhere(segment: StatusLineSegmentId): boolean {
+		if (this.#settings.preset === "custom") return false;
+		if (this.#externallyShownSegments.has(segment)) return true;
+		return (segment === "model" || segment === "pi") && this.#modelShownByComposer();
 	}
 
 	/** Flush-left soft-capped powerline band (the band composer's top row). */

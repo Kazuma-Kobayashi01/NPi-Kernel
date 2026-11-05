@@ -3349,6 +3349,12 @@ pub struct BranchMessage {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FileRestoreChange {
+	pub path: String,
+	pub removes: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BranchResult {
 	pub text: String,
 	pub cancelled: bool,
@@ -5715,6 +5721,29 @@ pub struct SetLabelParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanFileRestoreParams {
+	#[serde(rename = "entryId")]
+	pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanFileRestoreResult {
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub changes: Option<Vec<FileRestoreChange>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoreFilesParams {
+	#[serde(rename = "entryId")]
+	pub entry_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoreFilesResult {
+	pub changed: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetBranchMessagesResult {
 	pub messages: Vec<BranchMessage>,
 }
@@ -7708,6 +7737,40 @@ impl Command for SetLabelCommand {
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		let _ = data;
 		Ok(())
+	}
+}
+
+/// List what going back to before a prompt would change on disk; null when it has no file snapshot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PlanFileRestoreCommand {
+	#[serde(rename = "entryId")]
+	pub entry_id: String,
+}
+
+impl Command for PlanFileRestoreCommand {
+	const NAME: &'static str = "plan_file_restore";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = PlanFileRestoreResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<PlanFileRestoreResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Put the project's files back as they were before a prompt; refused while the session is busy.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoreFilesCommand {
+	#[serde(rename = "entryId")]
+	pub entry_id: String,
+}
+
+impl Command for RestoreFilesCommand {
+	const NAME: &'static str = "restore_files";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = RestoreFilesResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<RestoreFilesResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
 	}
 }
 

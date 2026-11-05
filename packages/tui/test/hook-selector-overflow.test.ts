@@ -83,7 +83,7 @@ describe("HookSelectorComponent", () => {
 		const width = 72;
 		const lines = component.render(width);
 		const plain = lines.map(line => Bun.stripANSI(line)).join("\n");
-		const normalizedPlain = plain.replace(/[\u2500-\u257f]/g, " ").replace(/\s+/g, " ");
+		const normalizedPlain = plain.replace(/[\u2500-\u259f]/g, " ").replace(/\s+/g, " ");
 		expect(normalizedPlain).toContain("not creating a root .github directory");
 		expect(normalizedPlain).toContain("do not understand OMP resources yet");
 		for (const line of lines) {
@@ -117,7 +117,7 @@ describe("HookSelectorComponent", () => {
 		const plainLines = lines.map(line => Bun.stripANSI(line));
 		const normalizedPlain = plainLines
 			.join("\n")
-			.replace(/[\u2500-\u257f]/g, " ")
+			.replace(/[\u2500-\u259f]/g, " ")
 			.replace(/\s+/g, " ");
 		const labelLineIndex = plainLines.findIndex(line => line.includes("Use existing local credentials"));
 		const descriptionLineIndex = plainLines.findIndex(line => line.includes("Authenticate via the provider keys"));

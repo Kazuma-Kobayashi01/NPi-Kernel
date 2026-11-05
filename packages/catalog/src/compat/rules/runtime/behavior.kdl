@@ -219,7 +219,10 @@ behavior {
 		prefix="qwen-audio-" prefix="qwen-image-" prefix="text-embedding-" prefix="wan2.7-"
 	exclude-models provider="alibaba-cn" substring="embedding" substring="reranker" \
 		substring="rerank" substring="sensevoice" substring="cosyvoice" substring="paraformer" \
-		substring="fun-asr" substring="wanx" substring="tts" substring="asr"
+		substring="fun-asr" substring="wanx" substring="tts" substring="asr" substring="qwen-image"
+	exclude-models provider="alibaba" substring="embedding" substring="reranker" \
+		substring="rerank" substring="sensevoice" substring="cosyvoice" substring="paraformer" \
+		substring="fun-asr" substring="wanx" substring="tts" substring="asr" substring="qwen-image"
 	// Copilot's /models listing carries no transport field; route Claude ids
 	// to Anthropic Messages, the reviewed Responses roster to Responses, and
 	// everything else to chat completions. Every Grok Copilot has served since

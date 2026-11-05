@@ -8,6 +8,9 @@ import { getBundledModels, getBundledProviders } from "../src/models";
  * Additions require a comment naming the runtime path that resolves them.
  */
 const RUNTIME_ONLY_PROVIDERS = new Set([
+	// DashScope pay-as-you-go: models come from discovery once a key is present.
+	"alibaba",
+	"alibaba-cn",
 	"kimi-search",
 	"ollama",
 	"siliconflow",

@@ -77,7 +77,8 @@ import type { CollabGuestLink } from "../collab/guest";
 import { CollabController } from "../collab/controller";
 import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
-import { appKey, editorKey, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
+import { appKey, editorKey, fitHints, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
+import { renderSidePanel, type SidePanelRows } from "@oh-my-pi/pi-tui/chrome/side-panel";
 import { formatModelString, type ResolvedModelRoleValue } from "../config/model-resolver";
 import { isSettingsInitialized, Settings, settings } from "../config/settings";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
@@ -221,7 +222,7 @@ import {
 	setExtensionLinkPicking,
 	setExtensionLinks,
 } from "@oh-my-pi/pi-tui/render/extension-links";
-import { onNativeRenderingChange } from "@oh-my-pi/pi-tui/native/state";
+import { isNativeRendering, onNativeRenderingChange } from "@oh-my-pi/pi-tui/native/state";
 import { renderTreeList } from "@oh-my-pi/pi-tui/render/tree-list";
 import { formatStartupChangelogSummary, type StartupChangelogSelection } from "../utils/changelog";
 import { copyToClipboard } from "../utils/clipboard";
@@ -295,7 +296,7 @@ import { CleanseCommandController } from "./controllers/cleanse-command-controll
 import { CommandController } from "./controllers/command-controller";
 import { EventController } from "./controllers/event-controller";
 import { ExtensionUiController } from "./controllers/extension-ui-controller";
-import { InputController } from "./controllers/input-controller";
+import { CTRL_C_EXIT_WINDOW_MS, InputController } from "./controllers/input-controller";
 import { LiveCommandController } from "./controllers/live-command-controller";
 import { MCPCommandController } from "./controllers/mcp-command-controller";
 import { OmfgController } from "./controllers/omfg-controller";
@@ -363,6 +364,7 @@ import type {
 	SubmittedUserInput,
 	YieldCompaction,
 } from "./types";
+import type { StatusLineSegmentId } from "@oh-my-pi/pi-tui/status-line/types";
 import type { TodoItem, TodoPhase } from "@oh-my-pi/pi-tui/tools/todo";
 import type { ConversationPosition } from "./utils/conversation-position";
 import { materializeImageChipLinks, UiHelpers } from "./utils/ui-helpers";
@@ -373,6 +375,7 @@ import {
 	cfgComposerPredictions,
 	cfgComposerPaintBackground,
 	cfgTuiContentWidth,
+	cfgTuiSidePanel,
 	cfgComposerShape,
 	cfgComposerTokenRate,
 	cfgDisplayAdvisorCollapsedLines,
@@ -394,6 +397,8 @@ import {
 	cfgSpellingAutocorrect,
 	cfgSpellingTypoDetection,
 	cfgStartupChangelogMode,
+	cfgStartupAnimation,
+	cfgTuiClearOnExit,
 	cfgStartupQuiet,
 	cfgStatusLineCompactThinkingLevel,
 	cfgStatusLineContextLine,
@@ -464,6 +469,7 @@ const cfgLiveUiSettings = combine({
 	"composer.shape": cfgComposerShape,
 	"composer.paintBackground": cfgComposerPaintBackground,
 	"tui.contentWidth": cfgTuiContentWidth,
+	"tui.sidePanel": cfgTuiSidePanel,
 	"tui.vimMode": cfgTuiVimMode,
 	"tui.vimModeDisplay": cfgTuiVimModeDisplay,
 	"display.pinnedAgents": cfgDisplayPinnedAgents,
@@ -512,6 +518,26 @@ const cfgLiveUiSettings = combine({
 	"tier.advisor": cfgTierAdvisor,
 });
 type LiveUiSettings = SettingValueOf<typeof cfgLiveUiSettings>;
+
+/** Example prompts for the home screen's empty composer. */
+const HOME_PLACEHOLDERS = [
+	"Explain how this project is organised",
+	"Find and fix a failing test",
+	"Review my uncommitted changes",
+	"Write tests for the last change",
+];
+/** Reveal position by which the placeholder has finished typing itself out. */
+const HOME_PLACEHOLDER_TYPED = 0.7;
+
+/** Status bar facts the side panel takes over while it is on screen. */
+const SIDE_PANEL_SEGMENTS: ReadonlySet<StatusLineSegmentId> = new Set([
+	"path",
+	"git",
+	"context_pct",
+	"cost",
+	"session_name",
+]);
+const NO_SEGMENTS: ReadonlySet<StatusLineSegmentId> = new Set();
 
 const STILL_CLOSING_DELAY_MS = 3_000;
 const JUDGMENT_BATCH_PROGRESS_RETAIN_MS = 1_000;
@@ -2042,11 +2068,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor = this.composer.editor;
 		this.editor.magicKeywordsEnabled = () => cfgMagicKeywordsEnabled.get(this.settings);
 		this.editor.placeholder = () => this.#composerHint();
-		this.editor.footerHint = () => {
-			const hints = `${appKey(this.keybindings, "app.thinking.cycle")} thinking · ${appKey(this.keybindings, "app.agents.hub")} agents · / commands`;
-			const usage = this.session.getContextUsage();
-			const used = usage && usage.tokens > 0 ? `${formatNumber(usage.tokens)} (${Math.round(usage.percent)}%)  ` : "";
-			return theme.fg("dim", `${used}${hints}`);
+		this.editor.footerHint = width => {
+			const thinking = `${appKey(this.keybindings, "app.thinking.cycle")} thinking`;
+			const agents = `${appKey(this.keybindings, "app.agents.hub")} agents`;
+			if (Date.now() - this.lastSigintTime < CTRL_C_EXIT_WINDOW_MS) {
+				return theme.fg("warning", `Press ${appKey(this.keybindings, "app.clear")} again to exit`);
+			}
+			const home = this.session.messages.length === 0;
+			return theme.fg("dim", fitHints(home ? [agents, "/ commands"] : [thinking, agents, "/ commands"], width));
 		};
 		this.editor.prediction = () => this.#eventController.composerPrediction.text;
 		this.editor.composerState = () => this.#composerNativeState();
@@ -2206,6 +2235,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor);
 		this.statusLine = new StatusLineComponent(session, statusLineHost);
+		this.composer.setSidePanel(
+			width => this.#sidePanelRows(width),
+			shown => this.statusLine.setExternallyShownSegments(shown ? SIDE_PANEL_SEGMENTS : NO_SEGMENTS),
+		);
 		// Native segment clicks open what their slash commands and keys open.
 		this.statusLine.onNativeAction = action => {
 			switch (action) {
@@ -2327,6 +2360,15 @@ export class InteractiveMode implements InteractiveModeContext {
 			});
 		}
 
+		// The home footer carries healthy progress; a failure still earns a notice.
+		if (this.composer.onHomeScreen && this.#mcpFailedServers.size === 0) {
+			const connected = this.#mcpConnectedServers.size;
+			const label = this.#mcpPendingServers.size > 0 ? "Connecting MCP…" : `${connected} MCP`;
+			const dot = theme.fg(this.#mcpPendingServers.size > 0 ? "dim" : "success", "⊙");
+			this.composer.setHomeStatus(`${dot} ${theme.fg("dim", label)}`);
+			return;
+		}
+		this.composer.setHomeStatus(undefined);
 		const message = formatMCPConnectionStatusMessage({
 			pendingServers: this.#orderedMcpStatusServers(this.#mcpPendingServers),
 			connectedServers: this.#orderedMcpStatusServers(this.#mcpConnectedServers),
@@ -2605,13 +2647,18 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.#eventBusUnsubscribers.push(startMacOSAppearanceReprobeFallback(this.ui.terminal));
 		}
 
+		const animate = !options.suppressWelcomeIntro && cfgStartupAnimation.get(this.settings);
 		// A prepaint Composer may already own raw mode and the render loop.
 		if (!this.#ownsStartedUi) {
 			this.composer.start({
 				clearScrollback: options.clearInitialTerminalHistory === true,
-				playWelcomeIntro: !options.suppressWelcomeIntro,
+				playWelcomeIntro: animate,
 			});
 			this.#ownsStartedUi = true;
+		} else if (animate) {
+			this.composer.playWelcomeIntro();
+		} else {
+			this.composer.settleWelcome();
 		}
 		pushTerminalTitle();
 		// Claim the terminal title before any session update: this is the one path
@@ -2834,6 +2881,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Set up theme file watcher
 		this.#eventBusUnsubscribers.push(
 			onThemeChange(event => {
+				this.composer.refreshBackgroundPaint();
 				this.#refreshSlashCommandIcons();
 				this.#clearWorkingMessageAccentCache();
 				clearRenderCache();
@@ -4080,12 +4128,44 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setMaxHeight(this.#computeEditorMaxHeight());
 	}
 
+	/** The side panel's rows; a frame can arrive every few milliseconds, so the facts refresh at most once a second. */
+	#sidePanelRows(width: number): SidePanelRows {
+		const now = performance.now();
+		if (this.#sidePanelCache && now - this.#sidePanelCache.at < 1000) return this.#sidePanelCache.rows;
+		const usage = this.statusLine.getSidePanelUsage();
+		const tasks = this.todoPhases.flatMap(phase => phase.tasks);
+		const open = tasks.filter(task => !isClosedTodo(task));
+		const provider = this.session.model?.provider;
+		const rows = renderSidePanel(
+			{
+				title: this.sessionManager.getSessionName() ?? "New session",
+				directory: shortenPath(getProjectDir()),
+				branch: usage.branch,
+				contextTokens: usage.contextTokens,
+				contextWindow: usage.contextWindow,
+				contextPercent: usage.contextPercent,
+				plan: usage.limits.length > 0 ? [provider, usage.tier].filter(Boolean).join(" · ") || undefined : undefined,
+				limits: usage.limits,
+				cost: usage.cost,
+				inputTokens: usage.inputTokens,
+				outputTokens: usage.outputTokens,
+				tasksDone: tasks.length - open.length,
+				tasksTotal: tasks.length,
+				openTasks: open.map(task => task.content),
+			},
+			width,
+		);
+		this.#sidePanelCache = { at: now, rows };
+		return rows;
+	}
+
 	/** Live-setting composer preferences; `quiet` is startup-only and `composerShape` flows through {@link syncComposerShape}. */
 	#liveComposerPreferences(): Omit<ComposerPreferences, "quiet" | "composerShape"> {
 		return {
 			showHardwareCursor: cfgShowHardwareCursor.get(this.settings),
 			paintBackground: cfgComposerPaintBackground.get(this.settings),
 			contentWidth: cfgTuiContentWidth.get(this.settings),
+			sidePanel: cfgTuiSidePanel.get(this.settings),
 			maxInlineImages: cfgTuiMaxInlineImages.get(this.settings),
 			resizeScrollback: cfgTuiResizeScrollback.get(this.settings),
 			completeScrollback: cfgTuiCompleteScrollback.get(this.settings),
@@ -4147,6 +4227,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				"spelling.autocorrect",
 				"composer.paintBackground",
 				"tui.contentWidth",
+				"tui.sidePanel",
 			)
 		) {
 			this.composer.setPreferences(this.#liveComposerPreferences());
@@ -4344,6 +4425,9 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	/** Whether the user can pick a claimed link: the link-hint key is bound or `tui.mouse` delivers clicks. */
+	#sidePanelCache: { at: number; rows: SidePanelRows } | undefined;
+	readonly #homePlaceholder = HOME_PLACEHOLDERS[Math.floor(Math.random() * HOME_PLACEHOLDERS.length)]!;
+
 	#linkPickable = (): boolean => this.#mouseCapture || Boolean(appKey(this.keybindings, "app.links.hint"));
 
 	syncExtensionLinks(): void {
@@ -4622,16 +4706,17 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Placeholder for the empty composer; see `COMPOSER_HINTS` for the registered hints. */
 	#composerHint(): string | undefined {
 		if (this.editor.getBorderStyle() === "rail") {
-			return theme.fg(
-				"dim",
-				this.isBashMode
-					? "Run a shell command…"
-					: this.isPythonMode
-						? "Run Python…"
-						: this.planModeEnabled
-							? "Plan an approach…"
-							: "Ask anything…",
-			);
+			const text = this.isBashMode
+				? "Run a shell command…"
+				: this.isPythonMode
+					? "Run Python…"
+					: this.planModeEnabled
+						? "Plan an approach…"
+						: this.composer.onHomeScreen
+							? `Ask anything… "${this.#homePlaceholder}"`
+							: "Ask anything…";
+			const shown = Math.ceil(text.length * Math.min(1, this.composer.welcomeProgress / HOME_PLACEHOLDER_TYPED));
+			return theme.fg("dim", text.slice(0, shown));
 		}
 		return resolveComposerHint({
 			runningAgents: this.#runningSubagentCount,
@@ -7951,12 +8036,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		}
 		this.#beginClose();
 		const worktreePlan = await this.#planOwnedWorktreeExit();
+		const clearScreen = cfgTuiClearOnExit.get(this.settings) && !isNativeRendering() && process.stdout.isTTY;
 		try {
 			await this.#teardown();
 		} catch (error) {
 			this.#handleTeardownError("close", error);
 			return;
 		}
+		// Cursor home, screen, then scrollback: startup cleared what came before, so
+		// only this session's transcript goes. It stays on disk for --resume.
+		if (clearScreen) process.stdout.write("\x1b[H\x1b[2J\x1b[3J");
 		for (const message of await removeExitWorktrees(worktreePlan)) {
 			process.stderr.write(`${chalk.yellow(message)}\n`);
 		}

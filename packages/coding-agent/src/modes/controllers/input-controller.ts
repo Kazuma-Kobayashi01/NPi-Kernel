@@ -272,6 +272,8 @@ function safeAbort(label: string, fn: () => void): void {
 // apart) on a stray click, which used to pop the hub with no key ever pressed.
 // Three or more rapid taps are likewise treated as a burst, not a gesture. A
 // deliberate human double-tap is always tens of milliseconds apart.
+/** A second Ctrl+C within this window of the first exits. */
+export const CTRL_C_EXIT_WINDOW_MS = 1000;
 const LEFT_DOUBLE_TAP_MIN_GAP_MS = 40;
 const LEFT_DOUBLE_TAP_MAX_GAP_MS = 500;
 
@@ -1747,11 +1749,18 @@ export class InputController {
 		}
 
 		const now = Date.now();
-		if (now - this.ctx.lastSigintTime < 500) {
+		if (now - this.ctx.lastSigintTime < CTRL_C_EXIT_WINDOW_MS) {
 			void this.ctx.shutdown();
 		} else {
 			this.ctx.clearEditor();
 			this.ctx.lastSigintTime = now;
+			// The hint row announces the armed exit; put it back when the window closes.
+			const refreshHint = (): void => {
+				this.ctx.editor.invalidate();
+				this.ctx.ui.requestRender();
+			};
+			refreshHint();
+			setTimeout(refreshHint, CTRL_C_EXIT_WINDOW_MS).unref();
 		}
 	}
 

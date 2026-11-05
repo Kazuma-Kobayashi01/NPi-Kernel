@@ -508,15 +508,15 @@ describe("HookEditorComponent prompt-style mode", () => {
 		expect(onCancel).not.toHaveBeenCalled();
 	});
 
-	it("renders prompt-style editor with rounded overlay chrome", () => {
+	it("renders prompt-style editor with panel chrome", () => {
 		const component = new HookEditorComponent(createTui(), "Prompt", undefined, vi.fn(), vi.fn(), {
 			promptStyle: true,
 		});
 
 		const lines = renderLines(component);
 
-		expect(lines[0]).toMatch(/^╭─ Prompt .*╮$/);
-		expect(lines.at(-1)).toMatch(/^╰.*╯$/);
+		expect(lines[0]).toMatch(/^▎ Prompt/);
+		expect(lines.at(-1)).toMatch(/^▎ *$/);
 		expect(lines.some(line => line.includes("> "))).toBe(true);
 	});
 

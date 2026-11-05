@@ -102,7 +102,8 @@ describe("QwenCloud Token Plan provider", () => {
 			expect(models?.find(model => model.id === id)).toMatchObject({ contextWindow, maxTokens });
 		}
 		for (const id of ["deepseek-v4-flash", "deepseek-v4-flash-0731", "deepseek-v4-pro-0813"]) {
-			expect(models?.find(model => model.id === id)).toMatchObject({
+			// The rules resolve thinking when the spec becomes a model.
+			expect(buildModel(models!.find(model => model.id === id)!)).toMatchObject({
 				reasoning: true,
 				thinking: {
 					mode: "effort",
@@ -120,9 +121,9 @@ describe("QwenCloud Token Plan provider", () => {
 			provider: "alibaba-token-plan",
 			name: "Qwen3.7 Plus",
 			contextWindow: 1_000_000,
-			maxTokens: 64_000,
+			maxTokens: 65_536,
 		});
-		expect(models?.find(model => model.id === "qwen3.8-max")).toMatchObject({
+		expect(buildModel(models!.find(model => model.id === "qwen3.8-max")!)).toMatchObject({
 			id: "qwen3.8-max",
 			provider: "alibaba-token-plan",
 			reasoning: true,

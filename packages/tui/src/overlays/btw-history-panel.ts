@@ -35,7 +35,14 @@ import { sanitizeErrorLine } from "../chrome/error-block";
 import { sanitizeDisplayLine, sanitizeDisplayText } from "./extensions/display-text";
 import { editorKey, editorKeys, keyHint, rawKeyHint } from "../chrome/keybinding-hints";
 import { formatKeyHint, type KeyId } from "../app-keybindings";
-import { bottomBorder, row, topBorder } from "../chrome/overlay-box";
+import {
+	bottomBorder,
+	row,
+	splitPaneDivider,
+	splitPanePrefix,
+	splitPaneSuffix,
+	topBorder,
+} from "../chrome/overlay-box";
 import { padToWidth } from "../render/utils";
 import { SplitPane } from "../components/layout/split-pane";
 import { clampSelection, contentRowWidth, padLinesToHeight, renderScrollableList } from "../chrome/selector-helpers";
@@ -175,9 +182,9 @@ export class BtwHistoryPanel implements Component, Focusable {
 	#listCache: readonly string[] = [];
 	#detailCache: readonly string[] = [];
 	#bodyHeightLast = 1;
-	readonly #framePrefix = () => `${theme.fg("border", theme.boxRound.vertical)} `;
-	readonly #frameDivider = () => ` ${theme.fg("border", theme.boxRound.vertical)} `;
-	readonly #frameSuffix = () => ` ${theme.fg("border", theme.boxRound.vertical)}`;
+	readonly #framePrefix = splitPanePrefix;
+	readonly #frameDivider = splitPaneDivider;
+	readonly #frameSuffix = splitPaneSuffix;
 	#listPaneLines = (_width: number, height: number | undefined): readonly string[] => {
 		const rows = Math.max(0, Math.floor(height ?? this.#bodyHeightLast));
 		return padLinesToHeight(this.#listCache, rows).slice(0, rows);

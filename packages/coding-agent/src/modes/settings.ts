@@ -52,10 +52,19 @@ export const cfgInteractionPolicy = register({
 		tab: "interaction",
 		group: "Execution",
 		label: "Interaction Policy",
-		description: "How readily the agent offers structured forms for bounded choices, independent of model or provider",
+		description:
+			"How readily the agent offers structured forms for bounded choices, independent of model or provider",
 		options: [
-			{ value: "standard", label: "Standard", description: "Balance direct execution with useful structured choices" },
-			{ value: "aggressive", label: "Aggressive", description: "Prefer batching related fields, candidates, and ranges" },
+			{
+				value: "standard",
+				label: "Standard",
+				description: "Balance direct execution with useful structured choices",
+			},
+			{
+				value: "aggressive",
+				label: "Aggressive",
+				description: "Prefer batching related fields, candidates, and ranges",
+			},
 			{ value: "minimal", label: "Minimal", description: "Use optional forms only when necessary" },
 		],
 	},
@@ -176,6 +185,18 @@ export const cfgTuiContentWidth = register({
 	},
 });
 
+export const cfgTuiSidePanel = register({
+	id: "tui.sidePanel",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "appearance",
+		group: "Composer",
+		label: "Side Panel",
+		description: "Show session title, context and todos right of the conversation when the terminal has room",
+	},
+});
+
 export const cfgComposerPaintBackground = register({
 	id: "composer.paintBackground",
 	type: "boolean",
@@ -184,7 +205,8 @@ export const cfgComposerPaintBackground = register({
 		tab: "appearance",
 		group: "Composer",
 		label: "Paint Terminal Background",
-		description: "Fill the whole terminal with the theme's background while npi runs (terminals that ignore OSC 11 keep theirs)",
+		description:
+			"Fill the whole terminal with the theme's background while npi runs (terminals that ignore OSC 11 keep theirs)",
 	},
 });
 
@@ -196,7 +218,8 @@ export const cfgComposerDockInput = register({
 		tab: "appearance",
 		group: "Composer",
 		label: "Dock Input to the Bottom",
-		description: "Keep the prompt on the bottom row, with the welcome and the transcript above it, even when the screen is mostly empty",
+		description:
+			"Keep the prompt on the bottom row, with the welcome and the transcript above it, even when the screen is mostly empty",
 	},
 });
 effect(cfgComposerDockInput, setComposerDockInput);
@@ -1171,6 +1194,30 @@ export const cfgStartupQuiet = register({
 		group: "Startup & Updates",
 		label: "Quiet Startup",
 		description: "Skip welcome screen and startup status messages",
+	},
+});
+
+export const cfgTuiClearOnExit = register({
+	id: "tui.clearOnExit",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "interaction",
+		group: "Startup & Updates",
+		label: "Clear Screen on Exit",
+		description: "Clear the screen and scrollback when npi exits",
+	},
+});
+
+export const cfgStartupAnimation = register({
+	id: "startup.animation",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "interaction",
+		group: "Startup & Updates",
+		label: "Startup Animation",
+		description: "Reveal the home screen with a short animation",
 	},
 });
 

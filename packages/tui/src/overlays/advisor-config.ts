@@ -43,7 +43,18 @@ import {
 	type ModelPickerOrder,
 	sortModelItems,
 } from "./model-browser";
-import { bottomBorder, divider, dividerSplit, PanelRows, row, topBorder, topBorderSplit } from "../chrome/overlay-box";
+import {
+	bottomBorder,
+	divider,
+	dividerSplit,
+	PanelRows,
+	row,
+	splitPaneDivider,
+	splitPanePrefix,
+	splitPaneSuffix,
+	topBorder,
+	topBorderSplit,
+} from "../chrome/overlay-box";
 import { isLayoutMouseRoutable } from "../components/layout/geometry";
 import { SplitPane } from "../components/layout/split-pane";
 import { Stack } from "../components/layout/stack";
@@ -401,9 +412,9 @@ export class AdvisorConfigOverlayComponent implements Component {
 		left: this.#renderActivePane,
 		right: this.#renderPreviewPane,
 		leftSize: { ratio: 0.34, min: 22, max: 42 },
-		prefix: () => `${theme.fg("border", theme.boxRound.vertical)} `,
-		divider: () => ` ${theme.fg("border", theme.boxRound.vertical)} `,
-		suffix: () => ` ${theme.fg("border", theme.boxRound.vertical)}`,
+		prefix: splitPanePrefix,
+		divider: splitPaneDivider,
+		suffix: splitPaneSuffix,
 	});
 	readonly #frameTop = new PanelRows();
 	readonly #frameDivider = new PanelRows();

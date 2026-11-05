@@ -730,8 +730,8 @@ describe("ContextViewer layout", () => {
 				h.resize(height);
 				const lines = h.render(48);
 				expect(lines).toHaveLength(height);
-				expect(lines.at(-3)).toMatch(/^├.*┤$/);
-				expect(lines.at(-1)).toMatch(/^╰.*╯$/);
+				expect(lines.at(-3)).toMatch(/^▎ ─+ *$/);
+				expect(lines.at(-1)).toMatch(/^▎ *$/);
 				expect(lines.every(line => visibleWidth(line) <= 48)).toBe(true);
 			}
 			h.resize(24);

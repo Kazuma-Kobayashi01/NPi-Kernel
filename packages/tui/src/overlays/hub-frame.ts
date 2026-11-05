@@ -1,4 +1,13 @@
-import { bottomBorder, dividerSplit, PanelRows, row, topBorderSplit } from "../chrome/overlay-box";
+import {
+	bottomBorder,
+	dividerSplit,
+	PanelRows,
+	row,
+	splitPaneDivider,
+	splitPanePrefix,
+	splitPaneSuffix,
+	topBorderSplit,
+} from "../chrome/overlay-box";
 import { SplitPane } from "../components/layout/split-pane";
 import { Stack } from "../components/layout/stack";
 import { matchesKey } from "../keys";
@@ -176,9 +185,9 @@ export class HubFrame {
 			},
 			right: renderBody,
 			rightMinWidth: this.#bodyMinWidth,
-			prefix: () => `${theme.fg("border", theme.boxRound.vertical)} `,
-			divider: () => ` ${theme.fg("border", theme.boxRound.vertical)} `,
-			suffix: () => ` ${theme.fg("border", theme.boxRound.vertical)}`,
+			prefix: splitPanePrefix,
+			divider: splitPaneDivider,
+			suffix: splitPaneSuffix,
 		});
 		this.#stack = new Stack({
 			children: [

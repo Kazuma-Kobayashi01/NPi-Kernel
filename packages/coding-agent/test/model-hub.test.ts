@@ -197,7 +197,7 @@ describe("ModelHub", () => {
 			const { hub } = createHub({ models: [makeModel("github-copilot-enterprise", "phone-model")] });
 			const lines = hub.render(36).map(line => stripVTControlCharacters(line));
 
-			expect(lines[0]).toStartWith("╭─ Models ───────────┬");
+			expect(lines[0]).toStartWith("▎ Models");
 			// Body row (not the sidebar's "● github-…" entry) keeps the provider-qualified name.
 			expect(lines.some(line => /│ {2,}github-/.test(line))).toBe(true);
 		});
@@ -1680,7 +1680,7 @@ describe("ModelHub", () => {
 			const sidebarIndexOf = (provider: string): number =>
 				hub
 					.render(220)
-					.map(line => stripVTControlCharacters(line).split("│")[1] ?? "")
+					.map(line => (stripVTControlCharacters(line).split("│")[0] ?? "").replace("▎", ""))
 					.findIndex(cell => cell.includes(provider));
 
 			expect(sidebarIndexOf("aaa-provider")).toBeLessThan(sidebarIndexOf("zzz-provider"));

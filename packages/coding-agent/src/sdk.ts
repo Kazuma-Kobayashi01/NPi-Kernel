@@ -4896,6 +4896,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		// block createAgentSession for tens of seconds while the whole file is
 		// streamed and parsed on the main thread.
 		session = new AgentSession({
+			isSubagentSession,
 			cacheWarmer,
 			costGate: options.costGate,
 			advisorWatchdogPrompt,
