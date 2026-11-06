@@ -761,6 +761,12 @@ export class InputController {
 		for (const key of this.ctx.keybindings.getKeys("app.session.resume")) {
 			this.ctx.editor.setCustomKeyHandler(key, () => this.ctx.showSessionSelector());
 		}
+		for (const key of this.ctx.keybindings.getKeys("app.session.tabNext")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.switchSessionTab(1));
+		}
+		for (const key of this.ctx.keybindings.getKeys("app.session.tabPrev")) {
+			this.ctx.editor.setCustomKeyHandler(key, () => void this.ctx.switchSessionTab(-1));
+		}
 		for (const key of this.ctx.keybindings.getKeys("app.message.followUp")) {
 			this.ctx.editor.setCustomKeyHandler(key, () => void this.handleFollowUp());
 		}

@@ -197,6 +197,18 @@ export const cfgTuiSidePanel = register({
 	},
 });
 
+export const cfgTuiSessionTabs = register({
+	id: "tui.sessionTabs",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "appearance",
+		group: "Composer",
+		label: "Session Tabs",
+		description: "Above the composer, list the sessions opened in this window once there are two; alt+s and alt+shift+s switch",
+	},
+});
+
 export const cfgComposerPaintBackground = register({
 	id: "composer.paintBackground",
 	type: "boolean",

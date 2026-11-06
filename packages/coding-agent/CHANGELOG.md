@@ -8,6 +8,7 @@
 - `tui.clearOnExit` clears the screen and scrollback when npi exits, on by default; the resume hint still prints afterwards.
 - The first Ctrl+C on an idle prompt shows `Press Ctrl+C again to exit`, and the second press now has a full second to land.
 - The home screen plays a short reveal at startup: a band of light brightens the logo, the prompt types itself out, then the hints appear. `startup.animation` turns it off.
+- Session tabs: once a window has shown two saved sessions, a strip above the composer lists them (up to 8, current filled); `alt+s` and `alt+shift+s` switch, which resumes that session in place and waits for a running turn to finish. `tui.sessionTabs` turns it off.
 - Terminals at least 116 columns wide show a side panel laid out like the desktop rail: environment, context meter, subscription limits with resets, this conversation's spend and tokens, and open todos; `tui.sidePanel` turns it off. The status line leaves out what the panel shows.
 - File checkpoints: the project's files are snapshotted before each prompt (`checkpoints.files`, on by default) in content-addressed copies under the agent directory, without touching the project's repository. Rewinding to a prompt with Esc Esc offers to restore them, and RPC gains `plan_file_restore` and `restore_files`.
 - Small fast models (Gemini Flash and Lite) get a shorter, tool-first system prompt through the new catalog `prompt-profile` axis; other models keep the full prompt.

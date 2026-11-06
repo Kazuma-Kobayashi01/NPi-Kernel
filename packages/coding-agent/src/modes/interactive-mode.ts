@@ -79,6 +79,7 @@ import type { CollabHost } from "../collab/host";
 import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import { appKey, editorKey, fitHints, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { renderSidePanel, type SidePanelRows } from "@oh-my-pi/pi-tui/chrome/side-panel";
+import { type SessionTab, SessionTabsComponent } from "@oh-my-pi/pi-tui/chrome/session-tabs";
 import { formatModelString, type ResolvedModelRoleValue } from "../config/model-resolver";
 import { isSettingsInitialized, Settings, settings } from "../config/settings";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
@@ -376,6 +377,7 @@ import {
 	cfgComposerPaintBackground,
 	cfgTuiContentWidth,
 	cfgTuiSidePanel,
+	cfgTuiSessionTabs,
 	cfgComposerShape,
 	cfgComposerTokenRate,
 	cfgDisplayAdvisorCollapsedLines,
@@ -470,6 +472,7 @@ const cfgLiveUiSettings = combine({
 	"composer.paintBackground": cfgComposerPaintBackground,
 	"tui.contentWidth": cfgTuiContentWidth,
 	"tui.sidePanel": cfgTuiSidePanel,
+	"tui.sessionTabs": cfgTuiSessionTabs,
 	"tui.vimMode": cfgTuiVimMode,
 	"tui.vimModeDisplay": cfgTuiVimModeDisplay,
 	"display.pinnedAgents": cfgDisplayPinnedAgents,
@@ -540,6 +543,8 @@ const SIDE_PANEL_SEGMENTS: ReadonlySet<StatusLineSegmentId> = new Set([
 const NO_SEGMENTS: ReadonlySet<StatusLineSegmentId> = new Set();
 
 const STILL_CLOSING_DELAY_MS = 3_000;
+/** Sessions the tab strip keeps; the oldest leaves when another joins. */
+const MAX_SESSION_TABS = 8;
 const JUDGMENT_BATCH_PROGRESS_RETAIN_MS = 1_000;
 /** Startup emits several status-bar changes within a second; persist only the settled one. */
 const COMPOSER_STATUS_PERSIST_DELAY_MS = 1_000;
@@ -2536,6 +2541,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				this.statusContainer,
 				this.attachmentChipsContainer,
 				this.hookWidgetContainerAbove,
+				this.#sessionTabsStrip,
 				this.editorContainer,
 				this.hookWidgetContainerBelow,
 			],
@@ -2549,6 +2555,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				// in. Classify every new root that can collapse on its own.
 				transientChrome: [
 					this.editorContainer,
+					this.#sessionTabsStrip,
 					this.attachmentChipsContainer,
 					this.reportContainer,
 					this.pendingMessagesContainer,
@@ -4128,6 +4135,49 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.editor.setMaxHeight(this.#computeEditorMaxHeight());
 	}
 
+	/**
+	 * The session tab strip's tabs, oldest first: the saved sessions this process has shown, kept
+	 * up to date here on every frame (a new, resumed or forked session joins; the current one's
+	 * title follows renames), and a fresh session not yet on disk at the end. Off: none.
+	 */
+	#sessionTabRows(): readonly SessionTab[] {
+		if (!cfgTuiSessionTabs.get(this.settings)) return [];
+		const file = this.sessionManager.isSessionOnDisk() ? this.sessionManager.getSessionFile() : undefined;
+		const title = this.sessionManager.getSessionName() ?? "New session";
+		if (file) {
+			const known = this.#sessionTabs.find(tab => tab.path === file);
+			if (known) known.title = title;
+			else {
+				this.#sessionTabs.push({ path: file, title });
+				if (this.#sessionTabs.length > MAX_SESSION_TABS) this.#sessionTabs.shift();
+			}
+		}
+		const tabs: SessionTab[] = this.#sessionTabs.map(tab => ({ title: tab.title, current: tab.path === file }));
+		if (!file) tabs.push({ title, current: true });
+		return tabs;
+	}
+
+	/** Switches to the session tab `step` away from the current one (`app.session.tabNext` / `tabPrev`). */
+	async switchSessionTab(step: 1 | -1): Promise<void> {
+		const tabs = this.#sessionTabRows();
+		if (tabs.length < 2) {
+			this.showStatus("No other session tab: /new or /resume opens one");
+			return;
+		}
+		if (this.#isAutoSubmitBlocked()) {
+			this.showWarning("Wait for this turn to finish before switching sessions");
+			return;
+		}
+		if (this.#vibeSessionTransitionBlocked()) return;
+		// A fresh session sits after the saved ones, so it has no path of its own to come back to.
+		const at = tabs.findIndex(tab => tab.current);
+		const saved = this.#sessionTabs.length;
+		const next = (((at + step) % tabs.length) + tabs.length) % tabs.length;
+		const target = next < saved ? this.#sessionTabs[next] : undefined;
+		if (!target) return;
+		await this.handleResumeSession(target.path);
+	}
+
 	/** The side panel's rows; a frame can arrive every few milliseconds, so the facts refresh at most once a second. */
 	#sidePanelRows(width: number): SidePanelRows {
 		const now = performance.now();
@@ -4235,6 +4285,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.updateEditorBorderColor();
 		}
 		if (any("composer.shape")) this.syncComposerShape();
+		if (any("tui.sessionTabs")) this.ui.requestRender();
 		if (any("tui.vimMode", "tui.vimModeDisplay")) this.#applyVimModeSetting();
 		if (any("display.pinnedAgents")) this.applyPinnedAgentsSetting();
 		if (any("display.subagentLivePreview")) {
@@ -4426,6 +4477,16 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	/** Whether the user can pick a claimed link: the link-hint key is bound or `tui.mouse` delivers clicks. */
 	#sidePanelCache: { at: number; rows: SidePanelRows } | undefined;
+	/** Saved sessions of the tab strip, oldest first (`#sessionTabRows`). */
+	readonly #sessionTabs: { path: string; title: string }[] = [];
+	readonly #sessionTabsStrip = new SessionTabsComponent(
+		() => this.#sessionTabRows(),
+		() =>
+			theme.fg(
+				"dim",
+				`${appKey(this.keybindings, "app.session.tabPrev")}/${appKey(this.keybindings, "app.session.tabNext")} switch`,
+			),
+	);
 	readonly #homePlaceholder = HOME_PLACEHOLDERS[Math.floor(Math.random() * HOME_PLACEHOLDERS.length)]!;
 
 	#linkPickable = (): boolean => this.#mouseCapture || Boolean(appKey(this.keybindings, "app.links.hint"));

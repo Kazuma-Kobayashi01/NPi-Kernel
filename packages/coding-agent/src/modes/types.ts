@@ -537,6 +537,8 @@ export interface InteractiveModeContext {
 	handleClearCommand(): Promise<void>;
 	/** User-initiated `/new`: {@link handleClearCommand} plus the `plan.defaultOnStartup` default. */
 	handleNewCommand(): Promise<void>;
+	/** Switches to the session tab `step` away from the current one. */
+	switchSessionTab(step: 1 | -1): Promise<void>;
 	handleFreshCommand(): Promise<void>;
 	handleResetContextCommand(): Promise<void>;
 	handleDeleteCommand(): Promise<void>;

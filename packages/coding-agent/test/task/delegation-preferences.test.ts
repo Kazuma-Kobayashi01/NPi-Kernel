@@ -173,7 +173,8 @@ describe("Desktop delegation consumers", () => {
 		expect(models.map(model => model.calls.length)).toEqual([0, 0, 2]);
 		const mixed = await tool.execute("mixed-batch", { context: "Shared context", tasks: [{ agent: "worker", task: "Find it", model: "@economy" }, { agent: "worker", task: "Design it", model: "@flagship" }] }, undefined, undefined, context);
 		expect(mixed.isError).not.toBe(true);
-		expect(dialogs).toBe(1, "an unconfigured or mixed tier falls back to the Ask");
+		// An unconfigured or mixed tier falls back to the Ask.
+		expect(dialogs).toBe(1);
 	});
 
 	it("keeps preflight non-interactive; cancelling Auto or running without UI never reaches the executor", async () => {

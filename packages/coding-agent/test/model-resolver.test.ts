@@ -1350,10 +1350,8 @@ describe("resolveAgentModelPatterns", () => {
 		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })).toEqual(["baseten/flag:high"]);
 		expect(resolveAgentModelPatterns({ agentModel: "@arbiter", settings })).toEqual(["baseten/flag:high"]);
 		expect(resolveAgentModelPatterns({ agentModel: "@task", settings })).toEqual(["baseten/own-task"]);
-		expect(resolveAgentModelPatterns({ agentModel: "@advisor", settings })).toEqual(
-			["baseten/flag:high"],
-			"advisor → slow → flagship",
-		);
+		// advisor → slow → flagship
+		expect(resolveAgentModelPatterns({ agentModel: "@advisor", settings })).toEqual(["baseten/flag:high"]);
 	});
 
 	test("without a roster the built-in roles keep their own defaults", () => {

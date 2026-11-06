@@ -53,6 +53,8 @@ interface AppKeybindings {
 	"app.session.tree": true;
 	"app.session.fork": true;
 	"app.session.resume": true;
+	"app.session.tabNext": true;
+	"app.session.tabPrev": true;
 	"app.session.observe": true;
 	"app.session.togglePath": true;
 	"app.session.toggleSort": true;
@@ -213,6 +215,14 @@ export const KEYBINDINGS = {
 	"app.session.resume": {
 		defaultKeys: [],
 		description: "Resume session",
+	},
+	"app.session.tabNext": {
+		defaultKeys: "alt+s",
+		description: "Switch to the next session tab",
+	},
+	"app.session.tabPrev": {
+		defaultKeys: "alt+shift+s",
+		description: "Switch to the previous session tab",
 	},
 	"app.agents.hub": {
 		defaultKeys: "alt+a",
