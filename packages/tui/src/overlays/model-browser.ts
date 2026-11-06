@@ -55,6 +55,11 @@ import { plainText } from "../native/spans";
 /** Canonical display ordering of built-in model roles. */
 export type ModelRole =
 	| "default"
+	| "flagship"
+	| "high"
+	| "standard"
+	| "economy"
+	| "arbiter"
 	| "smol"
 	| "slow"
 	| "vision"
@@ -72,6 +77,11 @@ export type ModelRole =
 	| "judge";
 export const MODEL_ROLE_IDS: ModelRole[] = [
 	"default",
+	"flagship",
+	"high",
+	"standard",
+	"economy",
+	"arbiter",
 	"smol",
 	"slow",
 	"vision",
@@ -90,6 +100,11 @@ export const MODEL_ROLE_IDS: ModelRole[] = [
 ];
 export const CHAT_MODEL_ROLE_IDS: ModelRole[] = [
 	"default",
+	"flagship",
+	"high",
+	"standard",
+	"economy",
+	"arbiter",
 	"smol",
 	"slow",
 	"vision",

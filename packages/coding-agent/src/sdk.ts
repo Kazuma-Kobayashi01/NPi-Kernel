@@ -49,6 +49,7 @@ import {
 	formatAdvisorMemoryPrompt,
 } from "./advisor";
 import { AsyncJobManager } from "./async";
+import { ROSTER_TIERS } from "./config/model-roster";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { createAutoresearchExtension } from "./autoresearch";
 import { loadCapability, reset as resetCapabilities } from "./capability";
@@ -4235,6 +4236,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				eagerTasks: cfgTaskEager.get(settings) !== "default",
 				eagerTasksAlways: cfgTaskEager.get(settings) === "always",
 				delegationAppetite: readSubagentPreferences(settings)?.appetite,
+				modelRoster:
+					readSubagentPreferences(settings)?.mode === "auto"
+						? ROSTER_TIERS.flatMap(tier => {
+								const model = settings.getModelRole(tier)?.trim();
+								return model ? [{ tier, model }] : [];
+							})
+						: undefined,
 				interactionPolicy: cfgInteractionPolicy.get(settings),
 				taskBatch: cfgTaskBatch.get(settings),
 				taskMaxConcurrency: getSubagentConcurrencyLimit(settings),

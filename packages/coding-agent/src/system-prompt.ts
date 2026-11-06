@@ -567,6 +567,8 @@ export interface BuildSystemPromptOptions {
 	eagerTasksAlways?: boolean;
 	/** Explicit Desktop appetite replaces catalog/eager wording, including for custom system prompts. */
 	delegationAppetite?: SubagentPreferences["appetite"];
+	/** Auto subagent mode's model roster: the configured tiers, in roster order (`config/model-roster.ts`). */
+	modelRoster?: Array<{ tier: string; model: string }>;
 	/** Model/provider-independent guidance for structured user interaction. Default: standard. */
 	interactionPolicy?: InteractionPolicy;
 	/** Whether `task.batch` is enabled; selects the centralized delegation guidance's call shape. */
@@ -696,6 +698,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		eagerTasks = false,
 		eagerTasksAlways = false,
 		delegationAppetite,
+		modelRoster,
 		interactionPolicy = "standard",
 		taskBatch = true,
 		taskMaxConcurrency = 0,
@@ -1042,6 +1045,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		eagerTasks,
 		eagerTasksAlways,
 		delegationAppetite,
+		modelRoster: modelRoster?.length ? modelRoster : undefined,
 		interactionPolicyStandard: interactionPolicy === "standard",
 		interactionPolicyAggressive: interactionPolicy === "aggressive",
 		interactionPolicyMinimal: interactionPolicy === "minimal",

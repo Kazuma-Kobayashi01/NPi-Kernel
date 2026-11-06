@@ -68,7 +68,10 @@ function getNativesDir() {
 	if (xdgDataHome && fs.existsSync(path.join(xdgDataHome, "omp"))) {
 		return path.join(xdgDataHome, "omp", "natives");
 	}
-	return path.join(os.homedir(), ".omp", "natives");
+	// NPi's layout (pi-utils `getNativesDir`): a cache under ~/.cache/npi, or inside a PI_CONFIG_DIR root.
+	const configDir = process.env.PI_CONFIG_DIR;
+	if (configDir) return path.join(os.homedir(), configDir, "natives");
+	return path.join(os.homedir(), ".cache", "npi", "natives");
 }
 
 function resolveLeafPackageDir(platformTag) {

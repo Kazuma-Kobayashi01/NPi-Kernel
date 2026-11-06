@@ -1151,7 +1151,12 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			launchSession = undefined;
 		}
 		try {
-			const selection = await selectDelegationModel(this.session, signal, context);
+			const selection = await selectDelegationModel(
+				this.session,
+				signal,
+				context,
+				spawnItems.map(item => item.model),
+			);
 			if (selection) this.#delegationSelections.set(toolCallId, selection);
 		} catch (error) {
 			return createTaskModeError(error instanceof Error ? error.message : String(error));

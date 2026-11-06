@@ -55,6 +55,14 @@ function acceptsJudge(model: Model): boolean {
 
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	default: { tag: "DEFAULT", name: "Default", color: "success", section: "chat", accepts: acceptsChat },
+	// The model roster: four tiers subagents are scheduled onto by difficulty, plus the arbiter of
+	// a multi-expert review. `smol`, `task` and `slow` follow economy, standard and flagship while
+	// they have no model of their own (`model-resolver.ts` ROLE_CONFIGURED_FALLBACK).
+	flagship: { tag: "FLAGSHIP", name: "Flagship", color: "accent", section: "chat", accepts: acceptsChat },
+	high: { tag: "HIGH", name: "High", color: "success", section: "chat", accepts: acceptsChat },
+	standard: { tag: "STANDARD", name: "Standard", color: "muted", section: "chat", accepts: acceptsChat },
+	economy: { tag: "ECONOMY", name: "Economy", color: "warning", section: "chat", accepts: acceptsChat },
+	arbiter: { tag: "ARBITER", name: "Arbiter", color: "accent", section: "chat", accepts: acceptsChat },
 	smol: { tag: "SMOL", name: "Fast", color: "warning", section: "chat", accepts: acceptsChat },
 	slow: { tag: "SLOW", name: "Thinking", color: "accent", section: "chat", accepts: acceptsChat },
 	vision: { tag: "VISION", name: "Vision", color: "error", section: "chat", accepts: acceptsChat },

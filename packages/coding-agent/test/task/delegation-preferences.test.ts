@@ -157,6 +157,25 @@ describe("Desktop delegation consumers", () => {
 		expect(models.map(model => model.calls.length)).toEqual([0, 2, 0]);
 	});
 
+	it("runs an Auto batch that names one configured roster tier on it without asking, and asks for a mixed batch", async () => {
+		const { session, settings, models } = await fixture("auto");
+		settings.setModelRole("economy", "mock/third");
+		let dialogs = 0;
+		const context = interactive(async questions => {
+			dialogs++;
+			return submit(questions);
+		});
+		session.getToolContext = () => context;
+		const tool = await TaskTool.create(session);
+		const rostered = await tool.execute("roster-batch", { context: "Shared context", tasks: [{ agent: "worker", task: "Find it", model: "@economy" }, { agent: "worker", task: "Sum it", model: "@economy" }] }, undefined, undefined, context);
+		expect(rostered.isError).not.toBe(true);
+		expect(dialogs).toBe(0);
+		expect(models.map(model => model.calls.length)).toEqual([0, 0, 2]);
+		const mixed = await tool.execute("mixed-batch", { context: "Shared context", tasks: [{ agent: "worker", task: "Find it", model: "@economy" }, { agent: "worker", task: "Design it", model: "@flagship" }] }, undefined, undefined, context);
+		expect(mixed.isError).not.toBe(true);
+		expect(dialogs).toBe(1, "an unconfigured or mixed tier falls back to the Ask");
+	});
+
 	it("keeps preflight non-interactive; cancelling Auto or running without UI never reaches the executor", async () => {
 		const { session, models } = await fixture("auto");
 		let dialogs = 0;

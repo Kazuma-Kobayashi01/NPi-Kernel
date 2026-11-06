@@ -8,7 +8,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as natives from "@oh-my-pi/pi-natives";
-import { getAgentDir, hashPath, logger } from "@oh-my-pi/pi-utils";
+import { getCheckpointsDir, hashPath, logger } from "@oh-my-pi/pi-utils";
 
 /** Custom session entry placed just before the prompt it belongs to. */
 export const FILE_CHECKPOINT_CUSTOM_TYPE = "file-checkpoint";
@@ -49,7 +49,7 @@ export interface FileCheckpointChange {
 	removes: boolean;
 }
 
-const storeDir = (root: string) => path.join(getAgentDir(), "checkpoints", hashPath(root));
+const storeDir = (root: string) => path.join(getCheckpointsDir(), hashPath(root));
 const manifestsDir = (root: string) => path.join(storeDir(root), "manifests");
 const manifestPath = (ref: FileCheckpointRef) => path.join(manifestsDir(ref.root), `${ref.id}.json`);
 const blobPath = (root: string, hash: string) => path.join(storeDir(root), "blobs", hash.slice(0, 2), hash.slice(2));

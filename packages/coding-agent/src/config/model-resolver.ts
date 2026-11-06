@@ -1156,10 +1156,25 @@ interface ConfiguredRoleFallback {
 
 const ROLE_CONFIGURED_FALLBACK: Partial<Record<ModelRole, ConfiguredRoleFallback>> = {
 	advisor: { role: "slow", configuredOnly: true },
+	// The roster (`model-roster.ts`): an unset built-in role follows its tier once that is set.
+	smol: { role: "economy", configuredOnly: true },
+	task: { role: "standard", configuredOnly: true },
+	slow: { role: "flagship", configuredOnly: true },
+	arbiter: { role: "flagship", configuredOnly: true },
 	memory: { role: "tiny", configuredOnly: false },
 	tiny: { role: "smol", configuredOnly: false },
 	widget: { role: "smol", configuredOnly: false },
 };
+
+/**
+ * Whether `role` has a model of its own or, through a configured-only fallback, inherits one
+ * (`advisor` → `slow` → `flagship`). The fallback table has no cycles.
+ */
+function isRoleConfigured(role: ModelRole, settings: ModelRoleLookup | undefined): boolean {
+	if (settings?.getModelRole(role)?.trim()) return true;
+	const next = ROLE_CONFIGURED_FALLBACK[role];
+	return next?.configuredOnly === true && isRoleConfigured(next.role, settings);
+}
 
 function hasOwnKey<T extends object>(value: T, key: PropertyKey): key is keyof T {
 	return Object.hasOwn(value, key);
@@ -1247,7 +1262,7 @@ function resolveConfiguredRolePattern(
 	const fallbackPatterns =
 		configured ||
 		!configuredFallback ||
-		(configuredFallback.configuredOnly && !settings?.getModelRole(configuredFallback.role)?.trim())
+		(configuredFallback.configuredOnly && !isRoleConfigured(configuredFallback.role, settings))
 			? undefined
 			: resolveConfiguredRolePattern(formatModelRoleAlias(configuredFallback.role), settings, new Set(visited));
 	const resolved = configured

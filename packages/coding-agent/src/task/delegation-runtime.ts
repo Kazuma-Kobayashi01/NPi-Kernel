@@ -2,6 +2,7 @@ import type { AgentToolContext, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { judgeQuestions, type Model } from "@oh-my-pi/pi-ai";
 import { resolveThinkingLevelForModel } from "@oh-my-pi/pi-tui/thinking";
 import { formatModelStringWithRouting, resolveModelOverride } from "../config/model-resolver";
+import { rosterTierOf } from "../config/model-roster";
 import type { Settings } from "../config/settings";
 import { journalJudgmentUsage, resolveJudge } from "../judgment";
 import modelQuestions from "../prompts/judge/subagent-model.json" with { type: "json" };
@@ -226,19 +227,43 @@ async function resolveTypedModel(
 	return selector;
 }
 
-/** No UI work occurs during preflight; a caller explicitly resolves one selection per dispatch batch. */
+/**
+ * Auto mode's roster pick: when every item of the batch names the same roster tier
+ * (`model: "@economy"`) and that tier has a usable model, the batch runs on it without the Ask.
+ * The tier's own `:thinking` suffix wins, else the root's level, clamped to what the model supports.
+ */
+function rosterSelection(owner: ToolSession, requested: readonly unknown[] | undefined): DelegationSelection | undefined {
+	if (!requested?.length) return undefined;
+	const tiers = new Set(requested.map(selector => (typeof selector === "string" ? rosterTierOf(selector) : undefined)));
+	const [tier] = tiers;
+	if (tiers.size !== 1 || !tier || !owner.settings.getModelRole(tier)?.trim()) return undefined;
+	const resolved = resolveModelOverride([`@${tier}`], owner.modelRegistry!, owner.settings);
+	if (!resolved.model || !owner.modelRegistry!.hasConfiguredAuth(resolved.model)) return undefined;
+	const wanted = (resolved.thinkingLevel ?? owner.getActiveThinkingLevel?.() ?? "off") as SubagentPreferences["thinking"];
+	const level = resolveThinkingLevelForModel(resolved.model, thinkingLevels.includes(wanted) ? wanted : "off") ?? "off";
+	return { model: formatModelStringWithRouting(resolved.model), thinking: level as SubagentPreferences["thinking"] };
+}
+
+/**
+ * No UI work occurs during preflight; a caller explicitly resolves one selection per dispatch batch.
+ * `requested`: the model selectors the batch's items named, for Auto mode's roster pick.
+ */
 export async function selectDelegationModel(
 	session: ToolSession,
 	signal?: AbortSignal,
 	toolContext?: AgentToolContext,
+	requested?: readonly unknown[],
 ): Promise<DelegationSelection | undefined> {
 	const preferences = delegationPreferences(session);
 	if (!preferences) return undefined;
 	if (preferences.appetite === "off") throw new Error("Subagent delegation is off.");
 	const owner = delegationOwner(session);
 	let selection: DelegationSelection;
+	const rostered = preferences.mode === "auto" ? rosterSelection(owner, requested) : undefined;
 	if (preferences.mode !== "auto") {
 		selection = fixedSelection(owner, preferences);
+	} else if (rostered) {
+		selection = rostered;
 	} else {
 		const available = owner.modelRegistry!.getAvailable();
 		const current = owner.getActiveModel?.();

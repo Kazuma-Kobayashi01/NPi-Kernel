@@ -33,8 +33,14 @@ export const APP_URL: string = "https://omp.sh/";
 /** Project-local config directory name (e.g. ".omp" inside a project) */
 export const CONFIG_DIR_NAME: string = ".omp";
 
-/** Global data root relative to the home folder: config, auth, sessions and caches (isolated from the omp CLI's ~/.omp). */
+/** Global data root relative to the home folder: config, auth and sessions (isolated from the omp CLI's ~/.omp). */
 export const GLOBAL_CONFIG_DIR_NAME: string = ".local/share/npi";
+
+/** Cache root relative to the home folder: everything under it can be deleted and is rebuilt on demand. */
+export const GLOBAL_CACHE_DIR_NAME: string = ".cache/npi";
+
+/** NPi's workspace for Code projects; agent-made worktrees go in a hidden folder inside it. */
+export const CODE_WORKSPACE_DIR_NAME: string = "Documents/NPi/Code";
 
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
@@ -130,6 +136,17 @@ export function getBaseConfigRoot(): string {
 
 function getProfileConfigRoot(profile: string | undefined): string {
 	const root = getBaseConfigRoot();
+	return profile ? path.join(root, "profiles", profile) : root;
+}
+
+/**
+ * Cache root for a profile (~/.cache/npi, or ~/.cache/npi/profiles/<name>). Undefined when
+ * PI_CONFIG_DIR relocates the config root: its caches then stay inside it, so a relocated
+ * (test, sandbox) root never shares a cache with the real one.
+ */
+function getProfileCacheRoot(profile: string | undefined): string | undefined {
+	if (process.env.PI_CONFIG_DIR) return undefined;
+	const root = path.join(os.homedir(), GLOBAL_CACHE_DIR_NAME);
 	return profile ? path.join(root, "profiles", profile) : root;
 }
 
@@ -353,6 +370,10 @@ export function getConfigAgentDirName(): string {
 
 type XdgCategory = "data" | "state" | "cache";
 
+/** Cache folders older NPi builds kept under the config root and the agent dir. */
+const LEGACY_ROOT_CACHES = ["cache", "natives", "puppeteer", "webcache"] as const;
+const LEGACY_AGENT_CACHES = ["cache", "checkpoints"] as const;
+
 /**
  * Resolves and caches all omp directory paths. On Linux, when XDG environment
  * variables are set, paths are redirected under $XDG_*_HOME/omp/. A new
@@ -371,6 +392,7 @@ class DirResolver {
 
 	readonly #rootCache = new Map<string, string>();
 	readonly #agentCache = new Map<string, string>();
+	readonly #legacyCacheMoves: Array<[string, string]> = [];
 
 	constructor(options: { agentDirOverride?: string; profile?: string } = {}) {
 		const profile = normalizeProfileName(options.profile);
@@ -433,23 +455,41 @@ class DirResolver {
 			return undefined;
 		};
 
+		// Without XDG, caches go to ~/.cache/npi (mirroring the config root's layout) rather than
+		// next to config and sessions. An agent-dir override keeps its caches inside itself.
+		const cacheRoot = getProfileCacheRoot(profile);
 		this.#rootDirs = {
 			data: xdgData ?? this.configRoot,
 			state: xdgState ?? this.configRoot,
-			cache: xdgCache ?? this.configRoot,
+			cache: xdgCache ?? cacheRoot ?? this.configRoot,
 		};
 		// XDG flattens the agent/ prefix: ~/.omp/agent/sessions → $XDG_DATA_HOME/omp/sessions
 		this.#agentDirs = {
 			data: xdgData ?? this.agentDir,
 			state: xdgState ?? this.agentDir,
-			cache: xdgCache ?? this.agentDir,
+			cache: xdgCache ?? (isDefault && cacheRoot ? path.join(cacheRoot, "agent") : this.agentDir),
 		};
 		const baseRoot = getBaseConfigRoot();
 		this.#baseRootDirs = {
 			data: resolveBase("XDG_DATA_HOME") ?? baseRoot,
 			state: resolveBase("XDG_STATE_HOME") ?? baseRoot,
-			cache: resolveBase("XDG_CACHE_HOME") ?? baseRoot,
+			cache: resolveBase("XDG_CACHE_HOME") ?? getProfileCacheRoot(undefined) ?? baseRoot,
 		};
+		if (cacheRoot && this.#rootDirs.cache === cacheRoot) {
+			for (const name of LEGACY_ROOT_CACHES) {
+				this.#legacyCacheMoves.push([path.join(this.configRoot, name), path.join(cacheRoot, name)]);
+			}
+		}
+		if (this.#agentDirs.cache !== this.agentDir && this.#agentDirs.cache !== xdgCache) {
+			for (const name of LEGACY_AGENT_CACHES) {
+				this.#legacyCacheMoves.push([path.join(this.agentDir, name), path.join(this.#agentDirs.cache, name)]);
+			}
+		}
+	}
+
+	/** [old, new] pairs for the caches older builds kept under the config root and agent dir. */
+	get legacyCacheMoves(): ReadonlyArray<[string, string]> {
+		return this.#legacyCacheMoves;
 	}
 
 	/** Profile-independent config-root subdirectory, with optional XDG override. Shared across profiles. */
@@ -564,6 +604,26 @@ export function refreshDirsFromEnv(): void {
 /** Get the config root directory (~/.omp). */
 export function getConfigRootDir(): string {
 	return dirs.configRoot;
+}
+
+/**
+ * Move the caches older NPi builds kept under ~/.local/share/npi to ~/.cache/npi: a rename on one
+ * volume. A cache whose new folder already exists is deleted instead, since either copy rebuilds.
+ * Best-effort and idempotent, so tabs starting at once can all run it; a failure only costs a cache.
+ * Synchronous because it runs once at CLI startup, before anything reads these folders.
+ */
+export function migrateLegacyCaches(): void {
+	for (const [from, to] of dirs.legacyCacheMoves) {
+		try {
+			if (!fs.existsSync(from)) continue;
+			if (fs.existsSync(to)) {
+				fs.rmSync(from, { recursive: true, force: true });
+				continue;
+			}
+			fs.mkdirSync(path.dirname(to), { recursive: true });
+			fs.renameSync(from, to);
+		} catch {}
+	}
 }
 
 /** Set the coding agent directory. Creates a fresh resolver, invalidating all cached paths. */
@@ -776,12 +836,24 @@ export function setWorktreesDir(dir: string | undefined): string | undefined {
 /**
  * Get the agent-managed worktrees directory. Resolution order: the
  * `OMP_WORKTREE_DIR` env var, then the {@link setWorktreesDir} override (the
- * `worktree.base` setting), then the `~/.omp/wt` default. The env var and the
+ * `worktree.base` setting), then the default. The env var and the
  * override are both `~`-expanded and must be absolute; a relative value is
  * ignored and resolution falls through.
+ *
+ * The default is `~/Documents/NPi/Code/.agent-worktrees` (`profiles/<name>`
+ * inside it for a named profile): worktrees hold the user's work, so they live
+ * beside the Code projects rather than in a hidden data folder. NPi Desktop's
+ * own task worktrees are its sibling `.worktrees`, which `npi worktree clear`
+ * never touches. A PI_CONFIG_DIR-relocated root keeps them in its own `wt/`.
  */
 export function getWorktreesDir(): string {
-	return resolveAbsoluteDir(process.env.OMP_WORKTREE_DIR) ?? worktreesDirOverride ?? dirs.rootSubdir("wt", "data");
+	return resolveAbsoluteDir(process.env.OMP_WORKTREE_DIR) ?? worktreesDirOverride ?? defaultWorktreesDir();
+}
+
+function defaultWorktreesDir(): string {
+	if (process.env.PI_CONFIG_DIR) return dirs.rootSubdir("wt", "data");
+	const root = path.join(os.homedir(), CODE_WORKSPACE_DIR_NAME, ".agent-worktrees");
+	return activeProfile ? path.join(root, "profiles", activeProfile) : root;
 }
 
 /** Get the SSH control socket directory (~/.omp/ssh-control). */
@@ -1027,6 +1099,11 @@ export function getPredictStateDir(agentDir: string | undefined, method: string)
 }
 
 /** Get the sessions directory (~/.omp/agent/sessions). */
+/** Get the file-checkpoint store Rewind restores from (~/.cache/npi/agent/checkpoints). */
+export function getCheckpointsDir(agentDir?: string): string {
+	return dirs.agentSubdir(agentDir, "checkpoints", "cache");
+}
+
 export function getSessionsDir(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "sessions", "data");
 }

@@ -1335,6 +1335,34 @@ describe("resolveAgentModelPatterns", () => {
 		expect(resolveAgentModelPatterns({ agentModel: "@advisor", settings })).toEqual(["baseten/custom-slow:max"]);
 	});
 
+	test("unset smol, task, slow and arbiter follow their roster tier; a role of their own wins", () => {
+		const settings = Settings.isolated({
+			modelRoles: {
+				default: "local/default",
+				flagship: "baseten/flag:high",
+				standard: "baseten/std",
+				economy: "baseten/eco:low",
+				task: "baseten/own-task",
+			},
+		});
+
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).toEqual(["baseten/eco:low"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })).toEqual(["baseten/flag:high"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@arbiter", settings })).toEqual(["baseten/flag:high"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@task", settings })).toEqual(["baseten/own-task"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@advisor", settings })).toEqual(
+			["baseten/flag:high"],
+			"advisor → slow → flagship",
+		);
+	});
+
+	test("without a roster the built-in roles keep their own defaults", () => {
+		const bare = Settings.isolated({ modelRoles: { default: "local/default" } });
+		const withEconomy = Settings.isolated({ modelRoles: { default: "local/default", economy: "baseten/eco" } });
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings: bare })).not.toEqual(["baseten/eco"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings: withEconomy })).toEqual(["baseten/eco"]);
+	});
+
 	test("expands nested role aliases from the configured slow fallback", () => {
 		const settings = Settings.isolated({
 			modelRoles: {

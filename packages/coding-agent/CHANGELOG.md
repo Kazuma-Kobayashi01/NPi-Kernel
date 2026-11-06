@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Caches (`puppeteer`, `natives`, `webcache`, `cache/`) and Rewind's file checkpoints now live in `~/.cache/npi` instead of `~/.local/share/npi`, moved there on the first start; agent worktrees (PR checkouts, task isolation) default to `~/Documents/NPi/Code/.agent-worktrees`.
 - Overlays, dialogs and hubs drop their drawn boxes for a raised panel with an accent rail, matching the composer; fullscreen hubs keep a title band, a quiet column divider and a footer band.
 - In settings, left and right always switch tabs. Every setting opens a second-level menu on Enter and Esc returns without changing it, so arrow keys and Space can no longer change a value by accident.
 - The screen background follows the active theme's page colour instead of one fixed near-black or near-white, including live theme previews.

@@ -23,6 +23,7 @@ import {
 	BIN_NAME,
 	getActiveProfile,
 	MIN_BUN_VERSION,
+	migrateLegacyCaches,
 	resolveProfileEnv,
 	setProfile,
 	VERSION,
@@ -524,6 +525,8 @@ export async function runCli(argv: string[]): Promise<void> {
 		process.stdout.write(formatLicenseOutput());
 		return;
 	}
+	// Once per launch on the real entry (workers returned above), before anything opens a cache.
+	if (isProcessEntry) migrateLegacyCaches();
 	let stopStartupComposer: (() => void) | undefined;
 	if (
 		!process.env.PI_TIMING &&
