@@ -426,10 +426,11 @@ export const cfgImagesBlockImages = register({
 	type: "boolean",
 	default: false,
 	ui: {
-		tab: "appearance",
-		group: "Images",
-		label: "Block Images",
-		description: "Prevent images from being sent to LLM providers",
+		tab: "model",
+		group: "Vision",
+		label: "Block Image Input",
+		description:
+			"Never send images to any model: attachments, screenshots and image reads are dropped, and text models get no description either. Leave off so models can read images",
 	},
 });
 

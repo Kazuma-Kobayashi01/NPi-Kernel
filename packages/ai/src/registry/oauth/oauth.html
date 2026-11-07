@@ -4,7 +4,7 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="color-scheme" content="dark light" />
-		<title>omp · authentication</title>
+		<title>NPi · Sign in</title>
 		<style>
 			:root {
 				--bg: #000;
@@ -126,9 +126,10 @@
 				gap: 0.6rem;
 				margin-bottom: 1.75rem;
 			}
-			.omp-mark {
+			.npi-mark {
 				flex: none;
 				display: block;
+				color: var(--ink-1);
 			}
 			.wordmark {
 				font-size: 13px;
@@ -276,18 +277,23 @@
 		<span aria-hidden="true" class="glow"></span>
 		<div id="app" class="container">
 			<div class="brand">
-				<svg class="omp-mark" viewBox="0 0 64 64" width="24" height="24" aria-hidden="true">
-					<defs>
-						<linearGradient id="omp-mark-grad" x1="0" y1="0" x2="1" y2="1">
-							<stop offset="0" stop-color="oklch(0.7 0.24 340)" />
-							<stop offset=".5" stop-color="oklch(0.62 0.21 295)" />
-							<stop offset="1" stop-color="oklch(0.81 0.14 200)" />
-						</linearGradient>
-					</defs>
-					<path fill="url(#omp-mark-grad)" d="M10 14h44v9H43v33h-9V23h-9v22h-9V23H10z" />
+				<svg class="npi-mark" viewBox="100 108 312 272" width="24" height="21" fill="currentColor" aria-hidden="true">
+					<rect x="116" y="116" width="280" height="14" />
+					<rect x="136" y="136" width="240" height="34" />
+					<rect x="158" y="169" width="48" height="11" />
+					<polygon points="162,179 202,179 195,192 169,192" />
+					<polygon points="169,191 195,191 199,343 165,343" />
+					<rect x="156" y="341" width="52" height="14" />
+					<rect x="306" y="169" width="48" height="11" />
+					<polygon points="310,179 350,179 343,192 317,192" />
+					<polygon points="317,191 343,191 347,343 313,343" />
+					<rect x="304" y="341" width="52" height="14" />
+					<rect x="124" y="353" width="264" height="10" />
+					<rect x="104" y="361" width="304" height="11" />
+					<circle cx="256" cy="272" r="15" />
 				</svg>
-				<span class="wordmark">omp</span>
-				<span class="wordmark-sub">oauth</span>
+				<span class="wordmark">NPi</span>
+				<span class="wordmark-sub" id="sub">sign in</span>
 			</div>
 
 			<div class="status" role="status">
@@ -297,9 +303,9 @@
 				<span class="status-word status-error">Failed</span>
 			</div>
 
-			<h1 id="title">Authentication</h1>
+			<h1 id="title">Signing in…</h1>
 			<p id="message"></p>
-			<button onclick="window.close()" class="btn">Close window</button>
+			<button onclick="window.close()" class="btn">Close this tab</button>
 			<span aria-hidden="true" class="timer"></span>
 		</div>
 
@@ -319,25 +325,54 @@
 				};
 			}
 
+			// Chinese copy when the browser asks for it; English otherwise.
+			const zh = typeof navigator !== "undefined" && /^zh\b/i.test(navigator.language || "");
+			const copy = zh
+				? {
+						sub: "登录",
+						statuses: ["等待中", "已连接", "失败"],
+						button: "关闭此页",
+						okTitle: "登录成功",
+						okMessage: "账号已连接，回到 NPi 即可继续。",
+						okManual: "账号已连接，回到 NPi 即可继续。<br>此页可以手动关闭。",
+						failTitle: "登录失败",
+						failMessage: "发生未知错误",
+					}
+				: {
+						sub: "sign in",
+						statuses: ["Waiting", "Connected", "Failed"],
+						button: "Close this tab",
+						okTitle: "You're signed in",
+						okMessage: "Your account is connected. Head back to NPi to continue.",
+						okManual: "Your account is connected. Head back to NPi to continue.<br>You can close this tab.",
+						failTitle: "Sign-in failed",
+						failMessage: "An error occurred",
+					};
+
 			const app = document.getElementById("app");
 			const title = document.getElementById("title");
 			const message = document.getElementById("message");
+			const closeButton = document.querySelector(".btn");
+			document.getElementById("sub").textContent = copy.sub;
+			document.querySelectorAll(".status-word").forEach((el, i) => {
+				el.textContent = copy.statuses[i];
+			});
+			closeButton.textContent = copy.button;
 
 			if (serverState.ok) {
-				const closeButton = document.querySelector(".btn");
 				app.classList.add("success", "countdown");
-				title.textContent = "Authentication successful";
-				message.textContent = "You have successfully logged in.";
+				title.textContent = copy.okTitle;
+				message.textContent = copy.okMessage;
 				window.close();
 				setTimeout(() => {
 					app.classList.remove("countdown");
 					closeButton.remove();
-					message.innerHTML = "You have successfully logged in.<br>Please close this tab manually.";
+					message.innerHTML = copy.okManual;
 				}, 300);
 			} else {
 				app.classList.add("error");
-				title.textContent = "Authentication failed";
-				message.textContent = serverState.error || "An error occurred";
+				title.textContent = copy.failTitle;
+				message.textContent = serverState.error || copy.failMessage;
 			}
 		</script>
 	</body>

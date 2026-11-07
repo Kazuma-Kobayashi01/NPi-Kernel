@@ -150,7 +150,7 @@ describe("OAuthCallbackFlow /launch route", () => {
 
 		expect(closeWindow).toHaveBeenCalledTimes(1);
 		expect(document.querySelector(".btn")).not.toBeNull();
-		expect(document.getElementById("message")?.textContent).toBe("You have successfully logged in.");
+		expect(document.getElementById("message")?.textContent).toBe("Your account is connected. Head back to NPi to continue.");
 
 		vi.advanceTimersByTime(299);
 		expect(document.querySelector(".btn")).not.toBeNull();
@@ -158,7 +158,7 @@ describe("OAuthCallbackFlow /launch route", () => {
 
 		expect(document.querySelector(".btn")).toBeNull();
 		expect(document.getElementById("message")?.textContent).toBe(
-			"You have successfully logged in.Please close this tab manually.",
+			"Your account is connected. Head back to NPi to continue.You can close this tab.",
 		);
 	});
 
