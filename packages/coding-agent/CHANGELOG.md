@@ -15,6 +15,8 @@
 
 ### Changed
 
+- The CLI waiting row randomly picks one of 25 cute kaomoji-and-phrase pairs for each new loading animation; tool intents still take priority, and clearing an intent restores the same pair without flickering.
+- Waiting-row shimmer uses the active theme's accent highlight in both ANSI and native terminals instead of a session-derived text color.
 - Caches (`puppeteer`, `natives`, `webcache`, `cache/`) and Rewind's file checkpoints now live in `~/.cache/npi` instead of `~/.local/share/npi`, moved there on the first start; agent worktrees (PR checkouts, task isolation) default to `~/Documents/NPi/Code/.agent-worktrees`.
 - Overlays, dialogs and hubs drop their drawn boxes for a raised panel with an accent rail, matching the composer; fullscreen hubs keep a title band, a quiet column divider and a footer band.
 - In settings, left and right always switch tabs. Every setting opens a second-level menu on Enter and Esc returns without changing it, so arrow keys and Space can no longer change a value by accident.

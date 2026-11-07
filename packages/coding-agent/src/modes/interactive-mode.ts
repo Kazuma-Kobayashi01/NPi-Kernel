@@ -550,38 +550,44 @@ const JUDGMENT_BATCH_PROGRESS_RETAIN_MS = 1_000;
 const COMPOSER_STATUS_PERSIST_DELAY_MS = 1_000;
 /** Status-line slot of the link-hint mode prompt; the `omp:` prefix keeps it apart from extension keys. */
 const LINK_HINT_STATUS_KEY = "omp:link-hints";
-const DEFAULT_WORKING_MESSAGE = "Working…";
-/** Native working-message shimmer under a session accent: the hue itself is the terminal's `accent`. */
-const NATIVE_ACCENT_SHIMMER: ShimmerPalette = { low: "dim", mid: "accent", high: "accent", bold: true };
+const WORKING_MESSAGES = [
+	"(˶ᵔ ᵕ ᵔ˶) Cooking...",
+	"(｡•́‿•̀｡) Hmmm...",
+	"(っ˘ω˘ς) Brewing...",
+	"(ﾉ◕ヮ◕)ﾉ Stirring...",
+	"(づ｡◕‿‿◕｡)づ Baking...",
+	"(๑˃ᴗ˂)ﻭ Simmering...",
+	"(｡･ω･｡) Pondering...",
+	"(˶˃ ᵕ ˂˶) Dreaming...",
+	"(ﾉ´ヮ`)ﾉ Sprinkling...",
+	"(｡•̀ᴗ-)✧ Sparkling...",
+	"(っ•ᴗ•)っ Mixing...",
+	"(๑´ڡ`๑) Taste-testing...",
+	"(=^･ω･^=) Purring...",
+	"(ᵔᴥᵔ) Sniffing clues...",
+	"(・ω・)ノ Gathering...",
+	"(｡♥‿♥｡) Making magic...",
+	"( ˘▽˘)っ Steeping...",
+	"(๑•̀ㅂ•́)و Kneading...",
+	"(◕‿◕) Connecting dots...",
+	"(˶ᵕ˶) Warming up...",
+	"(ﾉ>ω<)ﾉ Chasing ideas...",
+	"(｡•ㅅ•｡) Noodling...",
+	"(つ≧▽≦)つ Bundling joy...",
+	"(✿◠‿◠) Blooming...",
+	"( •̀ ω •́ )✧ Polishing...",
+];
+/** The working label follows the active theme, independently of session accent colors. */
+const WORKING_SHIMMER: ShimmerPalette = { low: "dim", mid: "accent", high: "accent", bold: true };
 
 interface WorkingMessageAccent {
-	main: string;
 	dim: string;
-	/**
-	 * Interned shimmer palette for this accent so `compile()` inside
-	 * `shimmerText` sees a stable palette object between animation ticks.
-	 * A fresh palette literal every frame guaranteed a cache miss on the
-	 * Symbol-keyed compiled-ANSI slot and forced `resolveTierAnsi` to walk
-	 * every tier open/close for the ~30fps loader redraw (issue #4377).
-	 */
-	palette?: ShimmerPalette;
 }
 
 interface WorkingMessageAccentCacheKey {
 	sessionName: string | undefined;
 	accentSurfaceLuminance: number | undefined;
 	sessionAccentEnabled: boolean;
-}
-
-function renderWorkingMessage(message: string, accent?: WorkingMessageAccent): string {
-	if (!accent) return shimmerText(message, theme);
-	accent.palette ??= {
-		low: "dim",
-		mid: { ansi: accent.main },
-		high: { ansi: accent.main },
-		bold: true,
-	};
-	return shimmerText(message, theme, accent.palette);
 }
 
 const EDITOR_MAX_HEIGHT_MIN = 6;
@@ -1560,7 +1566,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		return ["", " ".repeat(Math.max(0, width - visibleWidth(trailer))) + trailer];
 	}
 	/** Message the working row shows; mirrors what the loader was last given. */
-	#workingMessage: string | (() => string) = DEFAULT_WORKING_MESSAGE;
+	#defaultWorkingMessage = WORKING_MESSAGES[0];
+	#workingMessage: string | (() => string) = this.#defaultWorkingMessage;
 	/**
 	 * The native row's `elapsed` origin: the viewed session's run start, so a
 	 * loader recreated by a focus switch keeps the real elapsed time.
@@ -1616,11 +1623,10 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 	/** The running turn's working row (§8.1): its elapsed time, the intent and the stop control. */
 	#workingRowSpec(): WorkingRowSpec {
-		const accent = this.#getWorkingMessageAccent() !== undefined;
 		return {
 			label: typeof this.#workingMessage === "function" ? this.#workingMessage() : this.#workingMessage,
 			startedAt: this.#workingStartedAt,
-			palette: accent ? NATIVE_ACCENT_SHIMMER : undefined,
+			palette: WORKING_SHIMMER,
 			interruptKey: this.keybindings.getKeys("app.interrupt")[0] ?? "escape",
 		};
 	}
@@ -8699,9 +8705,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			return this.#cacheWorkingMessageAccent(key, undefined);
 		}
 		const hex = getSessionAccentHex(key.sessionName, theme.sessionAccentInputs);
-		const main = getSessionAccentAnsi(hex);
 		const dim = getSessionAccentAnsi(adjustHsv(hex, { s: 0.55, v: 0.65 }));
-		return this.#cacheWorkingMessageAccent(key, main && dim ? { main, dim } : undefined);
+		return this.#cacheWorkingMessageAccent(key, dim ? { dim } : undefined);
 	}
 
 	ensureLoadingAnimation(): void {
@@ -8709,8 +8714,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (!this.loadingAnimation) {
 			this.#clearWorkingMessageAccentCache();
 			this.statusContainer.disposeChildren();
+			this.#defaultWorkingMessage = WORKING_MESSAGES[Math.floor(Math.random() * WORKING_MESSAGES.length)];
 			const messageColorFn = ((message: string) =>
-				renderWorkingMessage(message, this.#getWorkingMessageAccent())) as LoaderMessageColorFn & {
+				shimmerText(message, theme, WORKING_SHIMMER)) as LoaderMessageColorFn & {
 				animated?: true;
 			};
 			// Shimmer drives the 30fps redraw; when it is disabled the working
@@ -8724,7 +8730,7 @@ export class InteractiveMode implements InteractiveModeContext {
 					return accent ? `${accent.dim}${spinner}\x1b[39m` : theme.fg("muted", spinner);
 				},
 				messageColorFn,
-				DEFAULT_WORKING_MESSAGE,
+				this.#defaultWorkingMessage,
 				// The brand spinner lives in the status line while working; this row
 				// leads with the interrupt affordance instead of a second spinner.
 				// The leading space nudges the row one column right of the flush-left
@@ -8736,7 +8742,7 @@ export class InteractiveMode implements InteractiveModeContext {
 				() => this.#workingRowSpec(),
 				() => this.interruptFromPointer(),
 			);
-			this.#workingMessage = DEFAULT_WORKING_MESSAGE;
+			this.#workingMessage = this.#defaultWorkingMessage;
 			this.#workingStartedAt = this.viewSession.runStartedAt ?? Date.now();
 			this.statusContainer.addChild(this.loadingAnimation);
 		} else if (!this.statusContainer.children.includes(this.loadingAnimation)) {
@@ -8766,8 +8772,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (message === undefined) {
 			this.#pendingWorkingMessage = undefined;
 			if (this.loadingAnimation) {
-				this.loadingAnimation.setMessage(DEFAULT_WORKING_MESSAGE);
-				this.#workingMessage = DEFAULT_WORKING_MESSAGE;
+				this.loadingAnimation.setMessage(this.#defaultWorkingMessage);
+				this.#workingMessage = this.#defaultWorkingMessage;
 			}
 			return;
 		}

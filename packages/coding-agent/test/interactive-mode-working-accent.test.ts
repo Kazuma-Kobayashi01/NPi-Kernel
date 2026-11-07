@@ -105,7 +105,7 @@ afterAll(() => {
 });
 
 describe("InteractiveMode working-message session accent cache", () => {
-	it("reuses one computed accent across loader spinner and message colorizers", async () => {
+	it("reuses one computed session accent across loader redraws", async () => {
 		const { mode } = await createHarness("Cached session");
 		const getHex = vi.spyOn(sessionColor, "getSessionAccentHex");
 		const getAnsi = vi.spyOn(sessionColor, "getSessionAccentAnsi");
@@ -115,12 +115,12 @@ describe("InteractiveMode working-message session accent cache", () => {
 		startStableLoader(mode);
 		renderLoader(mode);
 		expect(getHex).toHaveBeenCalledTimes(1);
-		expect(getAnsi).toHaveBeenCalledTimes(2);
+		expect(getAnsi).toHaveBeenCalledTimes(1);
 
 		mode.loadingAnimation?.setMessage("Still working");
 		renderLoader(mode);
 		expect(getHex).toHaveBeenCalledTimes(1);
-		expect(getAnsi).toHaveBeenCalledTimes(2);
+		expect(getAnsi).toHaveBeenCalledTimes(1);
 	});
 
 	it("recomputes for session renames and repaints the loader glyph with the new accent", async () => {
@@ -190,11 +190,26 @@ describe("InteractiveMode working-message session accent cache", () => {
 	});
 });
 
+describe("InteractiveMode working-message theme highlight", () => {
+	it("keeps the text in the theme accent when the session color changes", async () => {
+		const { mode, sessionManager } = await createHarness("Theme highlight alpha");
+		vi.spyOn(Date, "now").mockReturnValue(500);
+		startStableLoader(mode);
+		mode.setWorkingMessage("Thinking through the next step");
+		const highlight = theme.getFgAnsi("accent");
+		expect(renderLoader(mode)).toContain(highlight);
+
+		await sessionManager.setSessionName("Theme highlight beta", "user");
+		expect(renderLoader(mode)).toContain(highlight);
+	});
+});
+
 describe("InteractiveMode working activity", () => {
 	it("preserves the active loader when blank /rename reports usage", async () => {
 		const { mode } = await createHarness("Active rename session");
 		mode.ensureLoadingAnimation();
 		const loader = defined(mode.loadingAnimation);
+		const workingRow = stripVTControlCharacters(renderLoader(mode));
 		expect(mode.session.isStreaming).toBe(true);
 
 		try {
@@ -203,7 +218,7 @@ describe("InteractiveMode working activity", () => {
 			expect(handled).toBe(true);
 			expect(mode.session.isStreaming).toBe(true);
 			expect(mode.loadingAnimation).toBe(loader);
-			expect(stripVTControlCharacters(renderLoader(mode))).toContain("Working");
+			expect(stripVTControlCharacters(renderLoader(mode))).toBe(workingRow);
 		} finally {
 			loader.stop();
 		}
