@@ -16,6 +16,7 @@ import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
 import { EditTool } from "../edit";
 import { checkPythonKernelAvailability } from "../eval/py/kernel";
+import { isNpiPythonHostConfigured } from "../eval/py/runtime";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type {
 	BeforeSubagentSpawnEvent,
@@ -769,6 +770,9 @@ export async function resolveBuiltinToolPlan(session: ToolSession, toolNames?: s
 		if (name === "lsp") return enableLsp && cfgLspEnabled.get(session.settings);
 		if (name === "bash") return cfgBashEnabled.get(session.settings);
 		if (name === "eval") return allowEval;
+		// Environment and package management for the NPi managed runtime; useless
+		// without a runtime host (desktop app, or the Linux binary itself).
+		if (name === "python") return isNpiPythonHostConfigured();
 		if (name === "debug") return cfgDebugEnabled.get(session.settings);
 		if (name === "ida") return cfgIdaAvailable.get(session.settings);
 		if (name === "todo")

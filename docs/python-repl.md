@@ -25,9 +25,14 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 
 Two surfaces share one managed environment:
 
-- the `python` tool runs one program per call in a fresh supervised subprocess;
-- the `eval` tool with `language: "py"` keeps a kernel per session for stateful
-  cells.
+- the `eval` tool with `language: "py"` runs code, keeping a kernel per session
+  for stateful cells;
+- the `python` tool (discoverable, under `xd://python`) reports the managed
+  environment and lists or installs its packages. It is registered only when
+  `NPI_PYTHON_HOST` is set.
+
+In NPi Desktop the environment comes with numpy, scipy, matplotlib, pandas and
+sympy preinstalled offline from a bundled wheelhouse.
 
 The NPi Desktop app owns that environment. It sets
 `NPI_PYTHON_HOST=<absolute app executable>` on every `omp` it spawns.
@@ -69,13 +74,9 @@ Health returns the absolute managed interpreter:
 Errors exit 1 with empty stdout and one `npi-python-error: <message>` line on
 stderr. `npi-python-progress {json}` lines on stderr are informational only.
 
-The `python` tool exposes `execute`, `environment` and `packages` actions.
-`execute` delegates to the eval Python backend with `kernelMode: "per-call"`:
-a fresh `<python> -I -B -u runner.py` process per call, a per-session working
-directory (`<base>/workspaces/<sanitized-session-id>`) unless `cwd` is
-supplied, a filtered environment, bounded/truncated output, and the normal
-SIGINT → SIGTERM → SIGKILL cancellation ladder. `packages install` delegates
-to the host and may require approval; the base runtime is never modified.
+The `python` tool exposes `environment` and `packages` actions; running code
+is `eval`'s job. `packages install` delegates to the host and requires
+approval; the base runtime is never modified.
 
 `<base>` is `NPI_ENV_DIR` when set, otherwise `~/.local/share/npi/env` in the
 desktop app. The host creates a content-addressed runtime under `runtimes/`,
@@ -87,8 +88,8 @@ versions are not deleted while sessions may still use them.
 When `NPI_PYTHON_HOST` is configured, `omp` does not unpack the archive, does
 not create the virtualenv and does not fall back to a system, Homebrew, pyenv,
 Conda or project `.venv` interpreter. The default interpreter is the absolute
-`pythonPath` returned by the host; an explicit `interpreter` (or
-`python.interpreter`) is honored only in Code mode. Chat and Academic
+`pythonPath` returned by the host; an explicit `python.interpreter` is honored
+only in Code mode. Chat and Academic
 sessions stay on the managed interpreter. Without a host (standalone
 CLI/source checkout), `ensureNpiPythonEnv()` returns `undefined`; the managed
 environment is simply unavailable, and a discovered system interpreter is not

@@ -1,13 +1,12 @@
 /**
- * Managed Python tool.
+ * Managed Python environment tool.
  *
- * Runs Python through the existing eval Python subprocess backend against the
- * desktop-managed interpreter, and exposes that environment's health and
- * package set. The desktop app's Rust runtime host owns installation and
- * package changes; this tool never unpacks a runtime or creates a virtualenv.
+ * Reports the NPi managed interpreter's health and lists or installs its
+ * packages. Running code belongs to `eval`, whose Python backend already uses
+ * the managed interpreter. The desktop app's (or the Linux binary's) runtime
+ * host owns installation and package changes; this tool never unpacks a
+ * runtime or creates a virtualenv. Discoverable: mounted under `xd://python`.
  */
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
 import type {
 	AgentTool,
@@ -17,11 +16,9 @@ import type {
 } from "@oh-my-pi/pi-agent-core";
 import type { OutputMeta } from "@oh-my-pi/pi-tui/tools/output-meta";
 import { ToolError } from "@oh-my-pi/pi-tui/tools/tool-errors";
-import { isRecord, prompt, Snowflake } from "@oh-my-pi/pi-utils";
-import { executePython } from "../eval/py/executor";
+import { isRecord, prompt } from "@oh-my-pi/pi-utils";
 import {
 	ensureNpiPythonEnv,
-	filterEnv,
 	getNpiPythonCacheDir,
 	getNpiPythonWorkspaceDir,
 	installNpiPythonPackages,
@@ -32,28 +29,15 @@ import {
 	type NpiPythonEnvironmentHealth,
 	type NpiPythonProgress,
 	readNpiPythonEnvironment,
-	resolveExplicitPythonRuntime,
 } from "../eval/py/runtime";
 import { normalizePackageRequirements } from "../eval/package-requirements";
-import { cfgPythonInterpreter } from "../eval/settings";
 import pythonDescription from "../prompts/tools/python.md" with { type: "text" };
 import type { ToolSession } from "../sdk";
-import { truncateForPrompt } from "./approval";
-import { resolveToCwd } from "./path-utils";
-import { cfgToolsMaxTimeout } from "./settings";
-import { clampTimeout } from "./tool-timeouts";
-import { ToolAbortError, throwIfAborted } from "./tool-errors";
+import { throwIfAborted } from "./tool-errors";
 import { toolResult } from "./tool-result";
 
 const pythonSchema = type({
-	action: '"execute" | "environment" | "packages"',
-	"code?": type("string").describe("Python source for execute"),
-	"interpreter?": type("string").describe(
-		"Explicit interpreter for execute; only when python.interpreter is configured for the session",
-	),
-	"cwd?": type("string").describe("working directory; defaults to the session workspace"),
-	"timeout?": type("number").describe("seconds; 0 disables the deadline"),
-	"executionId?": type("string").describe("caller-supplied execution id; generated when omitted"),
+	action: '"environment" | "packages"',
 	"operation?": type('"list" | "install"').describe("packages operation"),
 	"packages?": type("string").array().describe("distribution requirements for packages install"),
 });
@@ -66,16 +50,8 @@ interface PythonToolDetails {
 	/** One of "ready", "not-installed", or "broken". */
 	status?: "ready" | "not-installed" | "broken";
 	healthy?: boolean;
-	stdout?: string;
-	stderr?: string;
-	exitCode?: number;
-	timedOut?: boolean;
-	durationMs?: number;
-	truncated?: boolean;
 	sessionId?: string;
-	executionId?: string;
 	pythonPath?: string;
-	cwd?: string;
 	pythonVersion?: string;
 	uvVersion?: string;
 	runtimePath?: string;
@@ -88,7 +64,7 @@ interface PythonToolDetails {
 	meta?: OutputMeta;
 }
 
-/** Runs Python in the NPi managed environment and describes that environment. */
+/** Describes the NPi managed Python environment and manages its packages. */
 export class PythonTool implements AgentTool<typeof pythonSchema, PythonToolDetails> {
 	readonly name = "python";
 	readonly approval = (args: unknown): ToolApprovalDecision => {
@@ -107,25 +83,18 @@ export class PythonTool implements AgentTool<typeof pythonSchema, PythonToolDeta
 	readonly formatApprovalDetails = (args: unknown): string[] => {
 		const params: Record<string, unknown> = isRecord(args) ? args : {};
 		const action = typeof params.action === "string" ? params.action : "(missing)";
-		const target = typeof params.interpreter === "string" ? params.interpreter : "NPi managed environment";
 		if (action === "packages" && params.operation === "install" && Array.isArray(params.packages)) {
 			return [`Packages: ${params.packages.filter((item): item is string => typeof item === "string").join(", ")}`];
-		}
-		if (action === "execute") {
-			return [
-				`Interpreter: ${target}`,
-				`Code:\n${truncateForPrompt(typeof params.code === "string" ? params.code : "")}`,
-			];
 		}
 		return [`Action: ${action}`];
 	};
 	readonly label = "Python";
-	readonly summary = "Run Python in the NPi managed environment; inspect packages and runtime health";
+	readonly summary = "Inspect the NPi managed Python runtime's health; list or install its packages";
 	readonly description = prompt.render(pythonDescription);
 	readonly parameters = pythonSchema;
 	readonly strict = true;
 	readonly concurrency = "exclusive";
-	readonly loadMode = "essential";
+	readonly loadMode = "discoverable";
 
 	constructor(private readonly session: ToolSession) {}
 
@@ -137,8 +106,6 @@ export class PythonTool implements AgentTool<typeof pythonSchema, PythonToolDeta
 	): Promise<AgentToolResult<PythonToolDetails>> {
 		throwIfAborted(signal);
 		switch (params.action) {
-			case "execute":
-				return await this.#execute(params, signal, onUpdate);
 			case "environment":
 				return await this.#environment(signal);
 			case "packages":
@@ -146,10 +113,6 @@ export class PythonTool implements AgentTool<typeof pythonSchema, PythonToolDeta
 			default:
 				throw new ToolError(`Unsupported python action: ${String(params.action)}`);
 		}
-	}
-
-	#baseEnv(): Record<string, string | undefined> {
-		return filterEnv(this.session.settings.getShellConfig().env);
 	}
 
 	#sessionId(): string {
@@ -162,115 +125,10 @@ export class PythonTool implements AgentTool<typeof pythonSchema, PythonToolDeta
 			throw new ToolError(
 				isNpiPythonHostConfigured()
 					? NPI_PYTHON_HOST_UNAVAILABLE_HINT
-					: "No NPi managed Python runtime is configured: NPI_PYTHON_HOST is unset. Run Python from a source " +
-							"checkout by setting python.interpreter to an explicit interpreter.",
+					: "No NPi managed Python runtime is configured: NPI_PYTHON_HOST is unset.",
 			);
 		}
 		return managed;
-	}
-
-	/**
-	 * `interpreter` is only honored when the session's `python.interpreter`
-	 * setting names the same executable: an explicit project interpreter must be
-	 * configured, never guessed, and no project virtualenv is created.
-	 */
-	async #resolveInterpreter(
-		params: PythonParams,
-		cwd: string,
-		signal?: AbortSignal,
-		onProgress?: (progress: NpiPythonProgress) => void,
-	): Promise<string> {
-		const requested = params.interpreter?.trim();
-		if (!requested) return await this.#managedPython(signal, onProgress);
-		const mode = process.env.NPI_APP_MODE?.trim();
-		if (mode !== undefined && mode !== "code") {
-			throw new ToolError("interpreter is only allowed in Code mode; other modes use the NPi managed environment.");
-		}
-		const configured = cfgPythonInterpreter.get(this.session.settings)?.trim();
-		if (!configured) {
-			throw new ToolError(
-				"interpreter is only allowed when python.interpreter is configured for this session; " +
-					"the NPi managed environment never creates a project virtualenv.",
-			);
-		}
-		const baseEnv = this.#baseEnv();
-		const expected = resolveExplicitPythonRuntime(configured, cwd, baseEnv).pythonPath;
-		const actual = resolveExplicitPythonRuntime(requested, cwd, baseEnv).pythonPath;
-		if (path.resolve(expected) !== path.resolve(actual)) {
-			throw new ToolError(`interpreter must match the session's python.interpreter setting (${expected}).`);
-		}
-		return expected;
-	}
-
-	async #execute(
-		params: PythonParams,
-		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback<PythonToolDetails>,
-	): Promise<AgentToolResult<PythonToolDetails>> {
-		if (typeof params.code !== "string" || params.code.trim().length === 0) {
-			throw new ToolError("code is required for execute");
-		}
-		const sessionId = this.#sessionId();
-		const executionId = params.executionId?.trim() || Snowflake.next();
-		const workspace = getNpiPythonWorkspaceDir(sessionId);
-		const cwd = params.cwd ? resolveToCwd(params.cwd, this.session.cwd) : workspace;
-		await fs.mkdir(cwd, { recursive: true });
-		const reportProgress = (progress: NpiPythonProgress): void => {
-			onUpdate?.({
-				content: [
-					{
-						type: "text",
-						text: `NPi Python: ${progress.stage}${progress.message ? ` — ${progress.message}` : ""}`,
-					},
-				],
-				details: { action: "execute" },
-			});
-		};
-		const interpreter = await this.#resolveInterpreter(params, cwd, signal, reportProgress);
-		throwIfAborted(signal);
-
-		const timeoutMs =
-			params.timeout === 0
-				? 0
-				: clampTimeout("python", params.timeout, cfgToolsMaxTimeout.get(this.session.settings)) * 1000;
-		const startedAt = performance.now();
-		const execution = await executePython(params.code, {
-			cwd,
-			sessionId: `${sessionId}:${executionId}`,
-			interpreter,
-			kernelMode: "per-call",
-			timeoutMs: timeoutMs || undefined,
-			signal,
-		});
-		if (signal?.aborted) throw new ToolAbortError("Python execution aborted");
-		const durationMs = Math.round(performance.now() - startedAt);
-		const timedOut = execution.cancelled && timeoutMs > 0;
-
-		const details: PythonToolDetails = {
-			action: "execute",
-			stdout: execution.output,
-			exitCode: execution.exitCode,
-			timedOut,
-			durationMs,
-			truncated: execution.truncated,
-			sessionId,
-			executionId,
-			pythonPath: interpreter,
-			cwd,
-			workspacePath: workspace,
-		};
-		const sections: string[] = [];
-		if (execution.output.trim().length > 0) sections.push(execution.output.trimEnd());
-		if (timedOut) sections.push(`[timed out after ${Math.round(timeoutMs / 1000)}s]`);
-		if (execution.truncated) sections.push("[output truncated]");
-		sections.push(
-			`[exit ${execution.exitCode ?? "killed"} · ${durationMs}ms · session ${sessionId} · execution ${executionId}]`,
-		);
-		const content = toolResult(details).text(sections.join("\n"));
-		if (timedOut || (execution.exitCode !== undefined && execution.exitCode !== 0)) {
-			return content.error(true).done();
-		}
-		return content.done();
 	}
 
 	async #environment(signal?: AbortSignal): Promise<AgentToolResult<PythonToolDetails>> {
