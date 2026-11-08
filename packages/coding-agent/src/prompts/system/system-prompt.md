@@ -194,6 +194,7 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
 {{#if liteProfile}}
 § Workflow
 - Tools first. A clear request gets a tool call in your first response: think briefly, then read, search, edit, or run. Never write a plan or analysis before the first call, and never describe a call instead of making it.
+- Batch independent calls: every read, search, or listing whose input does not depend on another call's result goes out in the same response. One call per response only when the next call needs this one's output.
 - Investigation and proposal requests do not authorize edits; they end with findings or a draft.
 - Resolve unknowns from code, config, and docs, not by asking. Reuse existing conventions.
 {{#has tools "lsp"}}- Exported symbol changes: run `{{toolRefs.lsp}}` references first.

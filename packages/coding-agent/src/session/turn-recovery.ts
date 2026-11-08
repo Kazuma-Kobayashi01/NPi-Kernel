@@ -107,6 +107,14 @@ const UNEXPECTED_STOP_TIMEOUT_MS = 15_000;
 const EMPTY_STOP_MAX_RETRIES = 3;
 const MALFORMED_FUNCTION_CALL_MAX_RETRIES = 3;
 const STREAM_STALL_CONTINUE_MAX_RETRIES = 3;
+// A connection that resets, is refused or cannot be reached three times in a
+// row on the same model is an outage, not a blip: further same-model retries
+// each cost a full connect timeout (observed ~52s per Codex reset, ten in a
+// row). Past this many retries the run hands over to the fallback chain or
+// surfaces the error.
+const CONNECTION_FAILURE_MAX_RETRIES = 3;
+const CONNECTION_FAILURE_ERROR_RE =
+	/\bECONNRESET\b|socket connection was closed unexpectedly|\bECONNREFUSED\b|\bConnectionRefused\b|connection refused|\bFailedToOpenSocket\b|\bENOTFOUND\b|\bEHOSTUNREACH\b|\bENETUNREACH\b/i;
 const SIBLING_UNBLOCK_BUFFER_MS = 1_000;
 const NON_WHITESPACE_RE = /\S/;
 const USAGE_PREFLIGHT_BLOCKED_PREFIX = "Usage preflight blocked:";
@@ -388,6 +396,10 @@ export class TurnRecovery {
 	readonly #unexpectedStopJudgeTimeoutMs: number;
 	#retryAbortController: AbortController | undefined;
 	#retryAttempt = 0;
+	/** Consecutive connection-level failures of one model; see {@link #trackConnectionFailure}. */
+	#connectionFailureStreak = 0;
+	#connectionFailureAttempt = 0;
+	#connectionFailureModel: string | undefined;
 	/**
 	 * Selectors a classifier refusal has already moved off in the current retry saga; see the walk
 	 * bound below. Cleared in `resolveRetry()`, which every end of a saga goes through (an answer,
@@ -1750,6 +1762,24 @@ export class TurnRecovery {
 	 * reasoning phase. One retry covers a transient edge failure; the normal
 	 * ten-retry budget would otherwise replay the same reasoning cycle unchanged.
 	 */
+	/**
+	 * Count `message` into the run of consecutive connection-level failures
+	 * (reset, refused, unreachable) on the same model, and return the run's
+	 * length. The run continues only from the attempt right before this one on
+	 * the same model, so a success, a different error, a fresh retry run or a
+	 * model switch starts it over without resetting it at each of those sites.
+	 */
+	#trackConnectionFailure(message: AssistantMessage): number {
+		const model = `${message.provider}/${message.model}`;
+		const failed = CONNECTION_FAILURE_ERROR_RE.test(message.errorMessage ?? "");
+		const continues =
+			failed && this.#connectionFailureModel === model && this.#connectionFailureAttempt === this.#retryAttempt - 1;
+		this.#connectionFailureStreak = continues ? this.#connectionFailureStreak + 1 : failed ? 1 : 0;
+		this.#connectionFailureAttempt = this.#retryAttempt;
+		this.#connectionFailureModel = model;
+		return this.#connectionFailureStreak;
+	}
+
 	#isBoundedThinkingStreamClose(message: AssistantMessage): boolean {
 		if (!message.content.some(block => block.type === "thinking" && block.thinking.trim().length > 0)) {
 			return false;
@@ -2661,9 +2691,18 @@ export class TurnRecovery {
 		// (every rotation sets switchedCredential and skips it), so without
 		// this last resort a provider-wide usage cap never fails over to the
 		// configured chain.
-		const maxRetries = this.#isBoundedThinkingStreamClose(message)
-			? Math.min(retrySettings.maxRetries, 1)
-			: retrySettings.maxRetries;
+		// Repeated connection failures get CONNECTION_FAILURE_MAX_RETRIES retries
+		// counted from where the run of them began, so the attempt that starts the
+		// run keeps the budget the earlier, different errors left it.
+		const connectionFailureStreak = this.#trackConnectionFailure(message);
+		const connectionFailureBudget =
+			connectionFailureStreak > 0
+				? this.#retryAttempt - connectionFailureStreak + CONNECTION_FAILURE_MAX_RETRIES
+				: Number.POSITIVE_INFINITY;
+		const maxRetries = Math.min(
+			this.#isBoundedThinkingStreamClose(message) ? Math.min(retrySettings.maxRetries, 1) : retrySettings.maxRetries,
+			connectionFailureBudget,
+		);
 		const retryBudgetExhausted = this.#retryAttempt > maxRetries;
 
 		const errorMessage = message.errorMessage || "Unknown error";
