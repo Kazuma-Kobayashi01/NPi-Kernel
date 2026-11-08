@@ -159,6 +159,7 @@ import { cfgPlanDefaultOnStartup, cfgPlanEnabled } from "./plan-mode/settings";
 
 import { cfgAdvisorEnabled } from "./advisor/settings";
 import { cfgAsyncPrintWake, cfgToolsApprovalMode } from "./tools/settings";
+import { enterSandboxIfConfigured } from "./sandbox/seatbelt";
 import {
 	cfgAutocompleteMaxVisible,
 	cfgAutoResume,
@@ -1883,6 +1884,19 @@ export async function runRootCommand(
 			rejectNoUiWithoutRpc(parsedArgs);
 		}
 		const mode = parsedArgs.mode || "text";
+		// Before anything reads stdin or opens storage: the sandboxed child must
+		// receive the RPC frames and the piped prompt, and open every database
+		// itself. RPC's input claim below pulls the first frame at once.
+		const sandboxCwd = getProjectDir();
+		await enterSandboxIfConfigured({
+			flag: parsedArgs.sandbox,
+			cwd: sandboxCwd,
+			loadSettings: () =>
+				deps.settings
+					? Promise.resolve(deps.settings)
+					: Settings.init({ cwd: sandboxCwd, configFiles: parsedArgs.config }),
+			beforeRelaunch: stopPendingStartupComposer,
+		});
 		// RPC owns stdin. Claim its singleton stream before plugin/extension discovery can load an in-process consumer.
 		const rpcInput = mode === "rpc" || mode === "rpc-ui" ? claimRpcInput() : undefined;
 

@@ -263,6 +263,16 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 			);
 		}
 	},
+	"--sandbox": (result, value) => {
+		// Mirrors `SandboxMode` in ../sandbox/settings (type-only import here).
+		if (value === "off" || value === "workspace-write" || value === "read-only") {
+			result.sandbox = value;
+		} else {
+			result.invalidFlagValues.push(
+				`Invalid --sandbox value: ${JSON.stringify(value)}. Expected one of: off, workspace-write, read-only.`,
+			);
+		}
+	},
 };
 
 /**

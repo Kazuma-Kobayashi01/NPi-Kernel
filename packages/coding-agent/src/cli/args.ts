@@ -6,6 +6,7 @@ import { $env, APP_NAME } from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import type { ServiceTierOpenAISettingValue } from "../config/service-tier";
 import type { ApprovalMode } from "../tools/approval";
+import type { SandboxMode } from "../sandbox/settings";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
 import {
@@ -98,6 +99,8 @@ export interface Args {
 	noUi?: boolean;
 	autoApprove?: boolean;
 	approvalMode?: ApprovalMode;
+	/** `--sandbox <mode>`: overrides `sandbox.mode` for this launch. */
+	sandbox?: SandboxMode;
 	messages: string[];
 	fileArgs: string[];
 	/** Extension-registered flags this parse recognized — name to value. */

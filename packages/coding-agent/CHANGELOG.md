@@ -4,6 +4,7 @@
 
 ### Added
 
+- macOS process sandbox: `sandbox.mode` (or `--sandbox <mode>`) relaunches npi under a Seatbelt profile so commands, eval, file tools and MCP servers can write only inside the project and npi's own folders (`workspace-write`), or not even the project (`read-only`); `sandbox.writableRoots` adds folders. See `docs/sandbox.md`.
 - Added the international Alibaba Model Studio provider (`alibaba`, `dashscope-intl.aliyuncs.com`, `DASHSCOPE_INTL_API_KEY`) beside the China one; keys are region-locked, so an international key now has somewhere to go.
 - `tui.clearOnExit` clears the screen and scrollback when npi exits, on by default; the resume hint still prints afterwards.
 - The first Ctrl+C on an idle prompt shows `Press Ctrl+C again to exit`, and the second press now has a full second to land.
@@ -15,6 +16,9 @@
 
 ### Changed
 
+- A connection that resets, is refused or cannot be reached three times in a row on the same model stops being retried there (it used to take all ten `retry.maxRetries`, about a minute each during a provider outage); the turn moves to the fallback chain or reports the error.
+- The short prompt for small fast models (Gemini Flash and Lite) asks them to send independent reads and searches in one response instead of one per turn.
+- The `python` tool now only reports the managed environment and lists or installs its packages; run Python code with `eval`. It moved under `xd://python` instead of sitting in every request, and appears only when a managed runtime host is configured (NPi Desktop, or the Linux binary).
 - The CLI waiting row randomly picks one of 25 cute kaomoji-and-phrase pairs for each new loading animation; tool intents still take priority, and clearing an intent restores the same pair without flickering.
 - Waiting-row shimmer uses the active theme's accent highlight in both ANSI and native terminals instead of a session-derived text color.
 - Caches (`puppeteer`, `natives`, `webcache`, `cache/`) and Rewind's file checkpoints now live in `~/.cache/npi` instead of `~/.local/share/npi`, moved there on the first start; agent worktrees (PR checkouts, task isolation) default to `~/Documents/NPi/Code/.agent-worktrees`.

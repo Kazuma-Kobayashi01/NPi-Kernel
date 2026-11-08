@@ -134,6 +134,11 @@ export const launchHelp = {
 			options: ["always-ask", "always-ask-cached", "write", "yolo"],
 			description: "Override tools.approvalMode for this session (always-ask|always-ask-cached|write|yolo)",
 		}),
+		sandbox: Flags.string({
+			options: ["off", "workspace-write", "read-only"],
+			description:
+				"macOS: run this session under a Seatbelt sandbox that confines file writes to the project (workspace-write) or to npi's folders (read-only); overrides sandbox.mode",
+		}),
 	},
 	examples: [
 		`# Interactive mode\n  ${APP_NAME}`,
