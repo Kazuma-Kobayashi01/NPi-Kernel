@@ -32,6 +32,7 @@
 
 ### Fixed
 
+- Google web search returned no results: Google now links each result through an opaque `/goto?url=…` redirect, which the parser dropped. Results are read again and each link is followed one redirect hop to its page; a link Google does not redirect keeps its `/goto` form, which still opens in a browser.
 - Startup no longer lists every mounted MCP tool by default; mount details remain in debug logs and can be shown with `tools.xdevNotices`.
 
 ### Changed

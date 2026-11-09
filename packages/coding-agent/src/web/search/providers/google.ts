@@ -7,6 +7,7 @@ import { clampNumResults } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
+import { buildBrowserNavigationHeaders } from "./browser-headers";
 import { browserFetch } from "./browser-page";
 import { normalizeSearchText, withHardTimeout } from "./utils";
 
@@ -15,6 +16,8 @@ const GOOGLE_SEARCH_URL = "https://www.google.com/search";
 const DEFAULT_NUM_RESULTS = 10;
 const MAX_NUM_RESULTS = 20;
 const RESULT_RENDER_TIMEOUT_MS = 10_000;
+/** Per-link budget for following a `/goto` result link to its destination. */
+const GOTO_RESOLVE_TIMEOUT_MS = 5_000;
 
 const RECENCY_TO_GOOGLE_TBS: Record<NonNullable<SearchParams["recency"]>, string> = {
 	day: "qdr:d",
@@ -40,6 +43,50 @@ function normalizeText(value: string | null | undefined): string {
 	return normalizeSearchText(value) ?? "";
 }
 
+function isGoogleHost(hostname: string): boolean {
+	return hostname === "google.com" || hostname === "www.google.com";
+}
+
+function isGotoUrl(href: string): boolean {
+	try {
+		const url = new URL(href);
+		return isGoogleHost(url.hostname) && url.pathname === "/goto";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Follow each `/goto` result link one redirect hop to the page it names (a plain
+ * GET answers `302 Location: <destination>`). A link that cannot be resolved in
+ * time keeps its `/goto` form, which still opens the result in a browser.
+ */
+async function resolveGotoUrls(results: ParsedResult[], params: SearchParams): Promise<void> {
+	const fetchImpl = params.fetch ?? fetch;
+	const headers = buildBrowserNavigationHeaders();
+	await Promise.all(
+		results.map(async result => {
+			if (!isGotoUrl(result.url)) return;
+			const signal = AbortSignal.any([
+				AbortSignal.timeout(GOTO_RESOLVE_TIMEOUT_MS),
+				...(params.signal ? [params.signal] : []),
+			]);
+			try {
+				const response = await fetchImpl(result.url, { method: "GET", redirect: "manual", headers, signal });
+				const location = response.headers.get("location");
+				void response.body?.cancel();
+				if (!location) return;
+				const target = new URL(location, GOOGLE_HOME_URL);
+				if ((target.protocol === "http:" || target.protocol === "https:") && !isGoogleHost(target.hostname)) {
+					result.url = target.href;
+				}
+			} catch {
+				// Keep the /goto link.
+			}
+		}),
+	);
+}
+
 function unwrapResultUrl(href: string): string | undefined {
 	let url: URL;
 	try {
@@ -48,7 +95,10 @@ function unwrapResultUrl(href: string): string | undefined {
 		return undefined;
 	}
 
-	if ((url.hostname === "google.com" || url.hostname === "www.google.com") && url.pathname === "/url") {
+	// Rendered results (2026) link through an opaque `/goto?url=<token>` redirect;
+	// keep it for `resolveGotoUrls` to follow.
+	if (isGoogleHost(url.hostname) && url.pathname === "/goto" && url.searchParams.has("url")) return url.href;
+	if (isGoogleHost(url.hostname) && url.pathname === "/url") {
 		const target = url.searchParams.get("q") || url.searchParams.get("url");
 		if (!target) return undefined;
 		try {
@@ -59,7 +109,7 @@ function unwrapResultUrl(href: string): string | undefined {
 	}
 
 	if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
-	if (url.hostname === "google.com" || url.hostname === "www.google.com") return undefined;
+	if (isGoogleHost(url.hostname)) return undefined;
 	return url.href;
 }
 
@@ -166,7 +216,8 @@ async function callGoogleHtml(params: SearchParams, numResults: number): Promise
 export async function searchGoogle(params: SearchParams): Promise<SearchResponse> {
 	const numResults = clampNumResults(params.numSearchResults ?? params.limit, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	const html = await callGoogleHtml(params, numResults);
-	const parsed = parseHtmlResults(html);
+	const parsed = parseHtmlResults(html).slice(0, numResults * 2);
+	await resolveGotoUrls(parsed, params);
 
 	const sources: SearchSource[] = [];
 	const seen = new Set<string>();
