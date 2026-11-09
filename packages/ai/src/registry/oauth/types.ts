@@ -68,6 +68,8 @@ export type OAuthAuthInfo = {
 	 */
 	launchUrl?: string;
 	instructions?: string;
+	/** False for informational key/console pages: display the link without launching a browser. */
+	autoOpen?: boolean;
 };
 
 export interface OAuthProviderInfo {

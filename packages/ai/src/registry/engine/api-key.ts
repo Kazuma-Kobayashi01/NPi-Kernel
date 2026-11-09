@@ -1,5 +1,5 @@
 /**
- * `login "api-key"` engine: open the provider's key page, prompt for a paste,
+ * `login "api-key"` engine: show the provider's key page link, prompt for a paste,
  * optionally validate the key against a declared probe, return the key.
  */
 import type { CompiledApiKeyLogin, CompiledAuthValidation } from "@oh-my-pi/pi-catalog/compat/types";
@@ -72,7 +72,7 @@ export function createApiKeyLogin(
 			throw new AIError.OnPromptRequiredError(label);
 		}
 		if (rule.authUrl && rule.instructions) {
-			options.onAuth?.({ url: rule.authUrl, instructions: rule.instructions });
+			options.onAuth?.({ url: rule.authUrl, instructions: rule.instructions, autoOpen: false });
 		}
 		const answer = await options.onPrompt({
 			message: rule.prompt,

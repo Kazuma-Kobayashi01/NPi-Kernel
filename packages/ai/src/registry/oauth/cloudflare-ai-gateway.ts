@@ -12,6 +12,7 @@ export async function loginCloudflareAiGateway(options: OAuthController): Promis
 	options.onAuth?.({
 		url: AUTH_URL,
 		instructions: "Create an AI Gateway token with Run permission, then copy it here.",
+		autoOpen: false,
 	});
 
 	const apiKey = await options.onPrompt({

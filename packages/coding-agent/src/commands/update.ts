@@ -27,7 +27,8 @@ export default class Update extends Command {
 		if (flags.canary && flags.stable) throw new CliUsageError("--canary and --stable are mutually exclusive");
 		if (!flags.plugins) {
 			// NPi has no self-updater of its own and does not follow the upstream release channel.
-			console.log("npi does not update itself: new versions arrive with NPi Desktop releases. Use `npi update --plugins` for plugins.");
+			const source = process.platform === "linux" ? "a new npi .run installer (run it again to upgrade)" : "NPi Desktop releases";
+			console.log(`npi does not update itself: new versions arrive with ${source}. Use \`npi update --plugins\` for plugins.`);
 			return;
 		}
 		if (flags.plugins) {

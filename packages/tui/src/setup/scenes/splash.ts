@@ -1,6 +1,6 @@
 import { centerLine, visibleWidth } from "../../utils";
 import { padToWidth } from "../../render/utils";
-import { APP_NAME, VERSION } from "@oh-my-pi/pi-utils";
+import { BIN_NAME, VERSION } from "@oh-my-pi/pi-utils";
 import { gradientEscape, gradientLogo, lockupNode, PI_LOGO, type ShineConfig } from "../../prompt/welcome";
 import { theme } from "../../theme/theme";
 import { formatKeyHint } from "../../app-keybindings";
@@ -279,7 +279,7 @@ export function describeSetupSplash(): NativeNode {
 /** Centered fallback for windows too small to hold the full scene. */
 function renderCompactSplash(width: number, height: number, phase: number, shine: ShineConfig): string[] {
 	const art = height >= 14 ? LARGE_LOGO : PI_LOGO;
-	const content = [...gradientLogo(art, phase, shine), "", theme.bold(APP_NAME)];
+	const content = [...gradientLogo(art, phase, shine), "", theme.bold(BIN_NAME)];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
 	const lines: string[] = [];
 	for (let y = 0; y < height; y++) {

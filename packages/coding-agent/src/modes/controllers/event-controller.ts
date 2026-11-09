@@ -162,21 +162,6 @@ interface ApprovalPreviewGate {
 	started: boolean;
 }
 
-/**
- * Working-line text for a streamed tool intent, or `undefined` when unusable.
- * Streamed JSON can deliver non-string `i` (object, number, boolean) before
- * schema validation, so the type is guarded too.
- */
-function normalizeIntent(intent: unknown): string | undefined {
-	if (typeof intent !== "string") return undefined;
-	return (
-		intent
-			.trim()
-			.replace(/\s*\.+$/, "")
-			.trim() || undefined
-	);
-}
-
 /** Job ids the async-wait working row lists before collapsing the rest to `+N`. */
 const ASYNC_WAIT_LISTED_JOBS = 3;
 
@@ -211,7 +196,6 @@ export class EventController {
 	// reads collapses into one group even across completion boundaries.
 	#lastVisibleBlockCount = 0;
 	#renderedCustomMessages = new Set<string>();
-	#lastIntent: string | undefined = undefined;
 	/** Returned calls parked for their background job's frames ({@link parksAsBackground}). */
 	#backgroundCallIds = new Set<string>();
 	/**
@@ -848,14 +832,6 @@ export class EventController {
 		return component;
 	}
 
-	#updateWorkingMessageFromIntent(intent: unknown): void {
-		if (this.ctx.session.isAborting) return;
-		const trimmed = normalizeIntent(intent);
-		if (!trimmed || trimmed === this.#lastIntent) return;
-		this.#lastIntent = trimmed;
-		this.ctx.setWorkingMessage(trimmed);
-	}
-
 	subscribeToAgent(): void {
 		// Serialize non-update dispatch behind any in-flight handler run:
 		// AgentSession.#emit fires listeners fire-and-forget (it does not await
@@ -1025,7 +1001,6 @@ export class EventController {
 		this.#resetReadGroup();
 		this.#lastVisibleBlockCount = 0;
 		this.#renderedCustomMessages.clear();
-		this.#lastIntent = undefined;
 		this.#toolTimelineComponents.clear();
 		this.#streamedToolCallIdByIndex.clear();
 		this.#pendingStreamPreviews.clear();
@@ -1184,9 +1159,7 @@ export class EventController {
 		this.#orphanedToolCompletions.clear();
 		this.#postToolAssistantComponents.clear();
 		this.#toolReplyBlocks.clear();
-		this.#lastIntent = undefined;
-		// A background result woke the run: the row stops naming the wait and
-		// follows this run's intents again.
+		// A background result woke the run: restore its default animation label.
 		if (this.#asyncWaitEnd) {
 			this.#asyncWaitEnd = undefined;
 			this.ctx.setWorkingMessage();
@@ -1741,33 +1714,6 @@ export class EventController {
 				if (closed) component?.markTranscriptBlockFinalized();
 			}
 
-			// Update working message with the intent of the LAST intent-bearing
-			// streamed tool call. Scanning in reverse skips the redundant
-			// intermediate setWorkingMessage calls a forward pass would make
-			// (only the last one survives the flush anyway).
-			const blocks = this.ctx.streamingMessage.content;
-			for (let index = blocks.length - 1; index >= 0; index--) {
-				const block = blocks[index];
-				if (block?.type !== "toolCall") continue;
-				const args = block.arguments;
-				if (!args || typeof args !== "object") continue;
-				let intent: string | undefined;
-				if (INTENT_FIELD in args) {
-					intent = normalizeIntent(args[INTENT_FIELD]);
-				} else {
-					const tool = this.ctx.viewSession.getToolByName(block.name);
-					if (typeof tool?.intent !== "function") continue;
-					try {
-						intent = normalizeIntent(tool.intent(args as never));
-					} catch {
-						// intent function must never break the UI
-					}
-				}
-				if (!intent) continue;
-				this.#updateWorkingMessageFromIntent(intent);
-				break;
-			}
-
 			this.ctx.ui.requestRender();
 		}
 	}
@@ -1985,7 +1931,6 @@ export class EventController {
 	async #handleToolExecutionStart(event: Extract<AgentSessionEvent, { type: "tool_execution_start" }>): Promise<void> {
 		if (this.#retractedToolCallIds.has(event.toolCallId)) return;
 		this.#ensureWorkingLoaderWhileStreaming();
-		this.#updateWorkingMessageFromIntent(event.intent);
 		const tool = this.ctx.viewSession.getToolByName(event.toolName);
 		const renderToolName = toolRenderName(event.toolName, tool);
 		const blocked = this.#blockingPrompt(renderToolName, event.args);

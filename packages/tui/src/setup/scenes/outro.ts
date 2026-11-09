@@ -1,6 +1,6 @@
 import { centerLine } from "../../utils";
 import { padToWidth } from "../../render/utils";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
+import { BIN_NAME } from "@oh-my-pi/pi-utils";
 import { gradientLogo, PI_LOGO } from "../../prompt/welcome";
 import { theme } from "../../theme/theme";
 import { col, compact, keyed, node, span, text } from "../../native/describe";
@@ -23,7 +23,7 @@ export function describeSetupOutro(model: string | undefined): NativeNode {
 		col(
 			compact([
 				node("spacer", { grow: 1 }, undefined, "top"),
-				node("image", { builtin: "omp", alt: APP_NAME, w: 72, role: "omp.setup.outro.mark" }, undefined, "logo"),
+				node("image", { builtin: "omp", alt: BIN_NAME, w: 72, role: "omp.setup.outro.mark" }, undefined, "logo"),
 				keyed(text([span("You're all set", "strong")], { wrap: "none", role: "omp.setup.outro.title" }), "title"),
 				model !== undefined &&
 					keyed(
@@ -35,7 +35,7 @@ export function describeSetupOutro(model: string | undefined): NativeNode {
 						"model",
 					),
 				keyed(
-					text([span(`Starting ${APP_NAME}…`, "muted")], { wrap: "none", role: "omp.setup.outro.status" }),
+					text([span(`Starting ${BIN_NAME}…`, "muted")], { wrap: "none", role: "omp.setup.outro.status" }),
 					"status",
 				),
 				node("progress", { value: null, role: "omp.setup.outro.progress" }, undefined, "progress"),

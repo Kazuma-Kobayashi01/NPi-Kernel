@@ -5,6 +5,9 @@ import { getCustomThemesDir } from "@oh-my-pi/pi-utils/dirs";
 import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
 import { detectColorMode, resolveThemeColors } from "./color";
 import darkThemeJson from "./dark.json" with { type: "json" };
+import tokyoChromeTheme from "./dark-tokyo-chrome.json" with { type: "json" };
+import tokyoNeonTheme from "./dark-tokyo-neon.json" with { type: "json" };
+import tokyoRainTheme from "./dark-tokyo-rain.json" with { type: "json" };
 import defaultThemes from "./defaults.json" with { type: "json" };
 import lightThemeJson from "./light.json" with { type: "json" };
 import type { ColorMode, ThemeBg, ThemeColor, ThemeJson } from "./schema";
@@ -19,6 +22,9 @@ const BUILTIN_THEMES: Record<string, ThemeJson> = {
 	dark: darkThemeJson as ThemeJson,
 	light: lightThemeJson as ThemeJson,
 	...(defaultThemes as Record<string, ThemeJson>),
+	"dark-tokyo-chrome": tokyoChromeTheme as ThemeJson,
+	"dark-tokyo-neon": tokyoNeonTheme as ThemeJson,
+	"dark-tokyo-rain": tokyoRainTheme as ThemeJson,
 };
 
 export function getBuiltinThemes(): Record<string, ThemeJson> {

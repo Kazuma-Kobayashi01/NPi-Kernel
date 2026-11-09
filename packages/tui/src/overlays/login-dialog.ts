@@ -167,7 +167,7 @@ export class LoginDialogComponent extends OverlayPanel {
 	 * `code_challenge_method=S256`). Every physical URL row carries its own OSC 8
 	 * link to the full URL, so clicking any wrapped fragment opens the same target.
 	 */
-	showAuth(url: string, instructions?: string, launchUrl?: string): void {
+	showAuth(url: string, instructions?: string, launchUrl?: string, autoOpen = true): void {
 		this.#contentContainer.clear();
 		this.#contentContainer.addChild(new Spacer(1));
 		this.#contentContainer.addChild(
@@ -207,8 +207,8 @@ export class LoginDialogComponent extends OverlayPanel {
 		this.#nativeSteps = [];
 		this.#nativeRoot = undefined;
 
-		// Open browser (best-effort)
-		this.#openUrl(url);
+		// Only authorization pages auto-open; key/console links remain manual.
+		if (autoOpen) this.#openUrl(url);
 
 		this.#tui.requestRender();
 	}

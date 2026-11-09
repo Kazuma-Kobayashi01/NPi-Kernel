@@ -48,6 +48,7 @@ import {
 } from "@oh-my-pi/pi-tui/thinking";
 import type { JsStatusEvent } from "./js/shared/types";
 
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders } from "../config/model-settings";
 import { cfgRetry } from "../session/settings";
 
@@ -295,7 +296,7 @@ function resolveTierCandidates(tier: CompletionTier, session: ToolSession): Comp
 			modelRegistry,
 			settings: session.settings,
 			tier,
-			disabledProviders: new Set(cfgDisabledProviders.get(session.settings)),
+			disabledProviders: new Set(withEditionHiddenProviders(cfgDisabledProviders.get(session.settings))),
 		},
 		primary.selector,
 		primary.model,

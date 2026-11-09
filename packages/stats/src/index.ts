@@ -11,6 +11,7 @@ import { formatStatsDashboardUrl, startServer } from "./server";
 
 export {
 	getDashboardStats,
+	getModelStatsSince,
 	getToolDashboardStats,
 	getTotalMessageCount,
 	type SyncOptions,

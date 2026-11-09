@@ -128,6 +128,7 @@ import {
 } from "./session/session-listing";
 import { ForkSourceNotFoundError, SessionManager, SessionMoveRefusedError } from "./session/session-manager";
 import { forkIfMovedAway } from "./session/session-transfer";
+import { startBgm } from "./modes/bgm";
 import { shouldShowStartupSplash } from "./startup-splash";
 import {
 	discoverSystemPromptOverride,
@@ -179,6 +180,7 @@ import {
 	cfgStartupQuiet,
 	cfgStartupSetupWizard,
 	cfgStartupShowSplash,
+	cfgStartupBgm,
 	cfgSymbolPreset,
 	cfgThemeDark,
 	cfgThemeLight,
@@ -721,6 +723,7 @@ async function runInteractiveMode(
 			}),
 		);
 		startDeferredStartupWork?.();
+		if (process.stdout.isTTY) startBgm(settings.getAgentDir(), cfgStartupBgm.get(settings));
 
 		if (setupWizard && playStartupSplash) {
 			await setupWizard.runStartupSplash(mode);

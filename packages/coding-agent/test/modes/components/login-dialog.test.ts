@@ -4,6 +4,7 @@ import { LoginDialogComponent } from "@oh-my-pi/pi-tui/overlays/login-dialog";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import * as openModule from "@oh-my-pi/pi-coding-agent/utils/open";
 import type { TUI } from "@oh-my-pi/pi-tui";
+import { createApiKeyLogin } from "../../../../ai/src/registry/engine/api-key";
 
 import { cfgTuiHyperlinks } from "@oh-my-pi/pi-coding-agent/modes/settings";
 
@@ -22,6 +23,26 @@ afterAll(() => {
 });
 
 describe("LoginDialogComponent", () => {
+	it("keeps the API key page visible without opening a browser and accepts the key", async () => {
+		const opened: string[] = [];
+		const tui = { requestRender() {} } as unknown as TUI;
+		const dialog = new LoginDialogComponent(tui, "deepseek", () => {}, url => opened.push(url));
+		const url = "https://platform.deepseek.com/api_keys";
+		const login = createApiKeyLogin(
+			{ kind: "api-key", authUrl: url, instructions: "Copy your API key", prompt: "Paste API key" },
+			"DeepSeek",
+		);
+		const result = login({
+			onAuth: info => dialog.showAuth(info.url, info.instructions, info.launchUrl, info.autoOpen),
+			onPrompt: prompt => dialog.showPrompt(prompt),
+		});
+		expect(dialog.renderContent(100).map(line => Bun.stripANSI(line)).join("\n")).toContain(url);
+		dialog.handleInput("test-key");
+		dialog.handleInput("\r");
+		expect(await result).toBe("test-key");
+		expect(opened).toEqual([]);
+	});
+
 	it("links every wrapped authorization URL row to the complete URL", () => {
 		cfgTuiHyperlinks.override(settings, "always");
 		const openSpy = spyOn(openModule, "openPath").mockImplementation(() => {});

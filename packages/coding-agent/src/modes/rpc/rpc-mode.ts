@@ -2929,6 +2929,10 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					await session.modelRegistry.authStorage.oauth.login(command.providerId, {
 						onAuth: info => {
 							authEmitted = true;
+							if (info.autoOpen === false) {
+								uiCtx.notify([info.instructions, info.url].filter(Boolean).join("\n"), "info");
+								return;
+							}
 							output({
 								type: "extension_ui_request",
 								id: Snowflake.next() as string,

@@ -38,7 +38,8 @@ export interface SetupHost extends SetupUiHost {
 	saveSymbolPreset(preset: SymbolPreset): void;
 	saveColorBlindMode(enabled: boolean): void;
 	saveTheme(mode: "dark" | "light", name: string): void;
-	captureBrowserSession(request: OAuthBrowserSessionRequest, signal?: AbortSignal): Promise<string>;
+	/** Absent where no sign-in browser is offered (Linux); providers then use their non-browser login. */
+	captureBrowserSession?(request: OAuthBrowserSessionRequest, signal?: AbortSignal): Promise<string>;
 	openInBrowser(url: string): void;
 	markComplete(version: number): Promise<void>;
 	playWelcomeIntro(): void;

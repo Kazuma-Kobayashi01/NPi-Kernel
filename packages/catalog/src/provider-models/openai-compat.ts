@@ -4347,6 +4347,7 @@ export interface LmStudioNativeModelMetadata {
 	 * questions on `/v1/decisions` and rejects chat completions.
 	 */
 	decision?: true;
+	supportsTools?: boolean;
 }
 
 /** Options for LM Studio's optional native metadata probe. */
@@ -4374,16 +4375,75 @@ function getLmStudioModelType(entry: Record<string, unknown>): string {
 	return typeof entry.type === "string" ? entry.type.toLowerCase() : "";
 }
 
-function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "image")[] {
-	const modelType = getLmStudioModelType(entry);
-	// A decision model stays `type: "decision"` when it reads images; LM Studio
-	// says so through `has_vision_adapter` instead.
-	if (modelType === "decision") {
-		return entry.has_vision_adapter === true ? ["text", "image"] : ["text"];
+function getLmStudioSupportsTools(entry: Record<string, unknown>): boolean | undefined {
+	if (isRecord(entry.capabilities)) {
+		if (typeof entry.capabilities.trained_for_tool_use === "boolean") {
+			return entry.capabilities.trained_for_tool_use;
+		}
+		if (typeof entry.capabilities.tool_use === "boolean") {
+			return entry.capabilities.tool_use;
+		}
 	}
 	const capabilities = getLmStudioCapabilityNames(entry.capabilities);
-	const supportsImage = modelType === "vlm" || capabilities.includes("vision") || capabilities.includes("image");
-	return supportsImage ? ["text", "image"] : ["text"];
+	if (capabilities.includes("tool_use") || capabilities.includes("trained_for_tool_use")) {
+		return true;
+	}
+	return undefined;
+}
+
+function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "image")[] {
+	const modelType = getLmStudioModelType(entry);
+	const supportsVision =
+		modelType === "vlm" ||
+		entry.has_vision_adapter === true ||
+		(isRecord(entry.capabilities) && entry.capabilities.vision === true) ||
+		getLmStudioCapabilityNames(entry.capabilities).includes("vision") ||
+		getLmStudioCapabilityNames(entry.capabilities).includes("image");
+	return supportsVision ? ["text", "image"] : ["text"];
+}
+
+/**
+ * Models from LM Studio's v1 listing (`GET /api/v1/models`), keyed by model key
+ * and loaded instance ids. v1 models report decision types, active loaded-instance
+ * context limits, and structured vision/tool capabilities.
+ */
+function getLmStudioV1Models(payload: unknown): Map<string, LmStudioNativeModelMetadata> {
+	const metadata = new Map<string, LmStudioNativeModelMetadata>();
+	if (!isRecord(payload) || !Array.isArray(payload.models)) {
+		return metadata;
+	}
+	for (const entry of payload.models) {
+		if (!isRecord(entry)) {
+			continue;
+		}
+		const key = typeof entry.key === "string" && entry.key.trim().length > 0 ? entry.key.trim() : undefined;
+		if (!key) {
+			continue;
+		}
+		const instances = Array.isArray(entry.loaded_instances) ? entry.loaded_instances.filter(isRecord) : [];
+		const loadedContextWindows = instances
+			.map(instance => (isRecord(instance.config) ? toPositiveNumber(instance.config.context_length, null) : null))
+			.filter((window): window is number => window !== null);
+		const contextWindow =
+			(loadedContextWindows.length > 0 ? Math.min(...loadedContextWindows) : undefined) ??
+			toPositiveNumber(entry.max_context_length, null) ??
+			undefined;
+		const modelType = getLmStudioModelType(entry);
+		const supportsTools = getLmStudioSupportsTools(entry);
+		const model: LmStudioNativeModelMetadata = {
+			input: getLmStudioNativeInput(entry),
+			...(contextWindow === undefined ? {} : { contextWindow }),
+			...(modelType === "decision" ? { decision: true as const } : {}),
+			...(supportsTools !== undefined ? { supportsTools } : {}),
+		};
+		const ids = [key, ...instances.map(instance => (typeof instance.id === "string" ? instance.id : ""))].filter(
+			id => id.length > 0,
+		);
+		for (const id of ids) {
+			metadata.set(id, model);
+		}
+	}
+	return metadata;
 }
 
 /**
@@ -4391,34 +4451,6 @@ function getLmStudioNativeInput(entry: Record<string, unknown>): ("text" | "imag
  * model key and by every loaded instance id. The v0 listing predates decision
  * models, so this is where `type: "decision"` is reported.
  */
-function getLmStudioV1DecisionModels(payload: unknown): Map<string, LmStudioNativeModelMetadata> {
-	const metadata = new Map<string, LmStudioNativeModelMetadata>();
-	if (!isRecord(payload) || !Array.isArray(payload.models)) {
-		return metadata;
-	}
-	for (const entry of payload.models) {
-		if (!isRecord(entry) || getLmStudioModelType(entry) !== "decision") {
-			continue;
-		}
-		const instances = Array.isArray(entry.loaded_instances) ? entry.loaded_instances.filter(isRecord) : [];
-		const loadedContextWindow = instances
-			.map(instance => (isRecord(instance.config) ? toPositiveNumber(instance.config.context_length, null) : null))
-			.find(window => window !== null);
-		const contextWindow = loadedContextWindow ?? toPositiveNumber(entry.max_context_length, null) ?? undefined;
-		const model: LmStudioNativeModelMetadata = {
-			input: getLmStudioNativeInput(entry),
-			...(contextWindow === undefined ? {} : { contextWindow }),
-			decision: true,
-		};
-		const ids = [entry.key, ...instances.map(instance => instance.id)];
-		for (const id of ids) {
-			if (typeof id === "string" && id.length > 0) {
-				metadata.set(id, model);
-			}
-		}
-	}
-	return metadata;
-}
 
 function getLmStudioNativeContextWindow(entry: Record<string, unknown>): number | undefined {
 	// LM Studio serves `loaded_context_length` (the window the running instance
@@ -4463,8 +4495,8 @@ export async function fetchLmStudioNativeModelMetadata(
 	const fetchMetadata = async (signal?: AbortSignal): Promise<Map<string, LmStudioNativeModelMetadata> | null> => {
 		// Builds without the v1 listing answer 404 there and keep v0 metadata alone.
 		const [v0, v1] = await Promise.all([fetchJson("/api/v0/models", signal), fetchJson("/api/v1/models", signal)]);
-		const decisions = getLmStudioV1DecisionModels(v1);
-		if ((!isRecord(v0) || !Array.isArray(v0.data)) && decisions.size === 0) {
+		const v1Models = getLmStudioV1Models(v1);
+		if ((!isRecord(v0) || !Array.isArray(v0.data)) && v1Models.size === 0) {
 			return null;
 		}
 		const metadata = new Map<string, LmStudioNativeModelMetadata>();
@@ -4473,14 +4505,22 @@ export async function fetchLmStudioNativeModelMetadata(
 				continue;
 			}
 			const contextWindow = getLmStudioNativeContextWindow(entry);
+			const supportsTools = getLmStudioSupportsTools(entry);
 			metadata.set(entry.id, {
 				input: getLmStudioNativeInput(entry),
 				...(contextWindow === undefined ? {} : { contextWindow }),
 				...(getLmStudioModelType(entry) === "decision" ? { decision: true as const } : {}),
+				...(supportsTools !== undefined ? { supportsTools } : {}),
 			});
 		}
-		for (const [id, model] of decisions) {
-			metadata.set(id, model);
+		for (const [id, model] of v1Models) {
+			const existing = metadata.get(id);
+			metadata.set(id, {
+				input: model.input ?? existing?.input ?? ["text"],
+				contextWindow: model.contextWindow ?? existing?.contextWindow,
+				decision: model.decision ?? existing?.decision,
+				supportsTools: model.supportsTools ?? existing?.supportsTools,
+			});
 		}
 		return metadata;
 	};
@@ -4537,6 +4577,7 @@ export function lmStudioModelManagerOptions(config?: LmStudioModelManagerConfig)
 						: {}),
 					input: metadata.input,
 					contextWindow: metadata.contextWindow ?? model.contextWindow,
+					...(metadata.supportsTools !== undefined ? { supportsTools: metadata.supportsTools } : {}),
 				};
 			});
 		},

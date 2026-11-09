@@ -46,6 +46,7 @@ import { type ModelKind, modelKind } from "@oh-my-pi/pi-catalog/types";
 import { getConfigRootDir, logger, VERSION } from "@oh-my-pi/pi-utils";
 import chalk from "@oh-my-pi/pi-utils/chalk";
 import { ModelRegistry } from "../config/model-registry";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders, cfgModelProviderOrder } from "../config/model-settings";
 import { resolveProviderModelReference } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
@@ -239,7 +240,7 @@ export function gatewayRoutableModels(registry: ModelRegistry): Model<Api>[] {
  * every rebuild so a later login or logout reaches the served catalog.
  */
 export function gatewayRoutableProviders(storage: AuthStorage, settings: Settings): Set<string> {
-	const disabled = new Set(cfgDisabledProviders.get(settings));
+	const disabled = new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings)));
 	const providers = new Set<string>();
 	for (const entry of storage.credentials.snapshot().credentials) {
 		if (!disabled.has(entry.provider)) providers.add(entry.provider);
@@ -457,7 +458,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 		version: VERSION,
 		resolveModel: (id, options) => resolveGatewayModel(id, index, options),
 		listModels: () => index.qualified.values(),
-		excludeProviders: new Set(cfgDisabledProviders.get(settings)),
+		excludeProviders: new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings))),
 		clients,
 	});
 	process.stdout.write(`auth-gateway listening on ${handle.url}\n`);
@@ -891,7 +892,7 @@ async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	try {
 		await storage.credentials.reload();
 		const results = await storage.health.check({
-			excludeProviders: new Set(cfgDisabledProviders.get(settings)),
+			excludeProviders: new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings))),
 			...(flags.strict
 				? { completionProbe: createStrictCompletionProbe(), completionTimeoutMs: STRICT_PROBE_OVERALL_TIMEOUT_MS }
 				: {}),

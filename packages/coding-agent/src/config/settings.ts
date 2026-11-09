@@ -2618,6 +2618,9 @@ export class Settings {
 		if (raw.doubleEscapeAction === "branch") {
 			raw.doubleEscapeAction = "rewind";
 		}
+		// expandThinkingBlocks (written by Ctrl+T) was replaced by `display.collapse`; Ctrl+T now only
+		// toggles the session, so the stored flag is dropped and the collapse level's default applies.
+		delete raw.expandThinkingBlocks;
 
 		// lastChangelogVersion moved out of config.yml into the
 		// <agentDir>/last-changelog-version marker file so version bumps no

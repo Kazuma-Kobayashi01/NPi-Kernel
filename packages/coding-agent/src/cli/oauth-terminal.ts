@@ -160,8 +160,10 @@ export async function runTerminalOAuthLogin(
 	// for non-paste-code providers, so this is defense-in-depth on the same gate.
 	const usesManualInput = PASTE_CODE_LOGIN_PROVIDERS.has(provider);
 	return storage.oauth.login(provider, {
-		onAuth({ url, launchUrl, instructions }) {
-			process.stdout.write("\nOpen this URL in your browser:\n");
+		onAuth({ url, launchUrl, instructions, autoOpen }) {
+			process.stdout.write(
+				autoOpen === false ? "\nAPI key page (open manually if needed):\n" : "\nOpen this URL in your browser:\n",
+			);
 			// Full URL first so the CLI works from any machine, including SSH
 			// sessions where a `launchUrl` (loopback `/launch` on the OMP
 			// host) would resolve against the caller's browser and fail.
@@ -175,7 +177,7 @@ export async function runTerminalOAuthLogin(
 			}
 			if (instructions) process.stdout.write(`${instructions}\n`);
 			process.stdout.write("\n");
-			if (options.openBrowser) openPath(url);
+			if (options.openBrowser && autoOpen !== false) openPath(url);
 		},
 		onProgress(message) {
 			process.stdout.write(`${message}\n`);

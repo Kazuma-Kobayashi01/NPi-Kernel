@@ -23,8 +23,9 @@ import type {
 	SourceMeta,
 } from "./types";
 
-import { cfgDisabledExtensions } from "../extensibility/settings";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders, cfgEnabledProviders } from "../config/model-settings";
+import { cfgDisabledExtensions } from "../extensibility/settings";
 
 // =============================================================================
 // Registry State
@@ -44,7 +45,7 @@ let unboundDisabledProviders = new Set<string>();
 let unboundEnabledProviders = new Set<string>();
 
 /** `disabledProviders` / `enabledProviders` as sets, memoized per settings instance. */
-const cfgDisabledProviderSet = cfgDisabledProviders.map(ids => new Set(ids));
+const cfgDisabledProviderSet = cfgDisabledProviders.map(ids => new Set(withEditionHiddenProviders(ids)));
 const cfgEnabledProviderSet = cfgEnabledProviders.map(ids => new Set(ids));
 
 /** Foreign tools whose user-level (~/...) configs are opt-in */

@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
 import type { AssistantMessage, ImageContent, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
+import type { RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import type { Component, Container, EditorTheme, KeyId, Loader, TUI } from "@oh-my-pi/pi-tui";
 import type { TspText } from "@oh-my-pi/pi-wire";
 import type { StatusNotice } from "@oh-my-pi/pi-tui/chrome/status-notice";
@@ -268,6 +269,8 @@ export interface InteractiveModeContext {
 	initialChatRendered: boolean;
 	isBashMode: boolean;
 	toolOutputExpanded: boolean;
+	/** File-change cards (edit, write, patch) stay expanded while true, independent of {@link toolOutputExpanded}. */
+	fileChangesExpanded: boolean;
 	hideToolActivity: boolean;
 	todoExpanded: boolean;
 	planModeEnabled: boolean;
@@ -584,6 +587,7 @@ export interface InteractiveModeContext {
 	showSettingsSelector(): void;
 	/** Open the fullscreen `/usage` dashboard overlay for the given reports. */
 	showUsageDashboard(reports: UsageReport[]): void;
+	showRankDashboard(options: Omit<RankDashboardOptions, "requestRender" | "onClose">): void;
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;

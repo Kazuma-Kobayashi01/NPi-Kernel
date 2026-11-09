@@ -1,4 +1,5 @@
-import { APP_NAME } from "@oh-my-pi/pi-utils/dirs";
+import { BIN_NAME } from "@oh-my-pi/pi-utils/dirs";
+import { hexToRgb } from "@oh-my-pi/pi-utils/color";
 import type { TspSpan } from "@oh-my-pi/pi-wire";
 import { formatDoubleTap, formatKeyHint, formatKeyHints, type KeyName } from "../app-keybindings";
 import { editorKey } from "../chrome/keybinding-hints";
@@ -9,9 +10,10 @@ import { compactText, plainText } from "../native/spans";
 import { isNativeRendering } from "../native/state";
 import { isHyperlinkEnabled, urlHyperlink, urlLinkSpan } from "../render/hyperlink";
 import { TERMINAL } from "../terminal-capabilities";
-import { theme } from "../theme/theme";
+import { theme, type Theme } from "../theme/theme";
 import type { Component } from "../tui";
 import { padding, replaceTabs, visibleWidth, wrapTextWithAnsi } from "../utils";
+import { paintAmbientWelcome } from "./welcome-ambient";
 import tipsText from "./tips.txt" with { type: "text" };
 
 /** Leading marker for a tip that pitches Tern: shown only while no TSP surface
@@ -199,6 +201,11 @@ export class WelcomeComponent implements Component {
 	#animStart: number | null = null;
 	#animTimer: Timer | null = null;
 	#requestRender: (() => void) | null = null;
+	// The ambient backdrop keeps moving while the welcome is live chrome. It does
+	// not hold the block mutable: the header still retires on schedule, and the
+	// composer stops the loop when it does.
+	#ambientTimer: Timer | null = null;
+	#ambientRender: (() => void) | null = null;
 	// Tip randomness is latched once so the tip is stable across renders, but
 	// the nerdfont-nag gate re-reads the live preset and the pool re-reads the
 	// live TSP state: the startup prepaint can run under the default "unicode"
@@ -211,6 +218,7 @@ export class WelcomeComponent implements Component {
 	// Bypassed while the intro animation runs (every frame differs).
 	#cachedWidth = -1;
 	#cachedLines: string[] | undefined;
+	#cachedTheme: Theme | undefined;
 	#native: { tip: string | undefined; node: NativeNode } | undefined;
 	#minimal = false;
 	#held = false;
@@ -223,7 +231,7 @@ export class WelcomeComponent implements Component {
 	 * straight to its last frame.
 	 */
 	holdIntro(): void {
-		if (!this.#revealsLockup() || this.#animStart != null) return;
+		if (isNativeRendering() || this.#animStart != null) return;
 		this.#held = true;
 		this.invalidate();
 	}
@@ -235,12 +243,8 @@ export class WelcomeComponent implements Component {
 		return Math.min(1, (performance.now() - this.#animStart) / this.#introMs());
 	}
 
-	#revealsLockup(): boolean {
-		return this.#minimal && TERMINAL.trueColor && !isNativeRendering();
-	}
-
 	#introMs(): number {
-		return this.#revealsLockup() ? REVEAL_MS : INTRO_MS;
+		return REVEAL_MS;
 	}
 
 	/** The logo alone, for layouts whose footer already carries the version. */
@@ -348,6 +352,36 @@ export class WelcomeComponent implements Component {
 		return true;
 	}
 
+	/**
+	 * Keep the cabinet animating (bulbs, starfield, logo, ticker) by repainting
+	 * every {@link AMBIENT_TICK_MS}. Replaces the callback when already running.
+	 * A no-op on a TSP surface, which draws its own card.
+	 */
+	startAmbient(requestRender: () => void): void {
+		if (isNativeRendering()) return;
+		this.#ambientRender = requestRender;
+		if (this.#ambientTimer != null) return;
+		this.#ambientTimer = setInterval(() => {
+			// The intro timer already repaints at its own cadence.
+			if (this.#animTimer == null) this.#ambientRender?.();
+		}, AMBIENT_TICK_MS);
+		this.#ambientTimer.unref?.();
+	}
+
+	/** Freeze the cabinet on its current frame. Safe when idle. */
+	stopAmbient(): void {
+		if (this.#ambientTimer == null) return;
+		clearInterval(this.#ambientTimer);
+		this.#ambientTimer = null;
+		this.#ambientRender = null;
+		this.invalidate();
+	}
+
+	/** Whether the ambient loop is running. */
+	get ambientActive(): boolean {
+		return this.#ambientTimer != null;
+	}
+
 	/** Stop the intro immediately and settle on the resting frame. Safe when idle. */
 	stopIntro(): void {
 		this.#stopAnimation();
@@ -360,8 +394,8 @@ export class WelcomeComponent implements Component {
 	}
 
 	render(termWidth: number): readonly string[] {
-		const animating = this.#animStart != null;
-		if (!animating && this.#cachedLines && this.#cachedWidth === termWidth) {
+		const animating = this.#animStart != null || this.#ambientTimer != null;
+		if (!animating && this.#cachedLines && this.#cachedWidth === termWidth && this.#cachedTheme === theme) {
 			return this.#cachedLines;
 		}
 		const lines = this.#renderLines(termWidth);
@@ -371,6 +405,7 @@ export class WelcomeComponent implements Component {
 		} else {
 			this.#cachedLines = lines;
 			this.#cachedWidth = termWidth;
+			this.#cachedTheme = theme;
 		}
 		return lines;
 	}
@@ -379,20 +414,28 @@ export class WelcomeComponent implements Component {
 		// Content keeps a column clear on each side; everything centers in the full width.
 		const room = termWidth - 2;
 		if (room < 4) return [];
-		const version = this.#minimal ? "" : theme.fg("dim", `v${this.version}`);
-		const lockupWidth = LOGO_WIDTH + LOCKUP_GAP + Math.max(WORDMARK_WIDTH, visibleWidth(version));
+		const versionText = this.#minimal ? "" : `v${this.version}`;
+		const lockupWidth = LOGO_WIDTH + LOCKUP_GAP + Math.max(WORDMARK_WIDTH, visibleWidth(versionText));
 		const fits = room >= lockupWidth;
-		const logo = this.#currentLogoFrame();
-		const art = this.#revealsLockup()
-			? room > LOGO_WIDTH
-				? paintLockup(this.introProgress, fits)
-				: []
-			: fits
-				? lockup(logo, version)
-				: room >= LOGO_WIDTH
-					? logo
-					: [];
-		const lines = centerBlock(art, termWidth);
+		const plain = fits ? plainLockup(versionText) : room >= LOGO_WIDTH ? [...PI_LOGO] : [];
+		const versionColumn = LOGO_WIDTH + LOCKUP_GAP;
+		const { r, g, b } = hexToRgb(theme.getColorHex("dim"));
+		const moving = this.#ambientTimer != null || this.#animStart != null;
+		const lines =
+			plain.length === 0
+				? []
+				: paintAmbientWelcome({
+						art: plain,
+						width: termWidth,
+						logoWidth: LOGO_WIDTH,
+						stops: themeGradientStops(),
+						backdrop: terminalBackdrop(),
+						textRgb: [r, g, b],
+						isText: (x, y) => fits && y === PI_LOGO.length - 1 && x >= versionColumn,
+						// A still frame once the motion stops, so the settled banner caches.
+						now: moving ? performance.now() : 0,
+						reveal: this.introProgress,
+					});
 		const tip = !this.#minimal && termWidth >= TIP_MIN_COLUMNS ? this.#renderTip(room) : [];
 		if (tip.length > 0) lines.push("", ...tip.flatMap(line => centerBlock([line], termWidth)));
 		return lines;
@@ -412,14 +455,6 @@ export class WelcomeComponent implements Component {
 		const phase = NEW_TIP_MARKER.test(tip) ? performance.now() / NEW_GLOW_PERIOD_MS : 0;
 		return renderWelcomeTip(tip, Math.min(room, TIP_MEASURE), phase);
 	}
-
-	/** Pick the logo frame for the current intro phase, or the resting frame. */
-	#currentLogoFrame(): readonly string[] {
-		if (this.#animStart == null) return REST_FRAME;
-		const elapsed = performance.now() - this.#animStart;
-		if (elapsed >= INTRO_MS) return REST_FRAME;
-		return introLogoFrame(elapsed / INTRO_MS);
-	}
 }
 
 /**
@@ -434,11 +469,11 @@ export function lockupNode(version: string): NativeNode {
 	return keyed(
 		row(
 			[
-				node("image", { builtin: "omp", alt: APP_NAME, w: 128, role: "omp.welcome.logo" }, undefined, "logo"),
+				node("image", { builtin: "omp", alt: BIN_NAME, w: 128, role: "omp.welcome.logo" }, undefined, "logo"),
 				keyed(
 					col(
 						[
-							art([span(APP_NAME, "strong")], "omp.welcome.wordmark"),
+							art([span(BIN_NAME, "strong")], "omp.welcome.wordmark"),
 							art([span(`v${version}`, "dim mono")], "omp.welcome.version"),
 						],
 						{ role: "omp.welcome.mark" },
@@ -476,12 +511,13 @@ const TIP_MEASURE = 72;
 /** Narrowest terminal that still shows the tip; below it the banner is the logo alone. */
 const TIP_MIN_COLUMNS = 50;
 
-/** Logo frame `logo` with the wordmark beside it and `version` (styled) under the wordmark. */
-function lockup(logo: readonly string[], version: string): string[] {
-	// The wordmark takes the logo's ivory, not the terminal's text colour.
-	const ivory = gradientEscape(0);
-	const beside = ["", ...WORDMARK.map(row => `${ivory}\x1b[1m${row}\x1b[0m`), version];
-	return logo.map((row, index) => `${row}${padding(LOCKUP_GAP)}${beside[index] ?? ""}`);
+/** The logo with the wordmark beside it and `version` under the wordmark, uncolored. */
+function plainLockup(version: string): string[] {
+	const beside = ["", ...WORDMARK, version];
+	return PI_LOGO.map((row, index) => {
+		const right = beside[index] ?? "";
+		return right ? `${row.padEnd(LOGO_WIDTH)}${padding(LOCKUP_GAP)}${right}` : row;
+	});
 }
 
 /**
@@ -494,15 +530,21 @@ function centerBlock(lines: readonly string[], width: number): string[] {
 	return lines.map(line => indent + line);
 }
 
-/** Multi-stop palette for the diagonal gradient. */
-const GRADIENT_STOPS: ReadonlyArray<readonly [number, number, number]> = [
-	[243, 239, 230], // ivory
-	[200, 169, 106], // antique gold
-	[127, 163, 214], // slate blue
-];
+/** Resolved once per active theme, including selector previews and custom reloads. */
+let gradientTheme: Theme | undefined;
+let gradientStops: readonly Rgb[] = [];
 
-/** 256-color ramp fallback when truecolor isn't available. */
-const GRADIENT_RAMP_256 = [255, 230, 223, 180, 143, 110, 74];
+/** The theme's logo gradient stops (text → accent → border accent), cached per theme. */
+export function themeGradientStops(): readonly Rgb[] {
+	if (gradientTheme !== theme) {
+		gradientStops = (["text", "accent", "borderAccent"] as const).map(token => {
+			const { r, g, b } = hexToRgb(theme.getColorHex(token));
+			return [r, g, b] as const;
+		});
+		gradientTheme = theme;
+	}
+	return gradientStops;
+}
 
 /** Half-width of the shine highlight band, expressed in gradient-t units. */
 const SHINE_HALF_WIDTH = 0.18;
@@ -521,7 +563,7 @@ export interface ShineConfig {
  * color-identical (truecolor when available, 256-color ramp otherwise).
  */
 function gradientRgb(t: number): [number, number, number] {
-	const stops = GRADIENT_STOPS;
+	const stops = themeGradientStops();
 	const seg = t * (stops.length - 1);
 	const i = Math.min(stops.length - 2, Math.floor(seg));
 	const f = seg - i;
@@ -533,37 +575,28 @@ function gradientRgb(t: number): [number, number, number] {
 export function gradientEscape(t: number, shine?: ShineConfig): string {
 	const shineStrength = shine && shine.strength > 0 ? shine.strength : 0;
 	const shinePos = shine ? shine.pos : 0;
-	if (TERMINAL.trueColor) {
-		// 5-stop palette widens the visible color range and avoids the
-		// deep-blue valley a naive HSL lerp falls into.
-		let [r, g, bl] = gradientRgb(t);
-		if (shineStrength > 0) {
-			const dist = Math.abs(t - shinePos);
-			const intensity = Math.max(0, 1 - dist / SHINE_HALF_WIDTH) * shineStrength;
-			if (intensity > 0) {
-				r += (255 - r) * intensity;
-				g += (255 - g) * intensity;
-				bl += (255 - bl) * intensity;
-			}
-		}
-		return `\x1b[38;2;${Math.round(r)};${Math.round(g)};${Math.round(bl)}m`;
-	}
-	const ramp = GRADIENT_RAMP_256;
-	let idx = Math.min(ramp.length - 1, Math.max(0, Math.floor(t * (ramp.length - 1) + 0.5)));
+	let [r, g, b] = gradientRgb(t);
 	if (shineStrength > 0) {
 		const dist = Math.abs(t - shinePos);
 		const intensity = Math.max(0, 1 - dist / SHINE_HALF_WIDTH) * shineStrength;
-		// Promote to the brightest ramp slot when the shine band peaks here.
-		if (intensity > 0.5) idx = ramp.length - 1;
+		const highlight = themeGradientStops()[0];
+		r += (highlight[0] - r) * intensity;
+		g += (highlight[1] - g) * intensity;
+		b += (highlight[2] - b) * intensity;
 	}
-	return `\x1b[38;5;${ramp[idx]}m`;
+	const red = Math.round(r);
+	const green = Math.round(g);
+	const blue = Math.round(b);
+	return TERMINAL.trueColor
+		? `\x1b[38;2;${red};${green};${blue}m`
+		: Bun.color(`rgb(${red}, ${green}, ${blue})`, "ansi-256")!;
 }
 
 /**
  * Apply a multi-stop diagonal gradient (top-left → bottom-right) plus an
  * optional sliding shine band across multi-line art. `phase` (0..1) shifts the
- * gradient along the diagonal, wrapping at 1. When `shine` is provided, a soft
- * white highlight is composited on top, centered at `shine.pos`.
+ * gradient along the diagonal, wrapping at 1. When `shine` is provided, the
+ * theme's text colour highlights the band centered at `shine.pos`.
  */
 export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
 	const reset = "\x1b[0m";
@@ -580,8 +613,7 @@ export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineC
 				result += char;
 				continue;
 			}
-			// SVG's (0,0) → (1,1) gradient projects both normalized axes
-			// equally: top-right and bottom-left land on the purple midpoint.
+			// Project both normalized axes equally onto the theme's midpoint.
 			const base = (x / xSpan + y / ySpan) / 2;
 			const t = normalizedPhase === 0 ? base : (base + normalizedPhase) % 1;
 			result += gradientEscape(t, shine) + char + reset;
@@ -590,118 +622,17 @@ export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineC
 	});
 }
 
-/** Total length of the intro animation. */
-const INTRO_MS = 3000;
-/** Render cadence during the intro (~30fps). */
+/** Length of the cabinet's power-on reveal; the home chrome fades in with it. */
+const REVEAL_MS = 1500;
+/** Render cadence during the reveal (~30fps). */
 const INTRO_TICK_MS = 33;
-/** Number of full gradient rotations the sweep performs before settling. */
-const INTRO_SWEEPS = 2.5;
-/** Number of times the shine highlight crosses the diagonal across the intro. */
-const INTRO_SHINE_TRAVERSALS = 3;
-
-/**
- * Logo frame for a normalized intro progress in [0, 1).
- *
- * Ease-out cubic so the spin decelerates into the resting state. The gradient
- * sweeps backward through INTRO_SWEEPS full rotations (`eased == 1` → phase =
- * 0 = resting frame) while the shine traverses the diagonal at a steady pace,
- * decoupled from the gradient phase so the two layers parallax; its strength
- * fades with the same ease-out curve so the highlight is gone by the resting
- * frame.
- */
-function introLogoFrame(progress: number): string[] {
-	const eased = 1 - (1 - progress) ** 3;
-	const phase = ((((1 - eased) * INTRO_SWEEPS) % 1) + 1) % 1;
-	const shinePos = (((progress * INTRO_SHINE_TRAVERSALS) % 1) + 1) % 1;
-	const shineStrength = (1 - eased) ** 1.5;
-	return gradientLogo(PI_LOGO, phase, {
-		strength: shineStrength,
-		pos: shinePos,
-	});
-}
-
-/** Total length of the home screen's reveal. */
-const REVEAL_MS = 1200;
-/** Share of the reveal the light takes to cross the lockup; the rest is the settle. */
-const REVEAL_SWEEP = 0.8;
-/** How much of its colour the lockup keeps before the light reaches it. */
-const REVEAL_GHOST = 0.12;
-/** Width of the soft edge behind the light, and of its bright band, across the lockup. */
-const REVEAL_FEATHER = 0.28;
-const REVEAL_SHINE = 0.1;
-/** Assumed backdrop when the theme reports no exact terminal background. */
-const REVEAL_FALLBACK_BACKDROP: readonly [number, number, number] = [16, 16, 20];
+/** Render cadence of the always-on cabinet animation (~12fps). */
+const AMBIENT_TICK_MS = 80;
 
 type Rgb = readonly [number, number, number];
 
-function revealBackdrop(): Rgb {
+/** The theme's exact terminal background, or `undefined` when it reports none. */
+export function terminalBackdrop(): Rgb | undefined {
 	const match = /48;2;(\d+);(\d+);(\d+)/.exec(theme.terminalBackgroundAnsi);
-	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : REVEAL_FALLBACK_BACKDROP;
+	return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
 }
-
-/** One painted cell of the lockup. */
-interface LockupCell {
-	x: number;
-	y: number;
-	char: string;
-	rgb: Rgb;
-	bold: boolean;
-}
-
-/** The lockup's cells with their resting colours. */
-function lockupCells(wordmark: boolean): LockupCell[] {
-	const art = PI_LOGO.map((row, y) =>
-		wordmark ? row.padEnd(LOGO_WIDTH + LOCKUP_GAP) + (WORDMARK[y - 1] ?? "") : row,
-	);
-	const faces: LockupCell[] = [];
-	const ySpan = Math.max(1, art.length - 1);
-	const xSpan = Math.max(1, LOGO_WIDTH - 1);
-	for (const [y, row] of art.entries()) {
-		for (let x = 0; x < row.length; x++) {
-			const char = row[x]!;
-			if (char === " ") continue;
-			const inLogo = x < LOGO_WIDTH;
-			const t = inLogo ? (x / xSpan + y / ySpan) / 2 : 0;
-			faces.push({ x, y, char, rgb: gradientRgb(t), bold: !inLogo });
-		}
-	}
-	return faces;
-}
-
-/**
- * The lockup at reveal `progress` in [0, 1]: a faint ghost brightened by
- * a band of light moving left to right, the wordmark lit last. At 1 it is the
- * resting lockup. Truecolor only.
- */
-function paintLockup(progress: number, wordmark: boolean): string[] {
-	const backdrop = revealBackdrop();
-	const sweep = Math.min(1, progress / REVEAL_SWEEP);
-	const eased = sweep * sweep * (3 - 2 * sweep);
-	const front = -REVEAL_SHINE + eased * (1 + REVEAL_FEATHER + REVEAL_SHINE * 2);
-	const cells = lockupCells(wordmark);
-	const span = Math.max(1, Math.max(...cells.map(cell => cell.x)) - 1);
-	const rows = Array.from({ length: Math.max(...cells.map(cell => cell.y)) + 1 }, () => [] as LockupCell[]);
-	for (const cell of cells) rows[cell.y]!.push(cell);
-	return rows.map(row => {
-		let out = "";
-		let column = 0;
-		for (const cell of row.sort((left, right) => left.x - right.x)) {
-			out += padding(cell.x - column);
-			column = cell.x + 1;
-			const behind = front - cell.x / span;
-			const edge = Math.min(1, Math.max(0, behind / REVEAL_FEATHER));
-			const lit = REVEAL_GHOST + (1 - REVEAL_GHOST) * edge * edge * (3 - 2 * edge);
-			const shine = Math.max(0, 1 - Math.abs(behind) / REVEAL_SHINE);
-			const channel = (i: 0 | 1 | 2): number => {
-				const colour = backdrop[i] + (cell.rgb[i] - backdrop[i]) * lit;
-				return Math.round(colour + (255 - colour) * shine * 0.8);
-			};
-			const weight = cell.bold ? "\x1b[1m" : "";
-			out += `\x1b[38;2;${channel(0)};${channel(1)};${channel(2)}m${weight}${cell.char}\x1b[0m`;
-		}
-		return out;
-	});
-}
-
-/** Resting gradient frame, cached for re-renders outside of the intro. */
-const REST_FRAME = gradientLogo(PI_LOGO, 0);

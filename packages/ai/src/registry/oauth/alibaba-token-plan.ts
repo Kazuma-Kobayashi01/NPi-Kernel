@@ -62,7 +62,7 @@ export async function loginAlibabaTokenPlan(options: OAuthController): Promise<s
 			"Subscribe to Token Plan Individual and copy its dedicated API key. Keep this page open; the next prompt explains how to enable optional quota reporting.";
 	}
 
-	options.onAuth?.({ url: authUrl, instructions });
+	options.onAuth?.({ url: authUrl, instructions, autoOpen: false });
 
 	const apiKeyInput = await options.onPrompt({
 		message: "Paste your QwenCloud Token Plan API key",

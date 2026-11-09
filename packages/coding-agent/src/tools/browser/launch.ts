@@ -297,6 +297,13 @@ async function loadBrowsers(): Promise<typeof BrowsersNs> {
 	return browsersModule;
 }
 
+/** Chrome for Testing shipped by the Linux `.run` installer at `<prefix>/lib/npi/chrome-linux64`, next to the binary. */
+function bundledChromiumPath(): string | undefined {
+	if (process.platform !== "linux") return undefined;
+	const candidate = path.join(path.dirname(fs.realpathSync(process.execPath)), "..", "lib", "npi", "chrome-linux64", "chrome");
+	return fs.existsSync(candidate) ? path.normalize(candidate) : undefined;
+}
+
 /**
  * Resolve the Chromium executable puppeteer will launch.
  *
@@ -319,6 +326,8 @@ let chromiumExecutablePromise: Promise<string | undefined> | undefined;
 export async function ensureChromiumExecutable(): Promise<string | undefined> {
 	const envPath = process.env.PUPPETEER_EXECUTABLE_PATH;
 	if (envPath) return envPath;
+	const bundled = bundledChromiumPath();
+	if (bundled) return bundled;
 	// macOS: never route a background daemon through the user's GUI Chrome
 	// bundle; prefer the isolated Chrome for Testing binary instead (#8673).
 	const preferManagedChromium = process.platform === "darwin";

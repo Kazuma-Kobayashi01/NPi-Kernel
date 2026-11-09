@@ -553,6 +553,7 @@ import type { UsageLimitState } from "./usage-limit";
 import { cfgInterruptMode } from "../modes/settings";
 import { cfgFollowUpMode } from "../modes/settings";
 import { cfgSteeringMode } from "../modes/settings";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders, cfgModelRoles } from "../config/model-settings";
 import { cfgEvalJs, cfgEvalPy, cfgEvalToolsEnabled, cfgEvalWorkpoolFreshAgents } from "../eval/settings";
 import { cfgExtensions, type SkillsSettings } from "../extensibility/settings";
@@ -3024,7 +3025,7 @@ export class AgentSession implements SettingsScope {
 		});
 		const target = resolved.model;
 		if (!target) return resolved.error ?? `model "${selector}" not found`;
-		if (cfgDisabledProviders.get(this.settings).includes(target.provider)) {
+		if (withEditionHiddenProviders(cfgDisabledProviders.get(this.settings)).includes(target.provider)) {
 			return `provider "${target.provider}" is disabled`;
 		}
 		if (!this.#modelRegistry.hasConfiguredAuth(target)) return `no API key for ${target.provider}/${target.id}`;

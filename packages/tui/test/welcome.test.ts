@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { pickWeightedTip, WelcomeComponent } from "@oh-my-pi/pi-tui/prompt/welcome";
-import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
+import { gradientLogo, PI_LOGO, pickWeightedTip, WelcomeComponent } from "@oh-my-pi/pi-tui/prompt/welcome";
+import { getCurrentThemeName, initTheme, setTheme, theme } from "@oh-my-pi/pi-tui/theme";
 import { visibleWidth } from "@oh-my-pi/pi-tui";
 
 describe("WelcomeComponent", () => {
@@ -10,6 +10,23 @@ describe("WelcomeComponent", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+	});
+
+	it("recolors the resting logo and an already rendered welcome when the theme changes", async () => {
+		const previous = getCurrentThemeName()!;
+		try {
+			await setTheme("dark");
+			const welcome = new WelcomeComponent("1.0.0");
+			const before = welcome.render(40).join("\n");
+			const logoBefore = gradientLogo(PI_LOGO).join("\n");
+			await setTheme("light");
+			const after = welcome.render(40).join("\n");
+			expect(after).not.toBe(before);
+			expect(gradientLogo(PI_LOGO).join("\n")).not.toBe(logoBefore);
+			expect(Bun.stripANSI(after).trimEnd()).toBe(Bun.stripANSI(before).trimEnd());
+		} finally {
+			await setTheme(previous);
+		}
 	});
 
 	it("natively sets the version under the wordmark beside the logo", () => {
@@ -118,5 +135,20 @@ describe("WelcomeComponent", () => {
 		expect(narrow).toContain("▄██████████▄");
 		expect(narrow).not.toContain("█▀▀▄ █▀▀▄");
 		expect(narrow).not.toContain("v1.0.0");
+	});
+
+	it("moves the colours, never the glyphs or the height, while the ambient loop runs", () => {
+		const welcome = new WelcomeComponent("1.0.0");
+		welcome.startAmbient(() => {});
+		const now = vi.spyOn(performance, "now");
+		now.mockReturnValue(10_000);
+		const first = welcome.render(100);
+		now.mockReturnValue(12_300);
+		const later = welcome.render(100);
+		welcome.stopAmbient();
+		const glyphs = (rows: readonly string[]) => rows.map(row => Bun.stripANSI(row).trimEnd());
+		expect(later.length).toBe(first.length);
+		expect(glyphs(later)).toEqual(glyphs(first));
+		expect(later.join("\n")).not.toBe(first.join("\n"));
 	});
 });

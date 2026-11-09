@@ -59,6 +59,7 @@ import {
 } from "./model-roles";
 import type { Settings } from "./settings";
 
+import { withEditionHiddenProviders } from "./edition";
 import { cfgDisabledProviders, cfgEnabledModels, cfgModelProviderOrder } from "./model-settings";
 import { cfgRetryFallbackChains } from "../session/settings";
 
@@ -1701,7 +1702,7 @@ export function resolveModelOverride(
  * resolution path filters through this set.
  */
 export function disabledProviderIds(settings?: Settings): ReadonlySet<string> {
-	return new Set(settings ? cfgDisabledProviders.get(settings) : undefined);
+	return new Set(withEditionHiddenProviders(settings ? cfgDisabledProviders.get(settings) : undefined));
 }
 
 function parseSessionModelSelector(modelRegistry: ModelRegistry, selector: string) {

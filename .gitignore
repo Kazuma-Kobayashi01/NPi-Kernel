@@ -94,3 +94,6 @@ packages/coding-agent/bench/boot-baseline.json
 /.bazelrc.user
 
 .parity/
+
+# User-supplied BGM tracks never enter the repo
+*.mp3

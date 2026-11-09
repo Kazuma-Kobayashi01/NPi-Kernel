@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Welcome/startup logo gradients, wordmark and shine now follow the active theme in truecolor and 256-color terminals instead of a fixed ivory/gold/blue palette. Resting welcome frames also refresh after a theme switch.
 - On macOS, Option+letter shortcuts (such as Option+A for Agents) now work in terminals that type the Option character instead of sending Meta; non-US layouts keep those characters typeable, and `NPI_MAC_OPTION_AS_ALT=0|1` overrides the detection.
 
 ### Changed
@@ -22,6 +23,7 @@
 
 ### Added
 
+- Added three built-in cyberpunk palettes: `dark-tokyo-neon` (pink/cyan), `dark-tokyo-rain` (blue/mint), and `dark-tokyo-chrome` (amber/ultraviolet).
 - Added a `maxRows` callback to `FigureMarkdown`, `SvgFigure` and `TableChartFigure` so surfaces shorter than the screen can fit their figures; zero hides a figure without delaying transcript completion ([#15661](https://github.com/can1357/oh-my-pi/issues/15661), [#15853](https://github.com/can1357/oh-my-pi/pull/15853) by [@KunoLu](https://github.com/KunoLu))
 
 ### Fixed

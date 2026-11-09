@@ -198,6 +198,13 @@ provider "openai-codex" {
 		revision ">=5 <7" {
 			apply-patch-tool-type "freeform"
 		}
+		// Codex subscription ceiling for GPT-6.1 and later generations: 500K base window with 922K maximum input.
+		revision ">=6.1" {
+			limits-patch {
+				context-window 500000
+			}
+			max-context-window 922000
+		}
 	}
 	// Rolling Daybreak aliases ride the 5.6 wire generation.
 	class "unknown" {

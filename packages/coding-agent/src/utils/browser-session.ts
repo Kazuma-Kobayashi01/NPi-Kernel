@@ -94,3 +94,11 @@ export async function captureBrowserSession(
 		}
 	}
 }
+
+/**
+ * The sign-in browser hook handed to OAuth providers. Linux runs in terminals
+ * and on servers, so it is absent there: providers use their non-browser login
+ * method (Perplexity: email code) instead of launching Chrome.
+ */
+export const loginBrowserSession: typeof captureBrowserSession | undefined =
+	process.platform === "linux" ? undefined : captureBrowserSession;

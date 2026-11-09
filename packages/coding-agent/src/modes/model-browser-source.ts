@@ -1,6 +1,7 @@
 import { type Model, resolveModelServiceTier, type ServiceTier, shouldSendServiceTier } from "@oh-my-pi/pi-ai";
 import type { ModelHubSource } from "@oh-my-pi/pi-tui/overlays/model-hub";
 import { findActiveModelPreset, getModelPresetNames } from "../config/model-presets";
+import { withEditionHiddenProviders } from "../config/edition";
 import { resolveModelRoleValue, rolePriorityDefaults } from "../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo } from "../config/model-roles";
 import { buildServiceTierByFamily } from "../config/service-tier";
@@ -67,7 +68,7 @@ export function createModelBrowserSource(
 			return shouldSendServiceTier(tier, model) ? tier : undefined;
 		},
 		get disabledProviders() {
-			return cfgDisabledProviders.get(settings);
+			return withEditionHiddenProviders(cfgDisabledProviders.get(settings));
 		},
 		get fallbackChains() {
 			return cfgRetryFallbackChains.get(settings);

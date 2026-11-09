@@ -1,7 +1,7 @@
 /**
- * A live (function) working label — the background-job wait row — is re-read
- * on every tick and kept to one terminal row. Without the clamp a long list of
- * job ids wrapped the working row onto a second line at narrow widths.
+ * The working row keeps the kaomoji loading label while tools run (a tool's
+ * intent stays on its card), and a live (function) label — the background-job
+ * wait row — is re-read on every tick and kept to one terminal row.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
@@ -14,7 +14,6 @@ import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import { TempDir } from "@oh-my-pi/pi-utils";
-
 const COLUMNS = 40;
 
 describe("InteractiveMode live working label", () => {
@@ -48,6 +47,32 @@ describe("InteractiveMode live working label", () => {
 		authStorage.close();
 		resetSettingsForTest();
 		await tempDir.remove();
+	});
+
+	it("keeps the animated working label when tools start and preserves the tool card", async () => {
+		mode.ensureLoadingAnimation();
+		mode.setWorkingMessage();
+		const label = () =>
+			mode.statusContainer
+				.render(120)
+				.map(line => Bun.stripANSI(line))
+				.join("\n");
+		const before = label();
+		await mode.eventController.handleEvent({
+			type: "tool_execution_start",
+			toolCallId: "loading-intent",
+			toolName: "read",
+			args: { path: "sample.ts" },
+			intent: "分析某个文件",
+		});
+		expect(label()).toBe(before);
+		expect(label()).not.toContain("分析某个文件");
+		expect(
+			mode.chatContainer
+				.render(120)
+				.map(line => Bun.stripANSI(line))
+				.join("\n"),
+		).toContain("sample.ts");
 	});
 
 	it("keeps a long live label on one row", () => {

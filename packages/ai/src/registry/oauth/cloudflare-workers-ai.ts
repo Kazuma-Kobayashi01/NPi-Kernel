@@ -12,6 +12,7 @@ export async function loginCloudflareWorkersAi(options: OAuthController): Promis
 	options.onAuth?.({
 		url: AUTH_URL,
 		instructions: "Create an API token with Workers AI Read and Edit permissions, then copy it here.",
+		autoOpen: false,
 	});
 
 	const token = await options.onPrompt({

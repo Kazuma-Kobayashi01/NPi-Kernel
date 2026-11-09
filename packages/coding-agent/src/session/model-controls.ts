@@ -55,6 +55,7 @@ import {
 	cfgTierGoogle,
 	cfgTierOpenai,
 } from "./settings";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders, cfgEnabledModels } from "../config/model-settings";
 
 /** Capabilities borrowed from the owning AgentSession. */
@@ -150,7 +151,7 @@ export class ModelControls {
 
 	/** Models explicitly scoped to the session's cycle command, minus currently disabled providers. */
 	get scopedModels(): ReadonlyArray<{ model: Model; thinkingLevel?: ThinkingLevel }> {
-		const disabledProviders = cfgDisabledProviders.get(this.#host.settings);
+		const disabledProviders = withEditionHiddenProviders(cfgDisabledProviders.get(this.#host.settings));
 		if (disabledProviders.length === 0) return this.#scopedModels;
 		return this.#scopedModels.filter(scoped => !disabledProviders.includes(scoped.model.provider));
 	}

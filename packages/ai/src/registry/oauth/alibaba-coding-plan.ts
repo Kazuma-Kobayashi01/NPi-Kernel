@@ -53,6 +53,7 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 	options.onAuth?.({
 		url: authUrl,
 		instructions,
+		autoOpen: false,
 	});
 
 	const apiKey = await options.onPrompt({

@@ -37,6 +37,17 @@ import {
 	type StatsDashboardLaunchResult,
 } from "./helpers/stats-dashboard";
 import { StatsNotice } from "@oh-my-pi/pi-tui/overlays/stats-notice";
+import {
+	loadTokenRanks,
+	PERIOD_LABEL,
+	parseRankPeriod,
+	RANK_PERIODS,
+	type RankPeriod,
+	type RankRole,
+	renderRankBoard,
+	renderRankDetail,
+	renderTokenRankMarkdown,
+} from "./helpers/token-rank";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
 import type { SlashCommandRuntime, SlashCommandSpec } from "./types";
@@ -472,6 +483,77 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 				ctx.presentCommandOutput(new StatsNotice(result.message, result.url));
 			} catch (error) {
 				ctx.showError(`Stats dashboard failed: ${errorMessage(error)}`);
+			}
+		},
+	},
+	{
+		name: "rank",
+		icon: "stats",
+		description: "Rank models by tokens used (M Token/day, week, month, year)",
+		acpInputHint: "[day|week|month|year]",
+		subcommands: [
+			{ name: "day", description: "Since midnight today" },
+			{ name: "week", description: "Since Monday this week" },
+			{ name: "month", description: "Since the 1st of this month (default)" },
+			{ name: "year", description: "Since January 1st" },
+		],
+		allowArgs: true,
+		handle: async (command, runtime) => {
+			const period = parseRankPeriod(command.args);
+			if (typeof period === "object") return usage(period.error, runtime);
+			try {
+				await runtime.output(renderTokenRankMarkdown(await loadTokenRanks(), period));
+			} catch (error) {
+				await runtime.output(`Token ranking failed: ${errorMessage(error)}`);
+				return commandConsumed({ failed: true });
+			}
+			return commandConsumed();
+		},
+		handleTui: async (command, runtime) => {
+			const ctx = runtime.ctx;
+			clearSubmittedText(runtime);
+			const period = parseRankPeriod(command.args);
+			if (typeof period === "object") {
+				ctx.showStatus(period.error);
+				return;
+			}
+			ctx.showStatus("Syncing session files...");
+			try {
+				let data = await loadTokenRanks();
+				const roles: Record<RankRole, (text: string) => string> = {
+					frame: text => theme.fg("borderMuted", text),
+					rule: text => theme.fg("borderMuted", text),
+					title: text => theme.bold(theme.fg("accent", text)),
+					label: text => theme.fg("text", text),
+					selected: text => theme.bold(theme.fg("accent", text)),
+					bar: text => theme.fg("borderAccent", text),
+					track: text => theme.fg("dim", text),
+					value: text => theme.fg("text", text),
+					dim: text => theme.fg("muted", text),
+					gold: text => theme.bold(theme.fg("warning", text)),
+					silver: text => theme.bold(theme.fg("text", text)),
+					bronze: text => theme.bold(theme.fg("customMessageLabel", text)),
+					input: text => theme.fg("accent", text),
+					output: text => theme.fg("success", text),
+					cacheRead: text => theme.fg("borderAccent", text),
+					cacheWrite: text => theme.fg("warning", text),
+				};
+				const paint = (role: RankRole, text: string): string => roles[role](text);
+				ctx.showRankDashboard({
+					tabs: RANK_PERIODS.map(id => ({ id, label: PERIOD_LABEL[id] })),
+					initialTab: period,
+					render: (tab, view, width) => {
+						const chosen = tab as RankPeriod;
+						return view === "detail"
+							? renderRankDetail(data, chosen, width, paint)
+							: renderRankBoard(data, chosen, width, paint);
+					},
+					refresh: async () => {
+						data = await loadTokenRanks();
+					},
+				});
+			} catch (error) {
+				ctx.showError(`Token ranking failed: ${errorMessage(error)}`);
 			}
 		},
 	},

@@ -3,7 +3,8 @@ import { AssistantMessageComponent } from "@oh-my-pi/pi-tui/chat/assistant-messa
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
 import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { cfgHideThinkingBlock, cfgExpandThinkingBlocks } from "@oh-my-pi/pi-coding-agent/session/settings";
+import { cfgHideThinkingBlock } from "@oh-my-pi/pi-coding-agent/session/settings";
+import { cfgDisplayCollapse } from "@oh-my-pi/pi-coding-agent/modes/settings";
 
 function createAssistant(): AssistantMessageComponent {
 	const assistant = Object.create(AssistantMessageComponent.prototype) as AssistantMessageComponent;
@@ -74,7 +75,8 @@ describe("InputController thinking visibility", () => {
 
 		expect(ctx.hideThinkingBlock).toBe(false);
 		expect(ctx.expandThinkingBlocks).toBe(true);
-		expect(cfgExpandThinkingBlocks.get(settings)).toBe(true);
+		// Ctrl+T toggles the session only; the saved collapse level is untouched.
+		expect(cfgDisplayCollapse.isConfigured(settings)).toBe(false);
 		expect(cfgHideThinkingBlock.get(settings)).toBe(false);
 		expect(assistant.setExpandThinkingBlocks).toHaveBeenCalledWith(true);
 		expect(setHideThinkingBlock).not.toHaveBeenCalled();

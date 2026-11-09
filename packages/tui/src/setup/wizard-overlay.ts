@@ -5,7 +5,7 @@ import { matchesKey } from "../keys";
 import { centerLine, padding } from "../utils";
 import { padToWidth } from "../render/utils";
 import { routeSgrMouseInput, type SgrMouseEvent } from "../mouse";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
+import { BIN_NAME } from "@oh-my-pi/pi-utils";
 import { gradientLogo, PI_LOGO } from "../prompt/welcome";
 import { theme } from "../theme/theme";
 import { col, keyed, node, row, span, text } from "../native/describe";
@@ -336,12 +336,12 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 								[
 									node(
 										"image",
-										{ builtin: "omp", alt: APP_NAME, w: 22, role: "omp.setup.mark" },
+										{ builtin: "omp", alt: BIN_NAME, w: 22, role: "omp.setup.mark" },
 										undefined,
 										"logo",
 									),
 									keyed(
-										text([span(APP_NAME, "strong")], { wrap: "none", role: "omp.setup.brand.name" }),
+										text([span(BIN_NAME, "strong")], { wrap: "none", role: "omp.setup.brand.name" }),
 										"name",
 									),
 									keyed(
@@ -409,7 +409,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const header = [
 			"",
 			...logo.map(line => centerLine(line, width)),
-			centerLine(theme.bold(theme.fg("accent", APP_NAME)), width),
+			centerLine(theme.bold(theme.fg("accent", BIN_NAME)), width),
 			centerLine(theme.fg("muted", `Setup step ${current + 1} of ${steps.length}`), width),
 			"",
 			indentLine(theme.bold(title), width, SCENE_MARGIN_X),

@@ -1,4 +1,4 @@
-import { combine, effect, register, type Setting } from "../config/registry";
+import { combine, effect, register, type Setting, type SettingValueOf } from "../config/registry";
 import type { Settings } from "../config/settings";
 import { formatKeyHint, formatKeyHints } from "@oh-my-pi/pi-tui/app-keybindings";
 import { cfgReadToolResultPreview } from "../tools/settings";
@@ -90,7 +90,7 @@ export const cfgGitEnabled = register({
 export const cfgThemeDark = register({
 	id: "theme.dark",
 	type: "string",
-	default: "titanium",
+	default: "dark-tokyo-neon",
 	ui: {
 		tab: "appearance",
 		group: "Theme",
@@ -174,13 +174,14 @@ export const cfgTuiContentWidth = register({
 		tab: "appearance",
 		group: "Composer",
 		label: "Content Width",
-		description: "Widest the conversation column gets, centred on a wider terminal (0 = use the full width)",
+		description:
+			"Common: 100 columns; Wide: 140 columns. Centres the conversation beside the side panel when space allows",
 		options: [
 			{ value: "0", label: "Full width" },
 			{ value: "80", label: "80 columns" },
-			{ value: "100", label: "100 columns" },
+			{ value: "100", label: "Common (100 columns)" },
 			{ value: "120", label: "120 columns" },
-			{ value: "140", label: "140 columns" },
+			{ value: "140", label: "Wide (140 columns)" },
 		],
 	},
 });
@@ -205,7 +206,8 @@ export const cfgTuiSessionTabs = register({
 		tab: "appearance",
 		group: "Composer",
 		label: "Session Tabs",
-		description: "Above the composer, list the sessions opened in this window once there are two; alt+s and alt+shift+s switch",
+		description:
+			"Above the composer, list the sessions opened in this window once there are two; alt+s and alt+shift+s switch",
 	},
 });
 
@@ -777,6 +779,39 @@ export const cfgDisplayHideToolActivity = register({
 	},
 });
 
+export const cfgDisplayCollapse = register({
+	id: "display.collapse",
+	type: "enum",
+	values: ["off", "thinking", "tools", "all"] as const,
+	default: "all",
+	ui: {
+		tab: "appearance",
+		group: "Display",
+		label: "Collapse",
+		description:
+			"How much of each turn starts folded: thinking, then tool calls, then file changes (Ctrl+T and Ctrl+O still toggle for the session)",
+		options: [
+			{ value: "off", label: "Off", description: "Show thinking, tool output and file changes in full" },
+			{ value: "thinking", label: "Thinking", description: "Fold thinking; show tool output and file changes" },
+			{
+				value: "tools",
+				label: "Thinking + Tools",
+				description: "Fold thinking and tool output; show file changes in full",
+			},
+			{ value: "all", label: "All", description: "Fold thinking, tool output and file changes" },
+		],
+	},
+});
+
+/** Which parts a Collapse level starts expanded. */
+export function collapseExpansion(level: SettingValueOf<typeof cfgDisplayCollapse>): {
+	thinking: boolean;
+	tools: boolean;
+	fileChanges: boolean;
+} {
+	return { thinking: level === "off", tools: level === "off" || level === "thinking", fileChanges: level !== "all" };
+}
+
 export const cfgDisplayShowTokenUsage = register({
 	id: "display.showTokenUsage",
 	type: "boolean",
@@ -1245,6 +1280,18 @@ export const cfgStartupAnimation = register({
 		group: "Startup & Updates",
 		label: "Startup Animation",
 		description: "Reveal the home screen with a short animation",
+	},
+});
+
+export const cfgStartupBgm = register({
+	id: "startup.bgm",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "interaction",
+		group: "Startup & Updates",
+		label: "Background Music",
+		description: "Loop the .mp3 tracks in the agent bgm folder while npi is open",
 	},
 });
 

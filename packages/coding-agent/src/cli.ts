@@ -503,6 +503,20 @@ export async function runCli(argv: string[]): Promise<void> {
 	// (e.g. stats activity) are registered as hosts and can themselves spawn worker threads.
 	if (isProcessEntry) declareWorkerHostEntry();
 
+	// Standalone Linux: this binary is its own Python runtime host (the desktop
+	// app plays that role on macOS). Latency boundary: the host pulls in the
+	// native lock, so it loads only for the `--npi-python-host` re-entry.
+	if (isProcessEntry && process.platform === "linux") {
+		if (resolvedArgv[0] === "--npi-python-host") {
+			const { runLinuxPythonHost } = await import("./eval/py/linux-host");
+			await runLinuxPythonHost();
+			return;
+		}
+		if (!process.env.NPI_PYTHON_HOST && import.meta.url.includes("$bunfs")) {
+			process.env.NPI_PYTHON_HOST = process.execPath;
+		}
+	}
+
 	// Worker-thread entry dispatch must run before the first `await`: the
 	// stats sync worker's buffering onmessage handler is installed in the
 	// synchronous prefix of `runWorkerEntrypoint`, and Bun flushes the

@@ -99,6 +99,9 @@ function isEditLikeToolName(toolName: string): boolean {
 	return toolName === "edit" || toolName === "apply_patch";
 }
 
+/** Tools whose card shows a file change: kept expanded while the file-change floor is on. */
+const FILE_CHANGE_TOOLS: Record<string, true> = { edit: true, apply_patch: true, write: true, ast_edit: true };
+
 /** Tools whose arguments stream a growing file body or diff into the card (edit, apply_patch, write). */
 function streamsBody(toolName: string): boolean {
 	return isEditLikeToolName(toolName) || toolName === "write";
@@ -220,6 +223,8 @@ export interface ToolExecutionOptions {
 	showImages?: boolean; // default: true (only used if terminal supports images)
 	/** Allow the name-keyed renderer registry only when the active tool is the built-in implementation. */
 	useBuiltInRenderer?: boolean;
+	/** Live floor for file-change cards: while true, `setExpanded(false)` leaves them expanded. */
+	fileChangesExpanded?: () => boolean;
 }
 
 /** A tool result or progress frame as a card shows it. */
@@ -376,6 +381,7 @@ export class ToolExecutionComponent extends Container {
 	#toolLabel: string;
 	#args: unknown;
 	#expanded = false;
+	#fileChangesExpanded: (() => boolean) | undefined;
 	#allocation = Number.POSITIVE_INFINITY;
 	#presentationFrame: AnimationFrame = { tick: 0, now: 0 };
 	#toolActivityVisible = true;
@@ -507,6 +513,7 @@ export class ToolExecutionComponent extends Container {
 		this.#toolLabel = tool?.label ?? toolName;
 		this.#renderer = options.useBuiltInRenderer === false ? undefined : toolRenderers[toolName];
 		this.#showImages = options.showImages ?? true;
+		this.#fileChangesExpanded = FILE_CHANGE_TOOLS[toolName] === true ? options.fileChangesExpanded : undefined;
 		this.#tool = tool;
 		this.#ui = ui;
 		this.#args = args;
@@ -962,6 +969,10 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	setExpanded(expanded: boolean): void {
+		this.#applyExpanded(expanded || this.#fileChangesExpanded?.() === true);
+	}
+
+	#applyExpanded(expanded: boolean): void {
 		if (this.#expanded !== expanded) this.#blockVersion++;
 		this.#expanded = expanded;
 		this.#updateDisplay();
@@ -970,7 +981,8 @@ export class ToolExecutionComponent extends Container {
 	/** Mirrors the card collapsed or expanded in the terminal, so `Ctrl+O` and native toggles share one state. */
 	handleNativeEvent(event: NativeUiEvent): void {
 		const expanded = rootToggleExpanded(event);
-		if (expanded !== undefined) this.setExpanded(expanded);
+		// A direct toggle on this card wins over the file-change floor.
+		if (expanded !== undefined) this.#applyExpanded(expanded);
 	}
 
 	/** The file paths this call targets (edit/write/apply_patch args), display-relative. */

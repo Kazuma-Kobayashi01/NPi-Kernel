@@ -153,6 +153,7 @@ import {
 	cfgRetryFallbackChains,
 	cfgDefaultThinkingLevel,
 } from "../session/settings";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders } from "../config/model-settings";
 import { getRetryFallbackRole, installRetryFallbackRole } from "../session/retry-fallback-chains";
 import {
@@ -264,7 +265,7 @@ function resolveSubagentRetryFallbackCandidates(
 ): SubagentRetryFallbackCandidate[] {
 	const candidates: SubagentRetryFallbackCandidate[] = [];
 	const seen = new Set<string>();
-	const disabledProviders = new Set(cfgDisabledProviders.get(settings));
+	const disabledProviders = new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings)));
 	for (const pattern of modelPatterns) {
 		const resolved = resolveModelOverride([pattern], modelRegistry, settings);
 		if (!resolved.model) continue;
@@ -307,7 +308,7 @@ function resolveSubagentInheritedRetryFallbackChain(
 	if (!Array.isArray(fallbackChain) || !fallbackChain.every(entry => typeof entry === "string")) {
 		return undefined;
 	}
-	const disabledProviders = new Set(cfgDisabledProviders.get(settings));
+	const disabledProviders = new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings)));
 	return fallbackChain.filter(entry => {
 		const resolved = resolveModelOverride([entry], modelRegistry, settings);
 		return !resolved.model || !disabledProviders.has(resolved.model.provider);

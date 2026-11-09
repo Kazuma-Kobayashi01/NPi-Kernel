@@ -10,7 +10,7 @@ import {
 	type SetupSceneSelectionOptions,
 } from "@oh-my-pi/pi-tui/setup/wizard";
 import type { Settings } from "../config/settings";
-import { captureBrowserSession } from "../utils/browser-session";
+import { loginBrowserSession } from "../utils/browser-session";
 import { createModelBrowserSource } from "./model-browser-source";
 import type { InteractiveModeContext } from "./types";
 
@@ -22,6 +22,7 @@ import {
 	cfgThemeDark,
 	cfgThemeLight,
 } from "./settings";
+import { withEditionHiddenProviders } from "../config/edition";
 import { cfgDisabledProviders, cfgModelRoleStorage } from "../config/model-settings";
 
 export { ALL_SCENES, CURRENT_SETUP_VERSION };
@@ -46,7 +47,7 @@ export function createSetupHost(ctx: InteractiveModeContext): SetupHost {
 			return cfgColorBlindMode.get(ctx.settings);
 		},
 		get disabledProviders() {
-			return cfgDisabledProviders.get(ctx.settings);
+			return withEditionHiddenProviders(cfgDisabledProviders.get(ctx.settings));
 		},
 		get authStorage() {
 			return ctx.session.modelRegistry.authStorage;
@@ -82,7 +83,7 @@ export function createSetupHost(ctx: InteractiveModeContext): SetupHost {
 		saveTheme: (mode, name) => {
 			(mode === "dark" ? cfgThemeDark : cfgThemeLight).set(ctx.settings, name);
 		},
-		captureBrowserSession,
+		captureBrowserSession: loginBrowserSession,
 		openInBrowser: url => ctx.openInBrowser(url),
 		markComplete: version => markSetupWizardComplete(ctx.settings, version),
 		playWelcomeIntro: () => ctx.playWelcomeIntro(),

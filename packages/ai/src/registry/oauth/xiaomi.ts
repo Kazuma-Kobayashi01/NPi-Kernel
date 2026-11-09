@@ -104,7 +104,7 @@ async function validateXiaomiApiKey(apiKey: string, signal?: AbortSignal, fetchO
 /**
  * Login to Xiaomi MiMo.
  *
- * Opens browser to API keys page, prompts user to paste their API key.
+ * Shows the API keys page link and prompts the user to paste their API key.
  * Returns the API key directly (not OAuthCredentials - this isn't OAuth).
  */
 export async function loginXiaomi(options: OAuthController): Promise<string> {
@@ -115,6 +115,7 @@ export async function loginXiaomi(options: OAuthController): Promise<string> {
 	options.onAuth?.({
 		url: STANDARD_AUTH_URL,
 		instructions: "Copy your API key from the Xiaomi MiMo console",
+		autoOpen: false,
 	});
 	const apiKey = await options.onPrompt({
 		message: "Paste your Xiaomi API key (sk-... or Token Plan tp-... / ttp-...)",

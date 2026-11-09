@@ -1126,6 +1126,8 @@ const credentials = await provider?.login?.({
 });
 ```
 
+Login hosts must honor `OAuthAuthInfo.autoOpen`: when it is `false`, the URL is an informational API-key/console link, not a request to launch a browser. Display the link and instructions for manual use and continue handling prompts. OAuth authorization flows leave this unset and retain the host's normal browser-launch behavior.
+
 ### Login Flow Example
 
 ```typescript

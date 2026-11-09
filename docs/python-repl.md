@@ -350,3 +350,13 @@ Output is streamed through `OutputSink` in `packages/tui/src/tools/streaming-out
 - `PI_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks
 - `PI_PYTHON_INTEGRATION=1` — enable gated integration tests that spawn a real Python
 - `PI_PYTHON_IPC_TRACE=1` — log NDJSON frames exchanged with the runner subprocess
+
+## Standalone Linux host
+
+On Linux the compiled `npi` binary is its own host: when `NPI_PYTHON_HOST` is unset it sets it to `process.execPath`, and `npi --npi-python-host` (`src/eval/py/linux-host.ts`) answers the same one-shot protocol as the desktop app. Source checkouts (not compiled) never auto-configure it.
+
+- Resources: the explicit `resourceDir`, then `NPI_PYTHON_RESOURCE_DIR`, then `<exe dir>/../lib/npi` (the `.run` installer layout, `<prefix>/lib/npi`), holding `python-runtime-manifest.json` and the archive it names.
+- `bun scripts/build-linux-python-runtime.ts x64` writes both into `dist/linux-python-runtime/` from pinned python-build-standalone 3.12.16 and uv 0.13.6 (SHA-256-verified downloads). The x86_64 archive is about 84 MB.
+- Layout under `<base>` matches the desktop host (content-addressed `runtimes/python/...`, versioned `environments/default/versions/...`, atomic `current` pointer, `state/install` lock). The first `ensure` (triggered by the first `python` or `eval` Python call) verifies size and digest, extracts, builds the venv offline and takes about 5 s; later calls only probe versions.
+- The manifest platform must equal the host (`x86_64-unknown-linux-gnu`); a mismatch is an error. There is no system-interpreter fallback.
+- Package installs use `uv pip` against the configured index and need network access.

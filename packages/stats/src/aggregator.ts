@@ -50,6 +50,7 @@ import type {
 	DashboardStats,
 	FolderStats,
 	MessageStats,
+	ModelStats,
 	ProviderDashboardStats,
 	ProviderWindowStats,
 	RequestDetails,
@@ -592,6 +593,12 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 		messages: [entry],
 		output: entry.message,
 	};
+}
+
+/** Per-model aggregates for requests at or after `cutoff` (epoch ms); `null` for all time. */
+export async function getModelStatsSince(cutoff: number | null): Promise<ModelStats[]> {
+	await initDb();
+	return getStatsByModel(cutoff);
 }
 
 /**

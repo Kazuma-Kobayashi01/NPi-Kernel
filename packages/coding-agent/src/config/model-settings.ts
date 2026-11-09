@@ -2,6 +2,7 @@
  * Settings declared by this domain (see `config/registry.ts`). Declaration order is the
  * settings-panel order; `config/all-settings.ts` registers every domain.
  */
+import { EDITION_HIDDEN_PROVIDERS } from "./edition";
 import { register, type SettingValueOf } from "./registry";
 import type { AuthAccountPolicies } from "@oh-my-pi/pi-ai/auth-storage";
 import type { cfgDefaultThinkingLevel } from "../session/settings";
@@ -77,7 +78,8 @@ export const cfgEnabledProviders = register({
 export const cfgDisabledProviders = register({
 	id: "disabledProviders",
 	type: "array",
-	default: EMPTY_STRING_ARRAY,
+	// The edition block is also unioned at every read site, so a saved list cannot re-enable it.
+	default: EDITION_HIDDEN_PROVIDERS,
 	pathScoped: { valuesKey: "providers" },
 });
 

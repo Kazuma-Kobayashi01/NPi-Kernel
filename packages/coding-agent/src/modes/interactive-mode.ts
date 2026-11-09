@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { type Agent, AgentBusyError, type AgentMessage, agentPauseGate, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
 import type { AssistantMessage, ImageContent, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
+import type { RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { execReplace } from "@oh-my-pi/pi-natives";
 import type {
@@ -82,6 +83,7 @@ import { renderSidePanel, type SidePanelRows } from "@oh-my-pi/pi-tui/chrome/sid
 import { type SessionTab, SessionTabsComponent } from "@oh-my-pi/pi-tui/chrome/session-tabs";
 import { formatModelString, type ResolvedModelRoleValue } from "../config/model-resolver";
 import { isSettingsInitialized, Settings, settings } from "../config/settings";
+import { setBgmEnabled, stopBgm } from "./bgm";
 import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import type {
 	AutocompleteProviderFactory,
@@ -383,7 +385,9 @@ import {
 	cfgComposerTokenRate,
 	cfgDisplayAdvisorCollapsedLines,
 	cfgDisplayCacheMissMarker,
+	cfgDisplayCollapse,
 	cfgDisplayCollapseCompacted,
+	collapseExpansion,
 	cfgDisplayHideToolActivity,
 	cfgDisplayPinnedAgents,
 	cfgDisplayShowTokenUsage,
@@ -401,6 +405,7 @@ import {
 	cfgSpellingTypoDetection,
 	cfgStartupChangelogMode,
 	cfgStartupAnimation,
+	cfgStartupBgm,
 	cfgTuiClearOnExit,
 	cfgStartupQuiet,
 	cfgStatusLineCompactThinkingLevel,
@@ -434,7 +439,7 @@ import {
 } from "./settings";
 import { cfgTasksTodoClearDelay } from "../tools/settings";
 import { cfgWorktreeOnExit, cfgWorktreeOnStart } from "../task/settings";
-import { cfgExpandThinkingBlocks, cfgProseOnlyThinking } from "../session/settings";
+import { cfgProseOnlyThinking } from "../session/settings";
 import { cfgHideThinkingBlock } from "../session/settings";
 import { cfgCycleOrder, cfgModelRoles } from "../config/model-settings";
 import { cfgExtensionHandlersModeControl } from "../extensibility/settings";
@@ -491,7 +496,7 @@ const cfgLiveUiSettings = combine({
 	"terminal.programStatus": cfgTerminalProgramStatus,
 	hideThinkingBlock: cfgHideThinkingBlock,
 	proseOnlyThinking: cfgProseOnlyThinking,
-	expandThinkingBlocks: cfgExpandThinkingBlocks,
+	"display.collapse": cfgDisplayCollapse,
 	"display.advisorCollapsedLines": cfgDisplayAdvisorCollapsedLines,
 	"display.cacheMissMarker": cfgDisplayCacheMissMarker,
 	"display.collapseCompacted": cfgDisplayCollapseCompacted,
@@ -505,6 +510,7 @@ const cfgLiveUiSettings = combine({
 	"tui.tight": cfgTuiTight,
 	"tui.hyperlinks": cfgTuiHyperlinks,
 	"tui.titleState": cfgTuiTitleState,
+	"startup.bgm": cfgStartupBgm,
 	"tui.titleSpinner": cfgTuiTitleSpinner,
 	"statusLine.preset": cfgStatusLinePreset,
 	"statusLine.leftSegments": cfgStatusLineLeftSegments,
@@ -1416,6 +1422,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	initialChatRendered = false;
 	isBashMode = false;
 	toolOutputExpanded = false;
+	fileChangesExpanded = false;
 	hideToolActivity = false;
 	todoExpanded = false;
 	planModeEnabled = false;
@@ -2292,7 +2299,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.chatContainer.setToolActivityVisible(!this.hideToolActivity);
 		this.hideThinkingBlock = cfgHideThinkingBlock.get(settings);
 		this.proseOnlyThinking = cfgProseOnlyThinking.get(settings);
-		this.expandThinkingBlocks = cfgExpandThinkingBlocks.get(settings);
+		const expansion = collapseExpansion(cfgDisplayCollapse.get(settings));
+		this.expandThinkingBlocks = expansion.thinking;
+		this.toolOutputExpanded = expansion.tools;
+		this.fileChangesExpanded = expansion.fileChanges;
 
 		// Store pending commands for init() where file commands are loaded async
 		this.#pendingSlashCommands = this.#buildPendingSlashCommands();
@@ -4312,13 +4322,14 @@ export class InteractiveMode implements InteractiveModeContext {
 		const hideToolActivity = cfgDisplayHideToolActivity.get(this.settings);
 		if (any("display.hideToolActivity") && hideToolActivity !== this.hideToolActivity) {
 			this.hideToolActivity = hideToolActivity;
-			if (!hideToolActivity) this.toolOutputExpanded = false;
+			if (!hideToolActivity)
+				this.toolOutputExpanded = collapseExpansion(cfgDisplayCollapse.get(this.settings)).tools;
 			for (const child of this.chatContainer.children) {
 				if (
 					!hideToolActivity &&
 					(child instanceof ToolExecutionComponent || child instanceof ReadToolGroupComponent)
 				) {
-					child.setExpanded(false);
+					child.setExpanded(this.toolOutputExpanded);
 				} else if (child instanceof AssistantMessageComponent) {
 					child.setToolResultImagesVisible(!hideToolActivity);
 				}
@@ -4356,13 +4367,19 @@ export class InteractiveMode implements InteractiveModeContext {
 			}
 			this.ui.requestRender(true);
 		}
-		const expandThinkingBlocks = cfgExpandThinkingBlocks.get(this.settings);
-		if (any("expandThinkingBlocks") && expandThinkingBlocks !== this.expandThinkingBlocks) {
-			this.expandThinkingBlocks = expandThinkingBlocks;
+		if (any("display.collapse")) {
+			const expansion = collapseExpansion(cfgDisplayCollapse.get(this.settings));
+			this.expandThinkingBlocks = expansion.thinking;
 			for (const child of this.chatContainer.children) {
-				if (child instanceof AssistantMessageComponent) child.setExpandThinkingBlocks(expandThinkingBlocks);
+				if (child instanceof AssistantMessageComponent) child.setExpandThinkingBlocks(expansion.thinking);
 			}
-			this.ui.requestRender(true);
+			this.streamingComponent?.setExpandThinkingBlocks(expansion.thinking);
+			// The file-change floor is read when tool cards re-apply their expansion below.
+			this.fileChangesExpanded = expansion.fileChanges;
+			this.#inputController.setToolsExpanded(expansion.tools);
+			// Thinking heads already emitted to scrollback re-render under the new level.
+			this.chatContainer.resetStableEmission();
+			resetDisplay = true;
 		}
 
 		// Usage-row detection, compacted-history collapse, and markdown render
@@ -4415,6 +4432,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		}
 		if (any("tui.titleState")) setTerminalTitleStateEnabled(cfgTuiTitleState.get(this.settings));
+		if (any("startup.bgm")) setBgmEnabled(cfgStartupBgm.get(this.settings));
 		if (any("tui.titleSpinner")) setTerminalTitleSpinnerStyle(cfgTuiTitleSpinner.get(this.settings));
 		if (any("terminal.programStatus")) setProgramStatusEnabled(cfgTerminalProgramStatus.get(this.settings));
 
@@ -8104,6 +8122,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		this.#beginClose();
+		stopBgm();
 		const worktreePlan = await this.#planOwnedWorktreeExit();
 		const clearScreen = cfgTuiClearOnExit.get(this.settings) && !isNativeRendering() && process.stdout.isTTY;
 		try {
@@ -9312,6 +9331,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	showUsageDashboard(reports: UsageReport[]): void {
 		this.#selectorController.showUsageDashboard(reports);
+	}
+
+	showRankDashboard(options: Omit<RankDashboardOptions, "requestRender" | "onClose">): void {
+		this.#selectorController.showRankDashboard(options);
 	}
 
 	showAdvisorConfigure(): void {

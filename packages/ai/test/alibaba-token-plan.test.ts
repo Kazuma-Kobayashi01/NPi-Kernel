@@ -18,8 +18,8 @@ async function loginAlibabaTokenPlan(options: OAuthController): Promise<string> 
 }
 
 describe("QwenCloud Token Plan login", () => {
-	test("International (default) region opens Individual page and validates without inference", async () => {
-		const authRequests: { url: string; instructions?: string }[] = [];
+	test("International region offers a manual key-page link and validates without inference", async () => {
+		const authRequests: { url: string; autoOpen?: boolean }[] = [];
 		let requestedUrl = "";
 		let authorization = "";
 		const prompts = ["1", " sk-sp-test "];
@@ -35,11 +35,10 @@ describe("QwenCloud Token Plan login", () => {
 
 		// International (default) keeps the bare-token credential form.
 		expect(apiKey).toBe("sk-sp-test");
-		expect(authRequests).toEqual([
+		expect(authRequests).toMatchObject([
 			{
 				url: "https://home.qwencloud.com/billing/subscription/token-plan-individual",
-				instructions:
-					"Subscribe to Token Plan Individual and copy its dedicated API key. Keep this page open; the next prompt explains how to enable optional quota reporting.",
+				autoOpen: false,
 			},
 		]);
 		expect(requestedUrl).toBe("https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/models");

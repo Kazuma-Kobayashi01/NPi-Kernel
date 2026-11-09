@@ -6,7 +6,7 @@ import { createModelManager } from "@oh-my-pi/pi-catalog/model-manager";
 import { TempDir } from "@oh-my-pi/pi-utils";
 import * as modelsModule from "@oh-my-pi/pi-catalog/models";
 import { alibabaCnModelManagerOptions } from "@oh-my-pi/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl } from "@oh-my-pi/pi-catalog/types";
+import type { FetchImpl, ModelSpec } from "@oh-my-pi/pi-catalog/types";
 
 describe("Alibaba China discovery thinking contracts", () => {
 	test("replaces stale bundled tiers and upgrades known reference-less rows without guessing unknown IDs", async () => {
@@ -61,7 +61,10 @@ describe("Alibaba China discovery thinking contracts", () => {
 			cacheDbPath,
 			staticModels: [stale],
 		};
-		const oldManager = createModelManager({ ...options, fetchDynamicModels: async () => [stale] });
+		const oldManager = createModelManager({
+			...options,
+			fetchDynamicModels: async () => [stale as unknown as ModelSpec<"openai-completions">],
+		});
 		const old = await oldManager.refresh("online");
 		expect(old.models[0]?.thinking?.efforts).toEqual([Effort.Low, Effort.High]);
 		const db = new Database(cacheDbPath);

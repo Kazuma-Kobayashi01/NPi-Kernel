@@ -199,4 +199,39 @@ describe("lm studio local provider discovery", () => {
 		expect(nativeAborted).toBe(true);
 		expect(models?.find(model => model.id === "omlx-model")?.input).toEqual(["text"]);
 	});
+
+	test("resolves tools, vision and active loaded instance context from v1-only model listings", async () => {
+		const json = (body: unknown) =>
+			new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+		const fetchMock: FetchImpl = vi.fn(async input => {
+			const url = String(input);
+			if (url === "http://127.0.0.1:1234/api/v0/models") {
+				return new Response("Not Found", { status: 404 });
+			}
+			if (url === "http://127.0.0.1:1234/api/v1/models") {
+				return json({
+					models: [
+						{
+							type: "llm",
+							key: "qwen-coder-32b",
+							max_context_length: 131072,
+							loaded_instances: [{ id: "instance-active", config: { context_length: 16384 } }],
+							capabilities: { vision: true, trained_for_tool_use: true },
+						},
+					],
+				});
+			}
+			if (url === "http://127.0.0.1:1234/v1/models") {
+				return json({ data: [{ id: "qwen-coder-32b", object: "model" }] });
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const models = await lmStudioModelManagerOptions({ fetch: fetchMock }).fetchDynamicModels?.();
+		const model = models?.find(m => m.id === "qwen-coder-32b");
+
+		expect(model?.input).toEqual(["text", "image"]);
+		expect(model?.contextWindow).toBe(16384);
+		expect(model?.supportsTools).toBe(true);
+	});
 });

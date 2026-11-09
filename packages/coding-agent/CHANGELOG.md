@@ -4,9 +4,16 @@
 
 ### Added
 
+- Living home screen: while the welcome is on screen, the whole home-screen background becomes a Japanese night city drawn a shade off the terminal colour in the theme's palette, scrolling left in parallax: a far skyline, a lattice tower with blinking beacon, near buildings hung with flickering neon signboards (ラーメン, カラオケ, 秋葉原…), a rolling perspective grid floor and glitch scanlines, with a self-playing half-block bullet-hell shooter on top (aimed bursts, rings, fans, sweeping enemy lasers and boss spirals against twin guns, spread shots and a scatter laser). The prompt box keeps its own fill, and the logo's gradient drifts with a soft sheen.
+- Background music: npi loops the `.mp3` tracks in `<agent dir>/bgm/` (macOS `afplay`; `ffplay` or `mpg123` elsewhere) from startup in the interactive TUI; `startup.bgm` (Settings → Interaction → Startup & Updates → Background Music) turns it off live.
+- `/rank [day|week|month|year]` opens a fullscreen token leaderboard like Settings: period tabs (Today, This week, This month, This year, switched with ←/→ or Tab) over log-scale period bars and models ranked with share bars; Enter shows each model's input / output / cache split as stacked bars with cost, r refreshes, Esc closes. Periods start at midnight, Monday, the 1st and January 1st.
 - History suggestions: while you type a single line, the composer completes it from your earlier prompts (this project first, newest first) as dim ghost text; Tab, or Right at the end of the line, inserts the rest without sending, and the suggestion updates or disappears as you keep typing. A model prediction that still matches takes precedence. `composer.historySuggestions` (Settings → Interaction → Input → History Suggestions) turns it off.
 - macOS process sandbox: `sandbox.mode` (or `--sandbox <mode>`) relaunches npi under a Seatbelt profile so commands, eval, file tools and MCP servers can write only inside the project and npi's own folders (`workspace-write`), or not even the project (`read-only`); `sandbox.writableRoots` adds folders. See `docs/sandbox.md`.
+- Build editions: `NPI_EDITION=cn` compiles a China-region binary that hides the international-site provider ids of mainland-China vendors (`alibaba`, `qwen-portal`, `siliconflow`, `zai`, `minimax`, `minimax-code`, `xiaomi-token-plan-sgp`, `xiaomi-token-plan-ams`) while their China-region ids stay selectable; the ids are blocked, not deleted, and the union is enforced at every reader so a saved `disabledProviders` cannot lift it. See `docs/editions.md`.
+- Linux x64 `.run` installer: `scripts/build-linux-run.ts` assembles `npi-<version>-linux-x64.run`, a self-extracting per-user installer (no root) that installs the binary, the bundled Python runtime and a pinned Chrome for Testing into `~/.local/opt/npi`, verifies its payload checksum, upgrades in place and uninstalls without touching user data; the browser tool prefers the bundled Chrome. `scripts/mock-model-server.ts` is a deterministic offline model endpoint for acceptance runs.
+- On Linux the `npi` binary hosts the managed Python runtime itself (`npi --npi-python-host`, same protocol as the desktop app) from a bundled python-build-standalone archive, so the `python` tool and `eval` Python work without Desktop; `scripts/build-linux-python-runtime.ts` builds the archive and manifest.
 - Added the international Alibaba Model Studio provider (`alibaba`, `dashscope-intl.aliyuncs.com`, `DASHSCOPE_INTL_API_KEY`) beside the China one; keys are region-locked, so an international key now has somewhere to go.
+- Named conversation-width presets in Settings → Appearance → Composer → Content Width: Common (100 columns) and Wide (140 columns). Switching applies live, preserves space for the side panel, and fits narrower terminals; existing numeric configuration and the 100-column default are unchanged.
 - `tui.clearOnExit` clears the screen and scrollback when npi exits, on by default; the resume hint still prints afterwards.
 - The first Ctrl+C on an idle prompt shows `Press Ctrl+C again to exit`, and the second press now has a full second to land.
 - The home screen plays a short reveal at startup: a band of light brightens the logo, the prompt types itself out, then the hints appear. `startup.animation` turns it off.
@@ -20,7 +27,12 @@
 - A connection that resets, is refused or cannot be reached three times in a row on the same model stops being retried there (it used to take all ten `retry.maxRetries`, about a minute each during a provider outage); the turn moves to the fallback chain or reports the error.
 - The short prompt for small fast models (Gemini Flash and Lite) asks them to send independent reads and searches in one response instead of one per turn.
 - The `python` tool now only reports the managed environment and lists or installs its packages; run Python code with `eval`. It moved under `xd://python` instead of sitting in every request, and appears only when a managed runtime host is configured (NPi Desktop, or the Linux binary).
-- The CLI waiting row randomly picks one of 25 cute kaomoji-and-phrase pairs for each new loading animation; tool intents still take priority, and clearing an intent restores the same pair without flickering.
+
+- Default CLI dark theme is now `dark-tokyo-neon` on macOS and Linux, including first-run setup and its Match terminal choice. Explicit user theme selections and the light theme remain unchanged.
+- On Linux, signing in never launches a browser: Perplexity login goes straight to the email-code flow instead of offering browser SSO (terminals and servers have no display). macOS keeps the SSO window.
+- The first-run setup, splash and welcome screens show the product command name `npi` instead of the internal `omp`.
+- The resume hint printed at exit now names `npi`, the actual command, instead of `omp`; on Linux `npi update` points to the `.run` installer instead of NPi Desktop.
+- The CLI waiting row randomly picks one of 25 cute kaomoji-and-phrase pairs for each new loading animation and keeps it for the whole run: tool intents (such as "Analyzing a file") no longer replace it and stay on their tool cards instead. Background-job waits, retries and compaction keep their own status labels.
 - Waiting-row shimmer uses the active theme's accent highlight in both ANSI and native terminals instead of a session-derived text color.
 - Caches (`puppeteer`, `natives`, `webcache`, `cache/`) and Rewind's file checkpoints now live in `~/.cache/npi` instead of `~/.local/share/npi`, moved there on the first start; agent worktrees (PR checkouts, task isolation) default to `~/Documents/NPi/Code/.agent-worktrees`.
 - Overlays, dialogs and hubs drop their drawn boxes for a raised panel with an accent rail, matching the composer; fullscreen hubs keep a title band, a quiet column divider and a footer band.
@@ -33,6 +45,9 @@
 ### Fixed
 
 - Google web search returned no results: Google now links each result through an opaque `/goto?url=…` redirect, which the parser dropped. Results are read again and each link is followed one redirect hop to its page; a link Google does not redirect keeps its `/goto` form, which still opens in a browser.
+- API-key login no longer automatically opens provider websites or consoles. CLI, setup, and RPC hosts retain manual links and key prompts; OAuth authorization pages still open normally, including Codex, Claude, and Antigravity.
+- LM Studio local discovery now reads all models from `/api/v1/models`, correctly capturing tool use capabilities, active loaded-instance context limits, and vision support when `/api/v0/models` is unavailable or omitted.
+- Future `gpt-6.1+` and subsequent OpenAI Codex subscription models automatically inherit the 500K base context window and 922K maximum input ceiling.
 - Startup no longer lists every mounted MCP tool by default; mount details remain in debug logs and can be shown with `tools.xdevNotices`.
 
 ### Changed
@@ -40,7 +55,8 @@
 - Tool results use smaller defaults: spill above 12 KiB, retain 2 KiB of head and 6 KiB of tail (up to 100 tail lines), and read 120 file lines by default. Existing configured limits and artifact recovery remain available.
 
 - CLI settings, session and provider menus open as centred dialogs; sessions are grouped by day and services by Popular/Services. Ctrl+D deletes, Ctrl+R renames and Ctrl+A changes session scope, alongside the existing shortcuts.
-- Ctrl+T expands or collapses thinking in ordinary terminals, with the choice available in Settings → Model → Expand Thinking Blocks.
+- Ctrl+T expands or collapses thinking and Ctrl+O tool output for the current session; neither writes config. The saved starting state is Settings → Appearance → Display → Collapse.
+- New setting `display.collapse` (Appearance → Display → Collapse) replaces `expandThinkingBlocks` with four levels: Off shows thinking, tool output and file changes in full; Thinking folds thinking; Thinking + Tools also folds tool output while edit, write, patch and ast_edit cards stay expanded; All (default, the previous behaviour) folds everything. Changing it re-applies to the open transcript. A saved `expandThinkingBlocks` is dropped on load.
 
 - The settings panel has no Advanced tab and no "Show More Options" switch: every setting is listed in its own tab again. `composer.dockInput` now defaults to off, so the prompt sits under the welcome instead of on the bottom row.
 - New setting `tui.contentWidth` (default 100; 0 = full width): the conversation column is centred on a wider terminal.

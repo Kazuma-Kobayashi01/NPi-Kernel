@@ -381,6 +381,7 @@ import {
 	type SkillsSettings,
 } from "./extensibility/settings";
 import { cfgTtsr } from "./export/ttsr-settings";
+import { withEditionHiddenProviders } from "./config/edition";
 import { cfgDisabledProviders, cfgEnabledModels, cfgEnabledProviders, cfgModelRoles } from "./config/model-settings";
 import { cfgEditRecoverInlineEdits } from "./edit/settings";
 import { cfgGoalEnabled } from "./goals/settings";
@@ -3030,7 +3031,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// window.
 			await logger.time("resolveModelDiscoveryDeferredRetry", startRuntimeDiscovery);
 			const matchPreferences = getModelMatchPreferences(settings);
-			const disabledProviders = new Set(cfgDisabledProviders.get(settings));
+			const disabledProviders = new Set(withEditionHiddenProviders(cfgDisabledProviders.get(settings)));
 			const runtimeResolved = deferredModelPatterns.some(pattern =>
 				pattern.split(",").some(selector => {
 					const trimmedSelector = selector.trim();
@@ -3404,7 +3405,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				// so outside one it resolves from its provider's catalog and
 				// `hasModelAuth` decides whether requests can authenticate.
 				const scopedByEnabledModels = (cfgEnabledModels.get(settings)?.length ?? 0) > 0;
-				const disabledProviders = cfgDisabledProviders.get(settings);
+				const disabledProviders = withEditionHiddenProviders(cfgDisabledProviders.get(settings));
 				for (const candidate of findRetryFallbackCandidates(
 					fallbackContext,
 					chainKey,

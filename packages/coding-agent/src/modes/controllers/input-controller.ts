@@ -85,14 +85,16 @@ import { cfgCycleOrder } from "../../config/model-settings";
 import {
 	cfgBareExitOnEmptySession,
 	cfgBareSlashCommands,
+	cfgDisplayCollapse,
 	cfgDisplayHideToolActivity,
+	collapseExpansion,
 	cfgDoubleEscapeAction,
 	cfgEmojiAutocomplete,
 	cfgImagesAutoResize,
 	cfgPasteLargeMenuThreshold,
 	cfgTuiMouse,
 } from "../settings";
-import { cfgHideThinkingBlock, cfgExpandThinkingBlocks } from "../../session/settings";
+import { cfgHideThinkingBlock } from "../../session/settings";
 import { isNativeRendering } from "@oh-my-pi/pi-tui/native/state";
 
 /** Bare words that quit (as `/<word>`) when typed alone into a session with no messages. */
@@ -3113,7 +3115,7 @@ export class InputController {
 		cfgDisplayHideToolActivity.set(this.ctx.settings, this.ctx.hideToolActivity);
 
 		if (!this.ctx.hideToolActivity) {
-			this.ctx.toolOutputExpanded = false;
+			this.ctx.toolOutputExpanded = collapseExpansion(cfgDisplayCollapse.get(this.ctx.settings)).tools;
 		}
 
 		for (const child of this.ctx.chatContainer.children) {
@@ -3121,7 +3123,7 @@ export class InputController {
 				!this.ctx.hideToolActivity &&
 				(child instanceof ToolExecutionComponent || child instanceof ReadToolGroupComponent)
 			) {
-				child.setExpanded(false);
+				child.setExpanded(this.ctx.toolOutputExpanded);
 			} else if (child instanceof AssistantMessageComponent) {
 				child.setToolResultImagesVisible(!this.ctx.hideToolActivity);
 			}
@@ -3168,7 +3170,6 @@ export class InputController {
 				}
 				this.ctx.streamingComponent?.setHideThinkingBlock(false);
 			}
-			cfgExpandThinkingBlocks.set(this.ctx.settings, this.ctx.expandThinkingBlocks);
 			for (const child of this.ctx.chatContainer.children) {
 				if (child instanceof AssistantMessageComponent)
 					child.setExpandThinkingBlocks(this.ctx.expandThinkingBlocks);

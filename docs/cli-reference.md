@@ -64,6 +64,18 @@ Argument handling:
 - `--` ends flag parsing; everything after it is literal message text, even if it
   looks like a flag.
 
+### Conversation width
+
+In `/settings` → **Appearance** → **Composer** → **Content Width**, choose
+**Common (100 columns)** or **Wide (140 columns)** for the main conversation and
+input area. Common remains the default. Changes apply immediately; the right
+side panel keeps its reserved space and narrower terminals shrink the column
+to fit. The welcome screen keeps its compact centred card.
+
+The underlying `tui.contentWidth` setting remains numeric: `100` for Common,
+`140` for Wide, or `0` for Full width. The 80- and 120-column choices and existing
+saved custom widths remain supported.
+
 ### Launch flags
 
 #### Session and workspace
@@ -260,6 +272,8 @@ print-mode disposal semantics when the advisor runtime is enabled.
 ## Subcommands
 
 Run `omp <command> --help` for each command's own flags and examples.
+
+`npi login` and `/login` automatically open browser authorization pages for OAuth flows (including Codex, Claude, and Antigravity). API-key flows—including Alibaba Coding/Token Plan, Cloudflare, and Xiaomi—only display the provider's key-page link and prompt for credentials; open that link manually if needed. Setup follows the same rule. RPC hosts receive a notification with the manual link instead of an `open_url` request for these key pages, while retaining the input prompt.
 
 | Command                     | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | See also                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |

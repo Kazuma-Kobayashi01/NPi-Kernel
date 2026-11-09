@@ -96,7 +96,7 @@ import { type AskToolDetails } from "@oh-my-pi/pi-tui/tools/ask";
 import { sanitizeDisplayWarnings, shortenPath } from "@oh-my-pi/pi-tui/render/render-utils";
 import { sanitizeErrorLine } from "@oh-my-pi/pi-tui/chrome/error-block";
 import { ToolAbortError } from "../../tools/tool-errors";
-import { captureBrowserSession } from "../../utils/browser-session";
+import { loginBrowserSession } from "../../utils/browser-session";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
@@ -128,11 +128,13 @@ import { TranscriptBlock } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { TreeSelectorComponent } from "@oh-my-pi/pi-tui/overlays/tree-selector";
 import { ThinkingSelectorComponent } from "@oh-my-pi/pi-tui/overlays/thinking-selector";
 import { UsageDashboardComponent } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
+import { RankDashboardComponent, type RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import { renderUsageReports } from "./command-controller";
 import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 
 import { cfgAdvisorSyncBacklog } from "../../advisor/settings";
 import { cfgBranchSummaryEnabled } from "../../session/context-settings";
+import { withEditionHiddenProviders } from "../../config/edition";
 import { cfgCycleOrder, cfgDisabledProviders, cfgModelRoleStorage } from "../../config/model-settings";
 import { cfgDefaultThinkingLevel, cfgRetryFallbackChains, cfgSessionWorktreeScope } from "../../session/settings";
 import {
@@ -177,7 +179,8 @@ type MenuKind =
 	| "model-hub"
 	| "agents-dashboard"
 	| "agent-hub"
-	| "usage-dashboard";
+	| "usage-dashboard"
+	| "rank-dashboard";
 
 /** An open menu: registered when the request runs, filled once its component mounts. */
 interface OpenMenu {
@@ -487,6 +490,23 @@ export class SelectorController {
 			onClose: done,
 		});
 		const menu = this.#claimMenu("usage-dashboard");
+		this.#mountMenu(menu, dashboard, () => this.#showFullscreenMenu(dashboard));
+	}
+
+	/** Fullscreen `/rank` dashboard (the /settings idiom): period tabs over a scrollable board. */
+	showRankDashboard(options: Omit<RankDashboardOptions, "requestRender" | "onClose">): void {
+		if (this.#focusOpenMenu("rank-dashboard")) return;
+		const menu = this.#claimMenu("rank-dashboard");
+		const dashboard = new RankDashboardComponent({
+			...options,
+			requestRender: () => this.ctx.ui.requestRender(),
+			onClose: () => {
+				menu.handle?.hide();
+				this.#releaseMenu("rank-dashboard", menu);
+				this.focusActiveEditorArea();
+				this.ctx.ui.requestRender();
+			},
+		});
 		this.#mountMenu(menu, dashboard, () => this.#showFullscreenMenu(dashboard));
 	}
 
@@ -2179,11 +2199,10 @@ export class SelectorController {
 		try {
 			const identity = await this.ctx.session.modelRegistry.authStorage.oauth.login(providerId as OAuthProvider, {
 				signal: dialog.signal,
-				onBrowserSession: captureBrowserSession,
-				onAuth: (info: { url: string; launchUrl?: string; instructions?: string }) => {
-					// The dialog renders the full URL (SSH-safe copy target) and
-					// opens the browser best-effort.
-					dialog.showAuth(info.url, info.instructions, info.launchUrl);
+				onBrowserSession: loginBrowserSession,
+				onAuth: info => {
+					// Preserve the full copy target without auto-opening API key pages.
+					dialog.showAuth(info.url, info.instructions, info.launchUrl, info.autoOpen);
 				},
 				onPrompt: prompt => dialog.showPrompt(prompt),
 				onProgress: (message: string) => {
@@ -2365,7 +2384,7 @@ export class SelectorController {
 					this.ctx.ui.requestRender();
 				},
 				{
-					disabledProviders: cfgDisabledProviders.get(settings),
+					disabledProviders: withEditionHiddenProviders(cfgDisabledProviders.get(settings)),
 					validateAuth: async (selectedProviderId: string) => {
 						const apiKey = await this.ctx.session.modelRegistry.getApiKeyForProvider(
 							selectedProviderId,

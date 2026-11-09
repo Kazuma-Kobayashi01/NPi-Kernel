@@ -28,7 +28,11 @@ import { truncateToWidth } from "../utils";
 import { CustomEditor } from "./custom-editor";
 import type { WordCompletionMethod } from "./word-completion";
 import { type AnimationFrame, TranscriptContainer } from "../chrome/transcript-container";
-import { WelcomeComponent } from "./welcome";
+import { terminalBackdrop, themeGradientStops, WelcomeComponent } from "./welcome";
+import { HomeScene } from "./home-scene";
+import { overlayTileRow } from "./tile-backdrop";
+import { TERMINAL } from "../terminal-capabilities";
+import { isNativeRendering } from "../native/state";
 import type { SidePanelRows } from "../chrome/side-panel";
 import { stripPromptZones } from "../chat/transcript-outline";
 import { StatusNotice } from "../chrome/status-notice";
@@ -330,6 +334,9 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	// The welcome header retires to terminal history exactly once, after the
 	// intro settles; until then it renders as mutable viewport chrome.
 	#headerRetired = false;
+	// The night-city backdrop behind the home screen; it plays while the
+	// welcome's ambient loop runs and freezes with it.
+	#homeScene = new HomeScene();
 	// Exact hard rows accepted into native history. Transient resize-alt
 	// paints reflow these rows to match the terminal's own rewrap of history
 	// it still holds; a settled replay owns every byte it emits, so it
@@ -622,6 +629,44 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 
 	/** Compose the bounded mutable viewport and the next ordered history append, in the centred, painted column. */
 	renderFrame(viewport: ViewportSize): TerminalFramePlan {
+		const plan = this.#renderPlacedFrame(viewport);
+		const tiled = this.#tileBackdrop(plan.viewport, viewport.columns, viewport.rows);
+		return tiled === plan.viewport ? plan : { ...plan, viewport: tiled };
+	}
+
+	/**
+	 * The home screen's `rows` over the night-city backdrop ({@link HomeScene}),
+	 * edge to edge: every cell without a background of its own shows the scene,
+	 * and blank cells may carry faint signboard lettering or a star. Unchanged off the home screen, on a
+	 * native surface, without truecolor, or when the theme reports no exact
+	 * terminal background to tint from.
+	 */
+	#tileBackdrop(rows: readonly string[], columns: number, height: number): readonly string[] {
+		const welcome = this.#welcome;
+		if (!welcome?.ambientActive || !this.#onHomeScreen() || isNativeRendering() || !TERMINAL.trueColor) return rows;
+		const backdrop = terminalBackdrop();
+		if (!backdrop || rows.length === 0) return rows;
+		const scene = this.#homeScene;
+		const { width, margin } = this.#column(columns);
+		scene.layout({ columns, rows: height, contentLeft: margin, contentRight: margin + width });
+		scene.setTheme({ backdrop, stops: themeGradientStops(), reveal: welcome.introProgress });
+		scene.step(performance.now());
+		const restore = this.#preferences.paintBackground === true ? theme.terminalBackgroundAnsi : "\x1b[49m";
+		const top = height - rows.length;
+		return rows.map((row, index) => {
+			if (hasTerminalGraphics(row)) return row;
+			const y = top + index;
+			const rowBlank = Bun.stripANSI(row).trim() === "";
+			return overlayTileRow(row, columns, {
+				bgAt: x => scene.bg(x, y),
+				glyphAt: x => scene.glyph(x, y, rowBlank),
+				restore,
+				backdrop,
+			});
+		});
+	}
+
+	#renderPlacedFrame(viewport: ViewportSize): TerminalFramePlan {
 		const { width, margin, panel } = this.#column(viewport.columns);
 		if (panel !== this.#sidePanelShown) {
 			this.#sidePanelShown = panel;
@@ -1082,6 +1127,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		if (offered === undefined || offered.id !== id) return;
 		if (offered.source === "header") {
 			this.#headerRetired = true;
+			this.#welcome?.stopAmbient();
 			this.#retiredHeaderRows = offered.rows;
 		} else {
 			if (offered.source.transcriptId !== undefined) {
@@ -1290,6 +1336,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			}
 			this.#headerRetired = true;
 			this.#retiredHeaderRows = [];
+			this.#welcome?.stopAmbient();
 		}
 		const batch = this.#historyFlush
 			? transcript.peekFlushBatch(width)
@@ -1390,6 +1437,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// reveal's first frame until InteractiveMode can animate it.
 		if (options.deferInput === true) this.#welcome?.holdIntro();
 		else if (options.playWelcomeIntro !== false) this.playWelcomeIntro();
+		else this.#startWelcomeAmbient();
 		// Deferred input identifies the CLI prepaint handoff. Flush the queued
 		// forced frame before returning so subsequent dynamic-import evaluation
 		// cannot monopolize the event loop ahead of the speculative status chrome.
@@ -1440,6 +1488,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#startupStatus?.attachToEditor(this.editor, getComposerStyle(this.#preferences.composerShape));
 		if (this.#preferences.quiet) {
 			this.#welcome?.stopIntro();
+			this.#welcome?.stopAmbient();
 			this.#welcome = undefined;
 		} else {
 			this.#ensureWelcome();
@@ -1550,13 +1599,21 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 			this.editor.invalidate();
 			this.ui.requestRender();
 		});
+		this.#startWelcomeAmbient();
 	}
 
 	/** Drop any held or running reveal and show the resting welcome. */
 	settleWelcome(): void {
 		this.#welcome?.stopIntro();
+		this.#startWelcomeAmbient();
 		this.editor.invalidate();
 		this.ui.requestRender();
+	}
+
+	/** Keep the arcade cabinet moving until the header retires to history. */
+	#startWelcomeAmbient(): void {
+		if (this.#headerRetired || this.#stopped) return;
+		this.#welcome?.startAmbient(() => this.ui.requestRender());
 	}
 
 	/** Transfer terminal ownership to InteractiveMode without stopping the composer. */
@@ -1571,6 +1628,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	stop(): void {
 		if (!this.#started || this.#stopped || this.#transferred) return;
 		this.#welcome?.stopIntro();
+		this.#welcome?.stopAmbient();
 		this.#disposeStartupStatus();
 		this.ui.stop();
 		this.#stopped = true;
@@ -1610,6 +1668,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		// Remains live after transfer until InteractiveMode installs its configured handlers.
 		if (this.#stopped) return;
 		this.#welcome?.stopIntro();
+		this.#welcome?.stopAmbient();
 		if (this.#started) this.ui.stop();
 		this.#stopped = true;
 		this.#exit(code);

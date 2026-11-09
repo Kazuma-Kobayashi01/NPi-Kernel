@@ -12,6 +12,7 @@ The theme system drives:
 - symbol preset + symbol overrides (`unicode`, `nerd`, `ascii`)
 - syntax highlighting colors used by native highlighter (`@oh-my-pi/pi-natives`)
 - status line segment colors
+- welcome/startup logo gradients, wordmark and reveal highlights; the setup splash shares the same palette
 
 Primary implementation: `packages/tui/src/theme/theme.ts`.
 
@@ -115,6 +116,21 @@ Theme lookup order (`loadThemeJson`):
 
 1. built-in embedded themes (`dark.json`, `light.json`, and every palette in `defaults.json`)
 2. custom theme file: `<customThemesDir>/<name>.json`
+
+The built-in `dark-tokyo` family includes the original `dark-tokyo-night` plus:
+
+| Theme | Direction |
+| --- | --- |
+| `dark-tokyo-neon` | Midnight indigo with hot pink and electric cyan signage |
+| `dark-tokyo-rain` | Blue-black rain, mist blue and cool mint reflections |
+| `dark-tokyo-chrome` | Warm graphite, amber circuitry and ultraviolet chrome |
+
+Choose them in Settings → Appearance → Dark Theme; adding these palettes does not change the saved selection.
+
+The ANSI welcome logo and startup animations interpolate `text` → `accent` → `borderAccent`.
+The wordmark and moving highlights use `text`, including on light themes. Truecolor and
+256-color terminals resolve the same theme palette. Resting logo frames and welcome
+render caches refresh when the active theme changes; the setup splash uses that live palette too.
 
 Custom themes directory comes from `getCustomThemesDir()`:
 

@@ -152,9 +152,9 @@ export function isNpiPythonHostConfigured(): boolean {
 
 /** Model-facing hint for a host that is configured but has not provisioned yet. */
 export const NPI_PYTHON_HOST_UNAVAILABLE_HINT =
-	"The NPi managed Python runtime is not provisioned yet. The desktop app installs it on the first python action; " +
-	"from a source checkout set NPI_PYTHON_HOST to the app executable and NPI_PYTHON_RESOURCE_DIR to the directory " +
-	"holding python-runtime-manifest.json.";
+	"The NPi managed Python runtime is not provisioned yet. The desktop app (or, on Linux, the npi binary itself) " +
+	"installs it on the first python action; from a source checkout set NPI_PYTHON_HOST to the app executable and " +
+	"NPI_PYTHON_RESOURCE_DIR to the directory holding python-runtime-manifest.json.";
 
 /** `<NPI_ENV_DIR>/environments/default/bin/python` (or `Scripts/python.exe` on Windows). */
 export function npiManagedPythonPath(): string {
