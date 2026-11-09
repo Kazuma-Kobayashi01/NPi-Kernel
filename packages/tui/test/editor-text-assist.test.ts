@@ -337,3 +337,30 @@ describe("Editor prediction", () => {
 		expect(editor.getCursor()).toEqual({ line: 0, col: 13 });
 	});
 });
+
+describe("Editor history suggestions", () => {
+	it("completes the line from prompt history, prefers the latest submission, and stays off when disabled", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.historySuggestions = () => true;
+		editor.setHistoryStorage({
+			add: async () => {},
+			getRecent: () => [{ prompt: "fix the login bug" }, { prompt: "multi\nline prompt" }],
+		});
+		for (const char of "fix t") editor.handleInput(char);
+		expect(editor.render(60).join("\n")).toContain("he login bug");
+		editor.handleInput("x");
+		expect(editor.render(60).join("\n")).not.toContain("login bug");
+
+		editor.setText("");
+		editor.addToHistory("fix the tests");
+		for (const char of "fix") editor.handleInput(char);
+		editor.handleInput("\x1b[C");
+		expect(editor.getText()).toBe("fix the tests");
+
+		const off = new Editor(defaultEditorTheme);
+		off.setHistoryStorage({ add: async () => {}, getRecent: () => [{ prompt: "fix the login bug" }] });
+		for (const char of "fix") off.handleInput(char);
+		off.handleInput("\t");
+		expect(off.getText()).not.toBe("fix the login bug");
+	});
+});

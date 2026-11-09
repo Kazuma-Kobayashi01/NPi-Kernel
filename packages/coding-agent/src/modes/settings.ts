@@ -1152,6 +1152,20 @@ export const cfgComposerPredictions = register({
 	},
 });
 
+export const cfgComposerHistorySuggestions = register({
+	id: "composer.historySuggestions",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "interaction",
+		group: "Input",
+		label: "History Suggestions",
+		get description() {
+			return `While typing a single line, complete it from your earlier prompts (this project first) as ghost text; ${formatKeyHint("tab")} or ${formatKeyHint("right")} at the end of the line inserts it without sending`;
+		},
+	},
+});
+
 export const cfgSpellingAutocorrect = register({
 	id: "spelling.autocorrect",
 	type: "boolean",

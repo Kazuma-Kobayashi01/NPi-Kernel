@@ -463,6 +463,10 @@ const VIM_NAV_KEYS: Record<string, string | undefined> = {
 
 /** Minimum free cells between an end-of-line cursor and a right-aligned placeholder. */
 const PLACEHOLDER_MIN_GAP = 2;
+/** Submitted prompts searched for history suggestions. */
+const HISTORY_SUGGESTION_POOL = 500;
+/** Non-blank characters typed before a history suggestion appears. */
+const HISTORY_SUGGESTION_MIN_CHARS = 2;
 
 const DEFAULT_PAGE_SCROLL_LINES = 10;
 
@@ -672,6 +676,7 @@ export interface EditorTheme {
 
 interface HistoryEntry {
 	prompt: string;
+	cwd?: string | null;
 }
 
 interface HistoryStorage {
@@ -914,6 +919,9 @@ export class Editor implements Component, Focusable {
 	#historyStorage?: HistoryStorage;
 	// Recalled payloads outlive browsing when an edit resets #historyIndex.
 	#historyDraftActive = false;
+	// Single-line submitted prompts offered as ghost-text completions, most relevant first.
+	#suggestionPool: string[] = [];
+	#suggestionCache: { typed: string; suffix: string | null } | undefined;
 
 	// Undo stack for editor state changes
 	#undoStack: EditorState[] = [];
@@ -962,6 +970,10 @@ export class Editor implements Component, Focusable {
 	 *  the rest without submitting. Must be a single line. Re-evaluated on every render, so hosts can
 	 *  derive it from live state. */
 	prediction?: () => string | undefined;
+	/** Whether to complete the single-line buffer from submitted prompt history when no
+	 *  {@link prediction} matches: the most relevant earlier prompt that strictly extends the typed
+	 *  text is painted as ghost text and accepted like a prediction. Re-evaluated on every render. */
+	historySuggestions?: () => boolean;
 
 	// Custom top border (for status line integration). Either an eager `content`
 	// (set once, reused every frame) or a `provider` that recomputes lazily just
@@ -1184,6 +1196,30 @@ export class Editor implements Component, Focusable {
 		const recent = storage.getRecent(100);
 		this.#history = recent.map(entry => ({ text: entry.prompt }));
 		this.#historyIndex = -1;
+		// Prompts from this project first, each group newest first.
+		const pool = storage.getRecent(HISTORY_SUGGESTION_POOL);
+		const projectDir = getProjectDir();
+		const here = pool.filter(entry => entry.cwd === projectDir);
+		const elsewhere = pool.filter(entry => entry.cwd !== projectDir);
+		this.#suggestionPool = [];
+		this.#suggestionCache = undefined;
+		for (const entry of [...here, ...elsewhere]) this.#addSuggestion(entry.prompt, false);
+	}
+
+	/** Remember a submitted prompt for history suggestions; `front` ranks it first. */
+	#addSuggestion(prompt: string, front: boolean): void {
+		const text = prompt.trim();
+		if (!text || text.includes("\n")) return;
+		const pool = this.#suggestionPool;
+		const existing = pool.indexOf(text);
+		if (existing !== -1) {
+			if (!front) return;
+			pool.splice(existing, 1);
+		}
+		if (front) pool.unshift(text);
+		else pool.push(text);
+		if (pool.length > HISTORY_SUGGESTION_POOL) pool.pop();
+		this.#suggestionCache = undefined;
 	}
 
 	/**
@@ -1201,6 +1237,7 @@ export class Editor implements Component, Focusable {
 			});
 		}
 
+		this.#addSuggestion(trimmed, true);
 		// Don't add consecutive submitted duplicates; a draft owns separate state.
 		const previous = this.#history[0];
 		if (previous?.text === trimmed && !previous.draft) return;
@@ -5470,15 +5507,25 @@ export class Editor implements Component, Focusable {
 	/** The part of {@link prediction} not yet typed, or `null` when no prediction is shown. */
 	#getPredictionSuffix(): string | null {
 		if (this.#autocompleteState) return null;
-		const prediction = this.prediction?.();
-		if (!prediction) return null;
 		const { lines, cursorCol } = this.#state;
 		if (lines.length !== 1) return null;
 		const typed = lines[0] ?? "";
-		if (cursorCol !== typed.length || typed.length >= prediction.length || !prediction.startsWith(typed)) {
-			return null;
+		if (cursorCol !== typed.length) return null;
+		const prediction = this.prediction?.();
+		if (prediction && typed.length < prediction.length && prediction.startsWith(typed)) {
+			return prediction.slice(typed.length);
 		}
-		return prediction.slice(typed.length);
+		return this.#getHistorySuggestion(typed);
+	}
+	/** Rest of the most relevant earlier prompt extending `typed`, or `null`. */
+	#getHistorySuggestion(typed: string): string | null {
+		if (typed.trim().length < HISTORY_SUGGESTION_MIN_CHARS || !this.historySuggestions?.()) return null;
+		const cache = this.#suggestionCache;
+		if (cache?.typed === typed) return cache.suffix;
+		const match = this.#suggestionPool.find(text => text.length > typed.length && text.startsWith(typed));
+		const suffix = match ? match.slice(typed.length) : null;
+		this.#suggestionCache = { typed, suffix };
+		return suffix;
 	}
 	/** Typing `typed` where it diverges from the shown ghost completion rejects that ghost. */
 	#reportTypedPastWordCompletion(typed: string): void {

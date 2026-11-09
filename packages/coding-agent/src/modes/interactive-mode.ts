@@ -374,6 +374,7 @@ import {
 	askTimeoutMs,
 	cfgAutocompleteMaxVisible,
 	cfgComposerPredictions,
+	cfgComposerHistorySuggestions,
 	cfgComposerPaintBackground,
 	cfgTuiContentWidth,
 	cfgTuiSidePanel,
@@ -2089,6 +2090,7 @@ export class InteractiveMode implements InteractiveModeContext {
 			return theme.fg("dim", fitHints(home ? [agents, "/ commands"] : [thinking, agents, "/ commands"], width));
 		};
 		this.editor.prediction = () => this.#eventController.composerPrediction.text;
+		this.editor.historySuggestions = () => cfgComposerHistorySuggestions.get(this.settings);
 		this.editor.composerState = () => this.#composerNativeState();
 		this.editor.onToggleDictation = () => void this.#toggleComposerDictation();
 		this.editor.imageReferenceHyperlink = imageReferenceHyperlink;
@@ -8380,6 +8382,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		nextEditor.placeholder = () => this.#composerHint();
 		nextEditor.footerHint = this.editor.footerHint;
 		nextEditor.prediction = () => this.#eventController.composerPrediction.text;
+		nextEditor.historySuggestions = () => cfgComposerHistorySuggestions.get(this.settings);
 		nextEditor.composerState = () => this.#composerNativeState();
 		nextEditor.onToggleDictation = () => void this.#toggleComposerDictation();
 		nextEditor.attachmentChips = previousEditor.attachmentChips;

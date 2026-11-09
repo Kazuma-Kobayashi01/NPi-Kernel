@@ -4,6 +4,7 @@
 
 ### Added
 
+- History suggestions: while you type a single line, the composer completes it from your earlier prompts (this project first, newest first) as dim ghost text; Tab, or Right at the end of the line, inserts the rest without sending, and the suggestion updates or disappears as you keep typing. A model prediction that still matches takes precedence. `composer.historySuggestions` (Settings → Interaction → Input → History Suggestions) turns it off.
 - macOS process sandbox: `sandbox.mode` (or `--sandbox <mode>`) relaunches npi under a Seatbelt profile so commands, eval, file tools and MCP servers can write only inside the project and npi's own folders (`workspace-write`), or not even the project (`read-only`); `sandbox.writableRoots` adds folders. See `docs/sandbox.md`.
 - Added the international Alibaba Model Studio provider (`alibaba`, `dashscope-intl.aliyuncs.com`, `DASHSCOPE_INTL_API_KEY`) beside the China one; keys are region-locked, so an international key now has somewhere to go.
 - `tui.clearOnExit` clears the screen and scrollback when npi exits, on by default; the resume hint still prints afterwards.
