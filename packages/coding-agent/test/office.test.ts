@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
+import { Effort } from "@oh-my-pi/pi-ai";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { runOfficeCommand } from "@oh-my-pi/pi-coding-agent/office/commands";
@@ -10,7 +12,9 @@ import {
 	mergeApprovedPull,
 	readOfficeState,
 	resolveSeat,
+	staffedOffices,
 } from "@oh-my-pi/pi-coding-agent/office/company";
+import { cfgOfficeOffices } from "@oh-my-pi/pi-coding-agent/office/settings";
 import { claimDesk, readClaims } from "@oh-my-pi/pi-coding-agent/office/desks";
 import { onOfficeChange, storePath } from "@oh-my-pi/pi-coding-agent/office/store";
 import { flushUsage, readUsage, recordUsage } from "@oh-my-pi/pi-coding-agent/office/usage";
@@ -21,6 +25,7 @@ import {
 	rememberNote,
 } from "@oh-my-pi/pi-coding-agent/office/memory";
 import {
+	activeOffices,
 	leaderOf,
 	type OfficeConfig,
 	removeMember,
@@ -71,6 +76,39 @@ describe("office roster", () => {
 		const offices: OfficeConfig[] = staffOffices("team", []);
 		const broken = [{ members: offices[0].members.map(member => ({ ...member, role: "leader" })) }];
 		expect(() => validateOffices(broken)).toThrow(/exactly one leader, got 3/);
+	});
+
+	it("reads a roster saved before members had an effort as inherit, and refuses an unknown level", () => {
+		const offices = staffOffices("team", []);
+		// What an older config file holds: no `thinking` key at all.
+		const legacy = offices.map(office => ({
+			members: office.members.map(({ thinking: _thinking, ...member }) => member),
+		})) as unknown as OfficeConfig[];
+		expect(() => validateOffices(legacy)).not.toThrow();
+		expect(activeOffices("team", legacy)[0]!.members[0]!.thinking).toBe("");
+		const broken = [{ members: offices[0].members.map(member => ({ ...member, thinking: "turbo" })) }];
+		expect(() => validateOffices(broken)).toThrow(/has thinking "turbo"/);
+	});
+
+	it("sets and clears a member's thinking effort through the owner command", async () => {
+		const settings = Settings.isolated({ "office.scale": "team" });
+		const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "omp-office-command-"));
+		try {
+			const member = workersOf(staffedOffices(settings)[0]!)[0]!;
+			const set = await runOfficeCommand(["set", member.id, "thinking", "high"], settings, cwd);
+			expect(set.failed).toBeUndefined();
+			expect(set.text).toContain(`${member.id}`);
+			expect(set.text).toContain("high effort");
+			expect(cfgOfficeOffices.get(settings)[0]!.members.find(entry => entry.id === member.id)?.thinking).toBe(
+				Effort.High,
+			);
+			const cleared = await runOfficeCommand(["set", member.id, "thinking", "default"], settings, cwd);
+			expect(cleared.text).toContain("default effort");
+			expect(cfgOfficeOffices.get(settings)[0]!.members.find(entry => entry.id === member.id)?.thinking).toBe("");
+			expect((await runOfficeCommand(["set", member.id, "thinking", "turbo"], settings, cwd)).failed).toBe(true);
+		} finally {
+			await fs.rm(cwd, { recursive: true, force: true });
+		}
 	});
 });
 

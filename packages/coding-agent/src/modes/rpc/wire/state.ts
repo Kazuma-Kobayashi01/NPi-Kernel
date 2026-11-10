@@ -294,6 +294,7 @@ export const stateDefs = {
 		id: doc("string", "Permanent name, `Worker-xxxxxx`."),
 		role: "'leader' | 'worker'",
 		model: doc("string", "Model selector; empty uses the default subagent model."),
+		thinking: doc("string", "Thinking effort; empty uses the configured subagent effort."),
 		capability: "'common' | 'professional' | 'expert'",
 	},
 	Office: { number: "number.integer", members: "OfficeMember[]" },

@@ -727,6 +727,8 @@ export interface OfficeMember {
 	role: "leader" | "worker";
 	/** Model selector; empty uses the default subagent model. */
 	model: string;
+	/** Thinking effort; empty uses the configured subagent effort. */
+	thinking: string;
 	capability: "common" | "professional" | "expert";
 }
 

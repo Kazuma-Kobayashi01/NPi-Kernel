@@ -4,6 +4,7 @@
 
 ### Added
 
+- Virtual Office members take a thinking effort: `/office set <name> thinking <level>` sets it (`default` clears it), `/office status` and the RPC roster show it, and an effort the member's model does not support is clamped to the closest one it does.
 - Virtual Office: `/office on` turns the main chat into a general manager that hands work to offices (1, 3 or 6 with `office.scale`), each with a leader and two to five workers who keep a fixed `Worker-xxxxxx` name, a model and a capability level. Every member works on their own branch and worktree, changes move up only through reviewed local pull requests, and the merge into your branch waits for `/office merge <pr>`. `npi office` and the RPC commands `get_office_state` / `office_command` manage the same roster. See `docs/virtual-office.md`.
 - Office memory: each Virtual Office remembers the project it works on, logging every pull request it gets merged and keeping lessons its members save with `office` `remember`; members see it with each assignment and the general manager sees each office's recent work. `/office memory|remember|forget <office>` manages it.
 - Virtual Office for GUI hosts: an RPC session now starts with Virtual Office off and switches it per session with `set_office_enabled`; `office_state` frames push every change; `OfficeState` gains each office's `activity` (phase, who is working, current task), `usage` per member and per local day (the general manager included), and recent assignment `runs`. A desk now takes one assignment at a time across processes, not just within one.
@@ -29,6 +30,7 @@
 
 ### Changed
 
+- Virtual Office dispatch no longer asks which model or thinking effort a member batch should use, or waits for approval of the `office` call: each assignment runs on the model and effort configured for that member, falling back to the session's subagent setting.
 - A connection that resets, is refused or cannot be reached three times in a row on the same model stops being retried there (it used to take all ten `retry.maxRetries`, about a minute each during a provider outage); the turn moves to the fallback chain or reports the error.
 - The short prompt for small fast models (Gemini Flash and Lite) asks them to send independent reads and searches in one response instead of one per turn.
 - The `python` tool now only reports the managed environment and lists or installs its packages; run Python code with `eval`. It moved under `xd://python` instead of sitting in every request, and appears only when a managed runtime host is configured (NPi Desktop, or the Linux binary).

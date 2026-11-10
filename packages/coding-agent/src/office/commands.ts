@@ -4,6 +4,7 @@
  * back the pull requests the general manager approved.
  */
 import type { Settings } from "../config/settings";
+import { SUBAGENT_THINKING_LEVELS } from "../task/settings";
 import { ownerMerge, ownerRequestChanges, readOfficeState, staffedOffices } from "./company";
 import {
 	addMember,
@@ -13,6 +14,7 @@ import {
 	OFFICE_SCALES,
 	type OfficeConfig,
 	OfficeRosterError,
+	type OfficeThinking,
 	removeMember,
 	resizeOffice,
 	updateMember,
@@ -31,6 +33,7 @@ export const OFFICE_COMMAND_USAGE = [
 	"/office add <office> [model] [capability] add a worker",
 	"/office remove <name>                     remove a worker",
 	'/office set <name> model <selector>       the model a member runs on ("default" to clear)',
+	'/office set <name> thinking <level>       the thinking effort a member runs at ("default" to clear)',
 	"/office set <name> capability common|professional|expert",
 	"/office set <name> role leader            make a member the office's leader",
 	"/office merge <pr>                        merge an approved office pull request into your branch",
@@ -83,7 +86,7 @@ async function renderState(settings: Settings, cwd: string): Promise<string> {
 		lines.push(`Office ${office.number}`);
 		for (const member of office.members) {
 			lines.push(
-				`  ${member.id}  ${member.role.padEnd(6)}  ${member.capability.padEnd(12)}  ${member.model || "default model"}`,
+				`  ${member.id}  ${member.role.padEnd(6)}  ${member.capability.padEnd(12)}  ${member.model || "default model"}  ${member.thinking ? `${member.thinking} effort` : "default effort"}`,
 			);
 		}
 	}
@@ -134,18 +137,27 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 		}
 		case "set": {
 			const [name, field, ...value] = rest;
-			if (!name || !field) throw new OfficeUsageError("Expected: set <name> model|capability|role <value>.");
+			if (!name || !field)
+				throw new OfficeUsageError("Expected: set <name> model|thinking|capability|role <value>.");
 			const text = value.join(" ").trim();
 			const patch =
 				field === "model"
 					? { model: text === "default" ? "" : text }
-					: field === "capability"
-						? { capability: oneOf(OFFICE_CAPABILITIES, text, "a capability") }
-						: field === "role"
-							? { role: oneOf(OFFICE_ROLES, text, "a role") }
-							: undefined;
-			if (!patch) throw new OfficeUsageError("Expected one of: model, capability, role.");
-			if (field === "model" && !text) throw new OfficeUsageError('Expected a model selector, or "default".');
+					: field === "thinking"
+						? {
+								thinking:
+									text === "default"
+										? ""
+										: oneOf<OfficeThinking>(SUBAGENT_THINKING_LEVELS, text, "a thinking level"),
+							}
+						: field === "capability"
+							? { capability: oneOf(OFFICE_CAPABILITIES, text, "a capability") }
+							: field === "role"
+								? { role: oneOf(OFFICE_ROLES, text, "a role") }
+								: undefined;
+			if (!patch) throw new OfficeUsageError("Expected one of: model, thinking, capability, role.");
+			if ((field === "model" || field === "thinking") && !text)
+				throw new OfficeUsageError('Expected a value, or "default".');
 			cfgOfficeOffices.set(settings, updateMember(roster(settings), name, patch));
 			return renderState(settings, cwd);
 		}

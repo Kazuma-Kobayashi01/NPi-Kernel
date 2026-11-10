@@ -3612,6 +3612,10 @@
 					"type": "string",
 					"description": "Model selector; empty uses the default subagent model."
 				},
+				"thinking": {
+					"type": "string",
+					"description": "Thinking effort; empty uses the configured subagent effort."
+				},
 				"capability": {
 					"enum": [
 						"common",
@@ -3625,6 +3629,7 @@
 				"id",
 				"role",
 				"model",
+				"thinking",
 				"capability"
 			]
 		},

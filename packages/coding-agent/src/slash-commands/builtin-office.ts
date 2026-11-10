@@ -24,7 +24,7 @@ export const BUILTIN_OFFICE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			{ name: "size", description: "Members in an office", usage: "<office> <3-6>" },
 			{ name: "add", description: "Add a worker", usage: "<office> [model] [capability]" },
 			{ name: "remove", description: "Remove a worker", usage: "<name>" },
-			{ name: "set", description: "Change a member", usage: "<name> model|capability|role <value>" },
+			{ name: "set", description: "Change a member", usage: "<name> model|thinking|capability|role <value>" },
 			{ name: "merge", description: "Merge an approved office pull request", usage: "<pr>" },
 			{ name: "reject", description: "Send an office pull request back", usage: "<pr> <reason>" },
 			{ name: "memory", description: "What an office remembers about this project", usage: "<office>" },

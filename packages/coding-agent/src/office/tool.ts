@@ -8,10 +8,12 @@
 import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
 import { prompt } from "@oh-my-pi/pi-utils";
+import type { RosterTier } from "../config/model-roster";
 import leaderRole from "../prompts/office/leader.md" with { type: "text" };
 import workerRole from "../prompts/office/worker.md" with { type: "text" };
 import officeDescription from "../prompts/tools/office.md" with { type: "text" };
 import { getBundledAgent } from "../task/agents";
+import { configuredSelection } from "../task/delegation-runtime";
 import { cfgTaskEnableLsp, cfgTaskMaxRuntimeMs } from "../task/settings";
 import { runStructuredSubagent, StructuredSubagentError } from "../task/structured-subagent";
 import type { AgentDefinition } from "../task/types";
@@ -31,7 +33,7 @@ import {
 	staffedOffices,
 } from "./company";
 import { claimDesk } from "./desks";
-import { leaderOf, type Office, type OfficeMember, workersOf } from "./model";
+import { leaderOf, type Office, type OfficeCapability, type OfficeMember, workersOf } from "./model";
 import { type OfficeMemory, OfficeMemoryError, readOfficeMemories, readOfficeMemory, rememberNote } from "./memory";
 import { getPull, listPulls, MANAGER, type Pull, PullError, reviewPull, submitPull } from "./pulls";
 import { cfgOfficeEnabled } from "./settings";
@@ -65,6 +67,13 @@ export interface OfficeToolDetails {
 	pulls?: Pull[];
 	meta?: OutputMeta;
 }
+
+/** The roster tier a member's capability runs on when no model is set for them (Auto hosts). */
+const CAPABILITY_TIER: Record<OfficeCapability, RosterTier> = {
+	expert: "flagship",
+	professional: "high",
+	common: "standard",
+};
 
 /** Largest patch `diff` returns; a reviewer reads the rest at the desk. */
 const DIFF_MAX_BYTES = 60_000;
@@ -107,7 +116,9 @@ function memberAgent(member: OfficeMember, office: Office, rolePrompt: string): 
 
 export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDetails> {
 	readonly name = "office";
-	readonly approval = "exec" as const;
+	// The owner configured the company, so assigning work needs no consent prompt of its own;
+	// members still run under their own tool approvals.
+	readonly approval = "read" as const;
 	readonly label = "Office";
 	readonly summary = "Assign work to the Virtual Office and move it up through pull requests";
 	readonly description: string;
@@ -218,7 +229,7 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 			);
 			for (const member of office.members) {
 				lines.push(
-					`  ${member.id} — ${member.role}, ${member.capability}${member.model ? `, ${member.model}` : ""}`,
+					`  ${member.id} — ${member.role}, ${member.capability}, ${member.model || "default model"}, ${member.thinking ? `${member.thinking} effort` : "default effort"}`,
 				);
 			}
 		}
@@ -335,13 +346,21 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 					// The runner reports running totals; book what each report adds, when it adds it.
 					const booked = { tokens: 0, cost: 0, requests: 0 };
 					let sessionFile: string | undefined;
+					// The roster is the owner's confirmation: the member runs on their configured
+					// model and effort, resolved without an Ask.
+					const selection = configuredSelection(this.session, {
+						model: assignment.member.model || undefined,
+						thinking: assignment.member.thinking || undefined,
+						tier: CAPABILITY_TIER[assignment.member.capability],
+					});
 					try {
 						const execution = await runStructuredSubagent({
 							session: this.session,
 							invocationKind: "task",
 							assignment: assignment.task,
 							agentDefinition: assignment.agent,
-							model: assignment.member.model || undefined,
+							delegationSelection: selection,
+							delegationPinned: true,
 							cwd: assignment.desk.dir,
 							structured: false,
 							identity: { label: member },

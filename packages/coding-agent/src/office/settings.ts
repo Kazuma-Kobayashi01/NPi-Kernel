@@ -2,7 +2,7 @@
  * Settings declared by this domain (see `config/registry.ts`).
  */
 import { register } from "../config/registry";
-import { OFFICE_SCALES, type OfficeConfig, validateOffices } from "./model";
+import { normalizeOffices, OFFICE_SCALES, type OfficeConfig, validateOffices } from "./model";
 
 const NO_OFFICES: readonly OfficeConfig[] = [];
 
@@ -46,4 +46,6 @@ export const cfgOfficeOffices = register({
 	type: "array",
 	default: NO_OFFICES,
 	validate: validateOffices,
+	// Rosters saved before members had an effort get "" so every reader sees the full shape.
+	normalize: value => normalizeOffices(value as readonly OfficeConfig[]),
 });

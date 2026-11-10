@@ -9,6 +9,8 @@
  * job of `office/settings.ts`, running it the job of `office/tool.ts`.
  */
 import { isRecord } from "@oh-my-pi/pi-utils";
+import type { SubagentPreferences } from "../task/delegation-preferences";
+import { SUBAGENT_THINKING_LEVELS } from "../task/settings";
 
 /** How many offices a company runs. */
 export const OFFICE_SCALES = ["team", "studio", "enterprise"] as const;
@@ -24,6 +26,11 @@ export type OfficeRole = (typeof OFFICE_ROLES)[number];
 export const OFFICE_CAPABILITIES = ["common", "professional", "expert"] as const;
 export type OfficeCapability = (typeof OFFICE_CAPABILITIES)[number];
 
+/** A member's thinking effort; empty = whatever the configured subagent model runs at. */
+export type OfficeThinking = SubagentPreferences["thinking"] | "";
+
+export const OFFICE_THINKING_LEVELS: readonly OfficeThinking[] = ["", ...SUBAGENT_THINKING_LEVELS];
+
 export const MIN_OFFICE_MEMBERS = 3;
 export const MAX_OFFICE_MEMBERS = 6;
 
@@ -33,8 +40,10 @@ export interface OfficeMember {
 	/** Fixed name, `Worker-xxxxxx`. Never reassigned while the member exists. */
 	id: string;
 	role: OfficeRole;
-	/** Model selector the member runs on; empty = the session's default subagent model. */
+	/** Model selector the member runs on; empty = the session's configured subagent model. */
 	model: string;
+	/** Thinking effort; empty = the same source as the member's model. */
+	thinking: OfficeThinking;
 	capability: OfficeCapability;
 }
 
@@ -96,6 +105,12 @@ export function validateOffices(value: unknown): void {
 			if (typeof member.model !== "string") {
 				throw new Error(`Invalid ${at}: ${member.id} needs a model (a selector string, or "" to inherit).`);
 			}
+			// Rosters saved before members had an effort leave it out; `normalizeOffices` fills it in.
+			if (member.thinking !== undefined && !isOneOf(OFFICE_THINKING_LEVELS, member.thinking)) {
+				throw new Error(
+					`Invalid ${at}: ${member.id} has thinking ${Bun.inspect(member.thinking)}; use ${SUBAGENT_THINKING_LEVELS.join(", ")}, or "" to inherit.`,
+				);
+			}
 			if (member.role === "leader") leaders++;
 		}
 		if (leaders !== 1) throw new Error(`Invalid ${at}: an office has exactly one leader, got ${leaders}.`);
@@ -104,6 +119,13 @@ export function validateOffices(value: unknown): void {
 
 function takenIds(offices: readonly OfficeConfig[]): Set<string> {
 	return new Set(offices.flatMap(office => office.members.map(member => member.id)));
+}
+
+/** The roster with every member's effort filled in: `""` for rosters saved before the field existed. */
+export function normalizeOffices(offices: readonly OfficeConfig[]): OfficeConfig[] {
+	return offices.map(office => ({
+		members: office.members.map(member => ({ ...member, thinking: member.thinking || "" })),
+	}));
 }
 
 /** A fresh `Worker-xxxxxx` name not in `taken`; the new name is added to `taken`. */
@@ -123,6 +145,7 @@ function newOffice(taken: Set<string>): OfficeConfig {
 			id: newMemberId(taken),
 			role: index === 0 ? "leader" : "worker",
 			model: "",
+			thinking: "",
 			capability: index === 0 ? "expert" : "common",
 		})),
 	};
@@ -134,7 +157,7 @@ function newOffice(taken: Set<string>): OfficeConfig {
  * roster, dormant, so scaling back up brings the same people back.
  */
 export function staffOffices(scale: OfficeScale, offices: readonly OfficeConfig[]): OfficeConfig[] {
-	const staffed = offices.map(office => ({ members: office.members.map(member => ({ ...member })) }));
+	const staffed = normalizeOffices(offices);
 	const taken = takenIds(staffed);
 	while (staffed.length < OFFICE_COUNT[scale]) staffed.push(newOffice(taken));
 	return staffed;
@@ -142,7 +165,7 @@ export function staffOffices(scale: OfficeScale, offices: readonly OfficeConfig[
 
 /** The offices that run at this scale, numbered from 1. */
 export function activeOffices(scale: OfficeScale, offices: readonly OfficeConfig[]): Office[] {
-	return offices
+	return normalizeOffices(offices)
 		.slice(0, OFFICE_COUNT[scale])
 		.map((office, index) => ({ number: index + 1, members: office.members }));
 }
@@ -181,7 +204,7 @@ function withMembers(offices: readonly OfficeConfig[], index: number, members: O
 export function addMember(
 	offices: readonly OfficeConfig[],
 	number: number,
-	options: { model?: string; capability?: OfficeCapability } = {},
+	options: { model?: string; thinking?: OfficeThinking; capability?: OfficeCapability } = {},
 ): { offices: OfficeConfig[]; member: OfficeMember } {
 	const index = officeAt(offices, number);
 	const members = offices[index].members;
@@ -192,6 +215,7 @@ export function addMember(
 		id: newMemberId(takenIds(offices)),
 		role: "worker",
 		model: options.model ?? "",
+		thinking: options.thinking ?? "",
 		capability: options.capability ?? "common",
 	};
 	return { offices: withMembers(offices, index, [...members, member]), member };
@@ -214,11 +238,11 @@ export function removeMember(offices: readonly OfficeConfig[], id: string): Offi
 	);
 }
 
-/** Change one member's model, capability or role. Making a member the leader demotes the old one. */
+/** Change one member's model, effort, capability or role. Making a member the leader demotes the old one. */
 export function updateMember(
 	offices: readonly OfficeConfig[],
 	id: string,
-	patch: { model?: string; capability?: OfficeCapability; role?: OfficeRole },
+	patch: { model?: string; thinking?: OfficeThinking; capability?: OfficeCapability; role?: OfficeRole },
 ): OfficeConfig[] {
 	const at = locate(offices, id);
 	const current = offices[at.office].members[at.member];
@@ -233,6 +257,7 @@ export function updateMember(
 			return {
 				...member,
 				...(patch.model !== undefined ? { model: patch.model.trim() } : {}),
+				...(patch.thinking !== undefined ? { thinking: patch.thinking } : {}),
 				...(patch.capability !== undefined ? { capability: patch.capability } : {}),
 				...(patch.role !== undefined ? { role: patch.role } : {}),
 			};

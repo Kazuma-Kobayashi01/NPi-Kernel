@@ -21,7 +21,12 @@ import { TaskTool } from "../../src/task";
 import * as discovery from "../../src/task/discovery";
 import {
 	acquireDelegationSlot,
+	applyDelegationModel,
+	bindDelegationSession,
+	configuredSelection,
+	type DelegationModelSession,
 	registerDelegationContext,
+	rememberDelegationSelection,
 	selectDelegationModel,
 } from "../../src/task/delegation-runtime";
 import { runSubagentFollowUpTurn } from "../../src/task/executor";
@@ -433,5 +438,69 @@ describe("Desktop delegation consumers", () => {
 		expect(await selectDelegationModel(session)).toBeUndefined();
 		const releases = await Promise.all(Array.from({ length: 5 }, (_, index) => acquireDelegationSlot(session, `Cli${index}`)));
 		for (const release of releases) release();
+	});
+});
+
+describe("configured selection (Virtual Office dispatch)", () => {
+	it("runs a member on their own model and effort, over the host's Custom preference, without asking", async () => {
+		const { session, settings, models } = await fixture("custom");
+		cfgTaskSubagentCustomThinking.override(settings, Effort.Low);
+		Object.assign(models[1]!, { reasoning: true, thinking: { efforts: ["low", "high"], mode: "anthropic-adaptive" } });
+		session.getToolContext = () => {
+			throw new Error("dispatch must not ask");
+		};
+		expect(configuredSelection(session, { model: "mock/second", thinking: Effort.High })).toEqual({
+			model: "mock/second",
+			thinking: Effort.High,
+		});
+	});
+
+	it("clamps an effort inherited from the Custom preference to the member's model", async () => {
+		const { session, settings, models } = await fixture("custom");
+		cfgTaskSubagentCustomThinking.override(settings, Effort.High);
+		Object.assign(models[2]!, { reasoning: true, thinking: { efforts: ["low"], mode: "anthropic-adaptive" } });
+		expect(configuredSelection(session, { model: "mock/third" })).toEqual({ model: "mock/third", thinking: Effort.Low });
+	});
+
+	it("schedules a member with no model on the Auto tier they sit at, without an Ask", async () => {
+		const { session, settings, models } = await fixture("auto");
+		Object.assign(models[2]!, { reasoning: true, thinking: { efforts: ["low", "high"], mode: "anthropic-adaptive" } });
+		settings.setModelRole("standard", "mock/third:high");
+		session.getToolContext = () => {
+			throw new Error("dispatch must not ask");
+		};
+		expect(configuredSelection(session, { tier: "standard" })).toEqual({ model: "mock/third", thinking: Effort.High });
+	});
+
+	it("follows the parent's active model and effort when the host configures no subagent policy", async () => {
+		const { session, settings, models, setActive } = await fixture("custom");
+		cfgTaskSubagentModelMode.override(settings, "default");
+		Object.assign(models[2]!, { reasoning: true, thinking: { efforts: ["low", "high"], mode: "anthropic-adaptive" } });
+		setActive(models[2]!, Effort.Low);
+		expect(configuredSelection(session, { tier: "high" })).toEqual({ model: "mock/third", thinking: Effort.Low });
+	});
+
+	it("keeps a pinned roster selection on later turns instead of the Custom preference", async () => {
+		const { session, models } = await fixture("custom");
+		Object.assign(models[1]!, { reasoning: true, thinking: { efforts: ["low", "high"], mode: "anthropic-adaptive" } });
+		const applied: Array<{ model: string; thinking: unknown }> = [];
+		const owner: DelegationModelSession = {
+			settings: session.settings,
+			disarmPrewalk: () => {},
+			model: undefined,
+			thinkingLevel: undefined,
+			async setModelTemporary(model, thinking) {
+				applied.push({ model: model.id, thinking });
+			},
+			setThinkingLevel: () => {},
+		};
+		const child: ToolSession = { ...session, taskDepth: 1 };
+		bindDelegationSession(owner, child);
+		rememberDelegationSelection(child, "Main", { model: "mock/second", thinking: Effort.High });
+		await applyDelegationModel(owner);
+		expect(applied.at(-1)?.model).toBe("first");
+		rememberDelegationSelection(child, "Main", { model: "mock/second", thinking: Effort.High }, true);
+		await applyDelegationModel(owner);
+		expect(applied.at(-1)).toEqual({ model: "second", thinking: Effort.High });
 	});
 });

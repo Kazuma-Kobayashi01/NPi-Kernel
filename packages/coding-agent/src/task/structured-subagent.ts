@@ -130,8 +130,16 @@ export interface StructuredSubagentRequest {
 	/** Saved source session selected for the bundled seance agent. */
 	sourceSession?: string;
 	model?: string | string[];
-	/** Explicitly confirmed once by the calling task/eval/workpool batch. */
+	/**
+	 * Resolved by the caller instead of `selectDelegationModel`: a confirmed task/eval/workpool
+	 * batch, or a Virtual Office member's roster entry. Used as it is, in every subagent mode.
+	 */
 	delegationSelection?: DelegationSelection;
+	/**
+	 * The caller owns its selection (a Virtual Office roster is the owner's confirmation), so it
+	 * holds on every turn of the run instead of yielding to the host's subagent preference.
+	 */
+	delegationPinned?: boolean;
 
 	/** Presence, rather than truthiness, makes this the highest-priority schema. */
 	outputSchema?: unknown;
@@ -849,10 +857,7 @@ function describeSalvagedWork(result: SingleResult): string {
  */
 export async function runStructuredSubagent(request: StructuredSubagentRequest): Promise<StructuredSubagentResult> {
 	let policy = await applySpawnHook(request, await resolveEffectiveSubagentPolicy(request));
-	const preferences = delegationPreferences(request.session);
-	const selection = preferences?.mode === "auto" && request.delegationSelection
-		? request.delegationSelection
-		: await selectDelegationModel(request.session, request.signal);
+	const selection = request.delegationSelection ?? (await selectDelegationModel(request.session, request.signal));
 	if (selection) {
 		validateDelegationSelection(request.session, selection);
 		policy = { ...policy, modelOverride: [selection.model], modelRole: undefined, modelRoute: undefined,
@@ -881,7 +886,7 @@ export async function runStructuredSubagent(request: StructuredSubagentRequest):
 			label: request.identity?.label ?? (request.invocationKind === "eval" ? "EvalAgent" : undefined),
 		});
 		releaseSlot = await acquireDelegationSlot(request.session, id, request.signal);
-		rememberDelegationSelection(request.session, id, selection);
+		rememberDelegationSelection(request.session, id, selection, request.delegationPinned === true);
 		if (policy.preparedSession === undefined) await refreshSkillsForAutoload(request.session, policy.agent);
 		const baseOptions = buildExecutorOptions(request, policy, lease, id);
 		baseOptions.onCleanupDeferred = completion => {

@@ -2,7 +2,7 @@ import type { AgentToolContext, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import { judgeQuestions, type Model } from "@oh-my-pi/pi-ai";
 import { resolveThinkingLevelForModel } from "@oh-my-pi/pi-tui/thinking";
 import { formatModelStringWithRouting, resolveModelOverride } from "../config/model-resolver";
-import { rosterTierOf } from "../config/model-roster";
+import { rosterTierOf, type RosterTier } from "../config/model-roster";
 import type { Settings } from "../config/settings";
 import { journalJudgmentUsage, resolveJudge } from "../judgment";
 import modelQuestions from "../prompts/judge/subagent-model.json" with { type: "json" };
@@ -26,6 +26,8 @@ interface RootDelegationContext {
 	active: Map<string, number>;
 	waiting: AbortController;
 	selections: Map<string, DelegationSelection>;
+	/** Selections the caller owns (Virtual Office rosters): they hold on every turn, in every mode. */
+	pinned: Set<string>;
 }
 const roots = new WeakMap<object, RootDelegationContext>();
 const sessions = new WeakMap<object, ToolSession>();
@@ -34,7 +36,7 @@ function context(session: ToolSession): RootDelegationContext {
 	const key = session.subagentEventBus ??= new EventBus();
 	let root = roots.get(key);
 	if (!root) {
-		root = { session, semaphore: new Semaphore(0), ask: new Semaphore(1), active: new Map(), waiting: new AbortController(), selections: new Map() };
+		root = { session, semaphore: new Semaphore(0), ask: new Semaphore(1), active: new Map(), waiting: new AbortController(), selections: new Map(), pinned: new Set() };
 		roots.set(key, root);
 		const captured = root;
 		session.settings.onEffectiveChange([cfgTaskDelegationAppetite, cfgTaskSubagentModelMode], () => {
@@ -65,8 +67,16 @@ export function delegationPreferences(session: ToolSession): SubagentPreferences
 	return readSubagentPreferences(delegationOwner(session));
 }
 
-export function rememberDelegationSelection(session: ToolSession, id: string, selection: DelegationSelection | undefined): void {
-	if (selection) context(session).selections.set(id, selection);
+export function rememberDelegationSelection(
+	session: ToolSession,
+	id: string,
+	selection: DelegationSelection | undefined,
+	pinned = false,
+): void {
+	if (!selection) return;
+	const root = context(session);
+	root.selections.set(id, selection);
+	if (pinned) root.pinned.add(id);
 }
 
 export interface DelegationModelSession {
@@ -84,9 +94,14 @@ export async function applyDelegationModel(owner: DelegationModelSession): Promi
 	if (!session || (session.taskDepth ?? 0) === 0) return;
 	const preferences = delegationPreferences(session);
 	if (!preferences) return;
-	const selection = preferences.mode === "auto"
-		? context(session).selections.get(session.getAgentId!()!)
-		: fixedSelection(delegationOwner(session), preferences);
+	const id = session.getAgentId!()!;
+	const remembered = context(session).selections.get(id);
+	const selection =
+		remembered && context(session).pinned.has(id)
+			? remembered
+			: preferences.mode === "auto"
+				? remembered
+				: fixedSelection(delegationOwner(session), preferences);
 	if (!selection) throw new Error("No confirmed Auto model selection for this subagent.");
 	const model = validateDelegationSelection(session, selection);
 	if (!owner.model || formatModelStringWithRouting(owner.model) !== selection.model) await owner.setModelTemporary(model, selection.thinking);
@@ -156,12 +171,18 @@ export function validateDelegationSelection(session: ToolSession, selection: Del
 	return resolved;
 }
 
-function fixedSelection(owner: ToolSession, preferences: SubagentPreferences): DelegationSelection {
-	if (preferences.mode === "custom") return { model: preferences.model, thinking: preferences.thinking };
+/** The parent session's own model and level: Sync mode's target, and the last resort elsewhere. */
+function parentSelection(owner: ToolSession): DelegationSelection {
 	const model = owner.getActiveModel?.();
 	const thinking = owner.getActiveThinkingLevel?.() ?? "off";
 	if (!thinkingLevels.includes(thinking as SubagentPreferences["thinking"])) throw new Error(`Invalid root thinking level: ${thinking}`);
 	return { model: model ? formatModelStringWithRouting(model) : "", thinking: thinking as SubagentPreferences["thinking"] };
+}
+
+function fixedSelection(owner: ToolSession, preferences: SubagentPreferences): DelegationSelection {
+	return preferences.mode === "custom"
+		? { model: preferences.model, thinking: preferences.thinking }
+		: parentSelection(owner);
 }
 
 const selectionQuestions = judgeQuestions(modelQuestions);
@@ -228,20 +249,56 @@ async function resolveTypedModel(
 }
 
 /**
- * Auto mode's roster pick: when every item of the batch names the same roster tier
- * (`model: "@economy"`) and that tier has a usable model, the batch runs on it without the Ask.
- * The tier's own `:thinking` suffix wins, else the root's level, clamped to what the model supports.
+ * One roster tier's configured model, when that tier has a role with a usable model. The tier's
+ * own `:thinking` suffix wins, else the root's level, clamped to what the model supports.
  */
-function rosterSelection(owner: ToolSession, requested: readonly unknown[] | undefined): DelegationSelection | undefined {
-	if (!requested?.length) return undefined;
-	const tiers = new Set(requested.map(selector => (typeof selector === "string" ? rosterTierOf(selector) : undefined)));
-	const [tier] = tiers;
-	if (tiers.size !== 1 || !tier || !owner.settings.getModelRole(tier)?.trim()) return undefined;
+function tierSelection(owner: ToolSession, tier: RosterTier): DelegationSelection | undefined {
+	if (!owner.settings.getModelRole(tier)?.trim()) return undefined;
 	const resolved = resolveModelOverride([`@${tier}`], owner.modelRegistry!, owner.settings);
 	if (!resolved.model || !owner.modelRegistry!.hasConfiguredAuth(resolved.model)) return undefined;
 	const wanted = (resolved.thinkingLevel ?? owner.getActiveThinkingLevel?.() ?? "off") as SubagentPreferences["thinking"];
 	const level = resolveThinkingLevelForModel(resolved.model, thinkingLevels.includes(wanted) ? wanted : "off") ?? "off";
 	return { model: formatModelStringWithRouting(resolved.model), thinking: level as SubagentPreferences["thinking"] };
+}
+
+/**
+ * Auto mode's roster pick: when every item of the batch names the same roster tier
+ * (`model: "@economy"`) and that tier has a usable model, the batch runs on it without the Ask.
+ */
+function rosterSelection(owner: ToolSession, requested: readonly unknown[] | undefined): DelegationSelection | undefined {
+	if (!requested?.length) return undefined;
+	const tiers = new Set(requested.map(selector => (typeof selector === "string" ? rosterTierOf(selector) : undefined)));
+	const [tier] = tiers;
+	if (tiers.size !== 1 || !tier) return undefined;
+	return tierSelection(owner, tier);
+}
+
+export interface ConfiguredSelectionRequest {
+	/** Explicit model selector; unset follows the host's configured subagent model. */
+	model?: string;
+	/** Explicit thinking effort; unset follows the same source as the model. */
+	thinking?: SubagentPreferences["thinking"];
+	/** Roster tier to schedule on when the host runs Auto subagents, e.g. a member's capability. */
+	tier?: RosterTier;
+}
+
+/**
+ * The selection a caller dispatches with when it may not ask: the caller's own value first, then
+ * what the host configured for subagents — Custom's model, Auto's roster tier, otherwise the
+ * parent's active model. Never prompts, and clamps the effort to the resolved model.
+ */
+export function configuredSelection(session: ToolSession, request: ConfiguredSelectionRequest = {}): DelegationSelection {
+	const owner = delegationOwner(session);
+	const preferences = delegationPreferences(session);
+	const rostered = preferences?.mode === "auto" && request.tier ? tierSelection(owner, request.tier) : undefined;
+	const fallback =
+		preferences?.mode === "custom" && preferences.model
+			? { model: preferences.model, thinking: preferences.thinking }
+			: (rostered ?? parentSelection(owner));
+	const model = request.model || fallback.model;
+	const resolved = resolveModelOverride([model], owner.modelRegistry!, owner.settings).model;
+	const level = resolveThinkingLevelForModel(resolved, request.thinking ?? fallback.thinking) ?? "off";
+	return { model, thinking: level as SubagentPreferences["thinking"] };
 }
 
 /**

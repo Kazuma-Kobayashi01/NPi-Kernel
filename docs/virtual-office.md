@@ -16,7 +16,8 @@ Each member has:
 
 - a **name**, `Worker-xxxxxx`, given once and kept until the member is removed. Scaling down leaves the extra offices in the roster, so scaling back up brings the same members back;
 - a **role**: one `leader` per office, the rest `worker`;
-- a **model**: any model selector, or empty for the default subagent model;
+- a **model**: any model selector, or empty for the session's configured subagent model;
+- a **thinking** effort — `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` — or empty to follow the same setting the model comes from. An effort the model does not support is clamped to the closest one it does;
 - a **capability**: `common`, `professional` or `expert`. The leader gives hard, open-ended work to experts and mechanical, well-specified work to common members.
 
 An office has three to six members. A new office starts with a leader and two workers.
@@ -36,6 +37,7 @@ In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a f
 | `/office add <office> [model] [capability]` | Add a worker. |
 | `/office remove <name>` | Remove a worker. A leader cannot be removed; promote someone else first. |
 | `/office set <name> model <selector>` | Set a member's model (`default` clears it). |
+| `/office set <name> thinking <level>` | Set a member's thinking effort (`default` clears it). |
 | `/office set <name> capability <level>` | Set a member's capability. |
 | `/office set <name> role leader` | Make a member the leader; the previous leader becomes a worker. |
 | `/office merge <pr>` | Merge an approved office pull request into your branch. |
@@ -106,4 +108,4 @@ While Virtual Office is on, the session also sends an `office_state` frame (`{ t
 
 Usage and runs are kept in `npi-office/usage.json`, next to the pull requests. A desk takes one assignment at a time across every process working on the repository (`npi-office/desks/`); a claim left by a process that died is dropped.
 
-Members run as ordinary subagents named after the member, so `get_subagents`, subagent events and transcripts show who is working. The session's `office` tool calls carry `details.pulls`, the pull requests the call opened or changed.
+Members run as ordinary subagents named after the member, so `get_subagents`, subagent events and transcripts show who is working. Each assignment is dispatched on that member's configured model and thinking effort, and nobody is asked to pick one: the roster is your confirmation. A member with neither set follows the session's subagent configuration — the Custom model and effort when the host runs Custom subagents, the tier its capability maps to (`expert` → flagship, `professional` → high, `common` → standard) when the host runs Auto, and the session's own active model and effort otherwise. The `office` tool is not approval-gated either; members still work under the session's tool approvals. The session's `office` tool calls carry `details.pulls`, the pull requests the call opened or changed.
