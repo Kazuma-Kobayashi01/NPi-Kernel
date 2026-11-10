@@ -750,4 +750,23 @@ describe("UsageDashboardComponent frame", () => {
 			component.dispose();
 		}
 	});
+	it("strips control sequences from provider names and never prints NaN or out-of-range percentages", () => {
+		const component = open([
+			report("anth\x1b[31mropic\x1b]0;title\x07", "a@test", [
+				limit("anthropic", "a", "5h", "Claude 5 Hour", Number.NaN, "ok"),
+				limit("anthropic", "a", "7d", "Claude 7 Day", -0.4, "ok"),
+			]),
+		]);
+		try {
+			Object.defineProperty(process.stdout, "rows", { value: 24, configurable: true });
+			const raw = component.render(100).join("\n");
+			expect(raw.replace(/\x1b\[[0-9;:]*m/g, "")).not.toMatch(/[\x00-\x08\x0b-\x1f]/);
+			const output = Bun.stripANSI(raw);
+			expect(output).not.toMatch(/NaN|nan|Infinity|undefined/);
+			expect(output).toContain("100%");
+			expect(output).not.toContain("140%");
+		} finally {
+			component.dispose();
+		}
+	});
 });

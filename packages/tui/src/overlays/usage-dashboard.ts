@@ -197,7 +197,7 @@ export function buildProviderCards(
 		const declared: CardWindowRow[] = [...buckets.values()].map(bucket => {
 			const fractions = bucket.limits
 				.map(limit => resolveUsedFraction(limit))
-				.filter((value): value is number => value !== undefined);
+				.filter((value): value is number => value !== undefined && Number.isFinite(value));
 			const fraction =
 				fractions.length > 0 ? fractions.reduce((sum, value) => sum + value, 0) / fractions.length : undefined;
 			const worst = bucket.limits.reduce((max, limit) =>
@@ -813,7 +813,7 @@ export class UsageDashboardComponent implements Component {
 					: aggregateStatus(card.windows);
 		const accountsText = card.accounts > 1 ? theme.fg("dim", `${card.accounts} accts`) : "";
 		const titleBudget = width - 2 - visibleWidth(accountsText) - (accountsText ? 1 : 0);
-		const title = theme.bold(truncateToWidth(card.name, Math.max(4, titleBudget)));
+		const title = theme.bold(truncateToWidth(sanitizeDisplayLine(card.name), Math.max(4, titleBudget)));
 		const titlePad = Math.max(0, width - 2 - visibleWidth(title) - visibleWidth(accountsText));
 		lines.push(`${this.#statusIcon(cardStatus)} ${title}${" ".repeat(titlePad)}${accountsText}`);
 
@@ -878,7 +878,7 @@ export class UsageDashboardComponent implements Component {
 				});
 				continue;
 			}
-			const freePct = Math.max(0, Math.round((1 - window.fraction) * 100));
+			const freePct = Math.min(100, Math.max(0, Math.round((1 - window.fraction) * 100)));
 			const pressured = isPressured(window.status);
 			const pctPlain = `${freePct}%`.padStart(4);
 			const pctText = theme.fg(this.#statusColor(window.status), pressured ? theme.bold(pctPlain) : pctPlain);
