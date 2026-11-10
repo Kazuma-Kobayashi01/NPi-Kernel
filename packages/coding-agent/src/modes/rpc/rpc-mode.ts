@@ -53,6 +53,7 @@ import { runOfficeCommand } from "../../office/commands";
 import { readOfficeState } from "../../office/company";
 import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "../../office/settings";
 import { onOfficeChange } from "../../office/store";
+import { officeRunSessionFile } from "../../office/usage";
 import { type AgentSession, type NavigateTreeResult, SessionBusyError } from "../../session/agent-session";
 import type { MCPManager } from "../../mcp/manager";
 import { reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
@@ -2662,7 +2663,13 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					if (command.fromByte !== undefined && !Number.isFinite(command.fromByte)) {
 						return error(id, "get_subagent_messages", "fromByte must be a finite number");
 					}
-					const sessionFile = subagentRegistry.resolveSessionFile(command);
+					// A Virtual Office member's past run is no longer in the registry; its transcript is
+					// still the office's to show.
+					const officeFile =
+						command.subagentId === undefined && typeof command.sessionFile === "string"
+							? await officeRunSessionFile(session.sessionManager.getCwd(), command.sessionFile)
+							: undefined;
+					const sessionFile = officeFile ?? subagentRegistry.resolveSessionFile(command);
 					const transcript = await readRpcSubagentTranscript(sessionFile, command.fromByte);
 					return success(id, "get_subagent_messages", transcript);
 				} catch (err) {

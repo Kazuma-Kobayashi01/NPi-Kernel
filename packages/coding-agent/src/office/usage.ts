@@ -8,7 +8,7 @@
  * Writes are batched: a busy member reports several times a second.
  */
 import { readStore, storePath, updateStore } from "./store";
-import type { Company } from "./workspace";
+import { type Company, openCompany } from "./workspace";
 
 /** Days kept as separate buckets; older ones are folded into `earlier`. */
 export const MAX_USAGE_DAYS = 400;
@@ -184,4 +184,17 @@ export async function updateRun(
 /** Assignment runs, oldest first. */
 export async function readRuns(company: Company): Promise<OfficeRun[]> {
 	return (await readStore(usagePath(company), emptyFile)).runs ?? [];
+}
+
+/**
+ * `file` when it is the transcript of one of this company's assignment runs, else `undefined`.
+ * Lets a host read a member's past conversations, which no live subagent registry lists.
+ */
+export async function officeRunSessionFile(cwd: string, file: string): Promise<string | undefined> {
+	try {
+		const runs = await readRuns(await openCompany(cwd));
+		return runs.some(run => run.sessionFile === file) ? file : undefined;
+	} catch {
+		return undefined;
+	}
 }
