@@ -332,7 +332,7 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 
 	{
 		name: "get_office_state",
-		doc: "Virtual Office settings, roster, and pull requests for the session's checkout.",
+		doc: "Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.",
 		result: "OfficeState",
 	},
 	{
@@ -340,6 +340,12 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 		doc: "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
 		params: { args: doc("string[]", 'The command words, e.g. `["merge", "4"]`.') },
 		result: "OfficeCommandResult",
+	},
+	{
+		name: "set_office_enabled",
+		doc: "Turn Virtual Office on or off for this session only (not persisted). A protocol host starts with it off, whatever the user's CLI setting; `office_command` `on`/`off` does the same.",
+		params: { enabled: "boolean" },
+		result: "OfficeState",
 	},
 	{ name: "get_session_stats", doc: "Session statistics.", result: "SessionStats" },
 	{

@@ -986,8 +986,68 @@ class OfficeState:
     pulls: tuple[OfficePull, ...]
     memory: tuple[OfficeMemory, ...]
     """One entry per running office, in office order; empty when `company` is null."""
+    activity: tuple[OfficeActivity, ...]
+    """One entry per running office, in office order; empty when `company` is null."""
+    usage: OfficeUsage | None
+    """Spend today and in total; null when `company` is null."""
+    runs: tuple[OfficeRun, ...]
+    """The most recent assignment runs, oldest first."""
     reason: str | None = None
     """Why `company` is null."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeActivity:
+    office: int
+    phase: Literal["working", "reviewing", "awaiting_owner", "awaiting_manager", "idle"]
+    """`reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge."""
+    working: tuple[str, ...]
+    """Members at their desks right now."""
+    task: str | None = None
+    """The assignment the office's leader is on."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeUsageAmount:
+    tokens: float
+    """Input + output + cache-write tokens; cache reads are not counted."""
+    cost: float
+    """Estimated USD at the model catalog's prices."""
+    requests: float
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeMemberUsage:
+    today: OfficeUsageAmount
+    total: OfficeUsageAmount
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeUsage:
+    day: str
+    """The local calendar day `today` covers, `YYYY-MM-DD`; it starts at 00:00 local time."""
+    members: dict[str, OfficeMemberUsage]
+    """By member name; the general manager is under `general-manager`. Removed members stay."""
+    today: OfficeUsageAmount
+    total: OfficeUsageAmount
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeRun:
+    """One assignment handed to a member."""
+    id: str
+    office: int
+    member: str
+    by: str
+    """`general-manager` or the office's leader."""
+    task: str
+    started_at: str
+    session_file: str | None = None
+    """The member's transcript; read it with `get_subagent_messages`."""
+    ended_at: str | None = None
+    failed: bool | None = None
+    pr: int | None = None
+    """Pull request the member left waiting when the run ended."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -1559,6 +1619,13 @@ class SubagentEvent:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeStateEvent:
+    """The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off."""
+    type: Literal["office_state"] = "office_state"
+    state: OfficeState
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class LivePhaseEvent:
     type: Literal["live_phase"] = "live_phase"
     phase: LivePhase
@@ -1916,7 +1983,7 @@ RpcAgentEvent: TypeAlias = AgentStartEvent | AgentEndEvent | TurnStartEvent | Tu
 """A session event, discriminated by `type`; `set_event_filter` selects which are sent."""
 
 
-RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
+RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
 """Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`."""
 
 
@@ -2612,7 +2679,63 @@ def parse_office_state(value: object, path: str = "OfficeState") -> OfficeState:
         company=required(payload, "company", nullable(parse_office_company), path),
         pulls=required(payload, "pulls", array(parse_office_pull), path),
         memory=required(payload, "memory", array(parse_office_memory), path),
+        activity=required(payload, "activity", array(parse_office_activity), path),
+        usage=required(payload, "usage", nullable(parse_office_usage), path),
+        runs=required(payload, "runs", array(parse_office_run), path),
         reason=optional(payload, "reason", decode_str, path),
+    )
+
+
+def parse_office_activity(value: object, path: str = "OfficeActivity") -> OfficeActivity:
+    payload = expect_object(value, path)
+    return OfficeActivity(
+        office=required(payload, "office", decode_int, path),
+        phase=required(payload, "phase", cast('Decoder[Literal["working", "reviewing", "awaiting_owner", "awaiting_manager", "idle"]]', literal(frozenset({"working", "reviewing", "awaiting_owner", "awaiting_manager", "idle"}))), path),
+        working=required(payload, "working", array(decode_str), path),
+        task=optional(payload, "task", decode_str, path),
+    )
+
+
+def parse_office_usage_amount(value: object, path: str = "OfficeUsageAmount") -> OfficeUsageAmount:
+    payload = expect_object(value, path)
+    return OfficeUsageAmount(
+        tokens=required(payload, "tokens", decode_float, path),
+        cost=required(payload, "cost", decode_float, path),
+        requests=required(payload, "requests", decode_float, path),
+    )
+
+
+def parse_office_member_usage(value: object, path: str = "OfficeMemberUsage") -> OfficeMemberUsage:
+    payload = expect_object(value, path)
+    return OfficeMemberUsage(
+        today=required(payload, "today", parse_office_usage_amount, path),
+        total=required(payload, "total", parse_office_usage_amount, path),
+    )
+
+
+def parse_office_usage(value: object, path: str = "OfficeUsage") -> OfficeUsage:
+    payload = expect_object(value, path)
+    return OfficeUsage(
+        day=required(payload, "day", decode_str, path),
+        members=required(payload, "members", record(parse_office_member_usage), path),
+        today=required(payload, "today", parse_office_usage_amount, path),
+        total=required(payload, "total", parse_office_usage_amount, path),
+    )
+
+
+def parse_office_run(value: object, path: str = "OfficeRun") -> OfficeRun:
+    payload = expect_object(value, path)
+    return OfficeRun(
+        id=required(payload, "id", decode_str, path),
+        office=required(payload, "office", decode_int, path),
+        member=required(payload, "member", decode_str, path),
+        by=required(payload, "by", decode_str, path),
+        task=required(payload, "task", decode_str, path),
+        started_at=required(payload, "startedAt", decode_str, path),
+        session_file=optional(payload, "sessionFile", decode_str, path),
+        ended_at=optional(payload, "endedAt", decode_str, path),
+        failed=optional(payload, "failed", decode_bool, path),
+        pr=optional(payload, "pr", decode_int, path),
     )
 
 
@@ -3255,6 +3378,14 @@ def parse_subagent_event(value: object, path: str = "SubagentEvent") -> Subagent
     )
 
 
+def parse_office_state_event(value: object, path: str = "OfficeStateEvent") -> OfficeStateEvent:
+    payload = expect_object(value, path)
+    required(payload, "type", cast('Decoder[Literal["office_state"]]', literal(frozenset({"office_state"}))), path)
+    return OfficeStateEvent(
+        state=required(payload, "state", parse_office_state, path),
+    )
+
+
 def parse_live_phase_event(value: object, path: str = "LivePhaseEvent") -> LivePhaseEvent:
     payload = expect_object(value, path)
     required(payload, "type", cast('Decoder[Literal["live_phase"]]', literal(frozenset({"live_phase"}))), path)
@@ -3721,6 +3852,7 @@ _RPC_NOTIFICATION_CASES: Final[dict[str, Decoder[RpcNotification]]] = {
         "subagent_lifecycle": parse_subagent_lifecycle_event,
         "subagent_progress": parse_subagent_progress_event,
         "subagent_event": parse_subagent_event,
+        "office_state": parse_office_state_event,
         "live_phase": parse_live_phase_event,
         "live_levels": parse_live_levels_event,
         "live_transcript": parse_live_transcript_event,
@@ -4138,7 +4270,7 @@ class WireClient:
         self._command("abort_bash", params)
 
     def get_office_state(self) -> OfficeState:
-        """Virtual Office settings, roster, and pull requests for the session's checkout."""
+        """Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames."""
         params: dict[str, object] = {}
         return parse_office_state(self._command("get_office_state", params), "get_office_state")
 
@@ -4147,6 +4279,12 @@ class WireClient:
         params: dict[str, object] = {}
         params["args"] = list(args)
         return parse_office_command_result(self._command("office_command", params), "office_command")
+
+    def set_office_enabled(self, enabled: bool) -> OfficeState:
+        """Turn Virtual Office on or off for this session only (not persisted). A protocol host starts with it off, whatever the user's CLI setting; `office_command` `on`/`off` does the same."""
+        params: dict[str, object] = {}
+        params["enabled"] = enabled
+        return parse_office_state(self._command("set_office_enabled", params), "set_office_enabled")
 
     def get_session_stats(self) -> SessionStats:
         """Session statistics."""
@@ -4360,6 +4498,10 @@ class WireClient:
     def on_subagent_event(self, listener: Callable[[SubagentEvent], None]) -> Callable[[], None]:
         """Subscribe to `subagent_event`: A subagent's own session event; sent only at subscription level "events"."""
         return self._listen("subagent_event", listener)
+
+    def on_office_state(self, listener: Callable[[OfficeStateEvent], None]) -> Callable[[], None]:
+        """Subscribe to `office_state`: The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off."""
+        return self._listen("office_state", listener)
 
     def on_live_phase(self, listener: Callable[[LivePhaseEvent], None]) -> Callable[[], None]:
         """Subscribe to `live_phase` frames."""
@@ -4675,16 +4817,22 @@ __all__ = [
     "NotifyType",
     "NotifyUiRequest",
     "Office",
+    "OfficeActivity",
     "OfficeCommandResult",
     "OfficeCompany",
     "OfficeLogEntry",
     "OfficeMember",
+    "OfficeMemberUsage",
     "OfficeMemory",
     "OfficeNote",
     "OfficePull",
     "OfficePullReview",
+    "OfficeRun",
     "OfficeScale",
     "OfficeState",
+    "OfficeStateEvent",
+    "OfficeUsage",
+    "OfficeUsageAmount",
     "OpenSessionResult",
     "OpenUrlUiRequest",
     "PendingUi",
@@ -4883,15 +5031,21 @@ __all__ = [
     "parse_notification",
     "parse_notify_ui_request",
     "parse_office",
+    "parse_office_activity",
     "parse_office_command_result",
     "parse_office_company",
     "parse_office_log_entry",
     "parse_office_member",
+    "parse_office_member_usage",
     "parse_office_memory",
     "parse_office_note",
     "parse_office_pull",
     "parse_office_pull_review",
+    "parse_office_run",
     "parse_office_state",
+    "parse_office_state_event",
+    "parse_office_usage",
+    "parse_office_usage_amount",
     "parse_open_session_result",
     "parse_open_url_ui_request",
     "parse_pending_ui",

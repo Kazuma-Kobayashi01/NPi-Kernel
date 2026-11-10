@@ -94,6 +94,10 @@ export const frameDefs = {
 		{ type: "'subagent_event'", payload: "SubagentEventPayload" },
 		'A subagent\'s own session event; sent only at subscription level "events".',
 	),
+	OfficeStateEvent: doc(
+		{ type: "'office_state'", state: "OfficeState" },
+		"The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.",
+	),
 	LivePhase: "'connecting' | 'listening' | 'working' | 'speaking' | 'muted' | 'error'",
 	LiveRole: "'user' | 'assistant'",
 	LivePhaseEvent: { type: "'live_phase'", phase: "LivePhase" },

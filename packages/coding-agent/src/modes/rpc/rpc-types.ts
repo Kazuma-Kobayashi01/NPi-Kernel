@@ -150,6 +150,7 @@ export type RpcCommand =
 	// Session
 	| { id?: string; type: "get_office_state" }
 	| { id?: string; type: "office_command"; args: string[] }
+	| { id?: string; type: "set_office_enabled"; enabled: boolean }
 	| { id?: string; type: "get_session_stats" }
 	| { id?: string; type: "get_session_lease"; sessionIds: string[] }
 	| { id?: string; type: "export_html"; outputPath?: string }
@@ -638,6 +639,7 @@ export type RpcResponse =
 
 	// Session
 	| { id?: string; type: "response"; command: "get_office_state"; success: true; data: OfficeState }
+	| { id?: string; type: "response"; command: "set_office_enabled"; success: true; data: OfficeState }
 	| {
 			id?: string;
 			type: "response";
@@ -773,6 +775,12 @@ export interface RpcSubagentProgressFrame {
 export interface RpcSubagentEventFrame {
 	type: "subagent_event";
 	payload: SubagentEventPayload;
+}
+
+/** The Virtual Office changed; `state` is the whole new state. */
+export interface RpcOfficeStateFrame {
+	type: "office_state";
+	state: OfficeState;
 }
 
 export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFrame | RpcSubagentEventFrame;

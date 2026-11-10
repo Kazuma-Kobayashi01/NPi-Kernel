@@ -30,10 +30,14 @@ import {
 	type Seat,
 	staffedOffices,
 } from "./company";
+import { claimDesk } from "./desks";
 import { leaderOf, type Office, type OfficeMember, workersOf } from "./model";
 import { type OfficeMemory, OfficeMemoryError, readOfficeMemories, readOfficeMemory, rememberNote } from "./memory";
-import { getPull, listPulls, type Pull, PullError, reviewPull, submitPull } from "./pulls";
+import { getPull, listPulls, MANAGER, type Pull, PullError, reviewPull, submitPull } from "./pulls";
 import { cfgOfficeEnabled } from "./settings";
+import { recordUsage, startRun, updateRun } from "./usage";
+import { AgentRegistry } from "../registry/agent-registry";
+import { Snowflake } from "@oh-my-pi/pi-utils";
 import { type Company, commitDesk, describeChange, OfficeWorkspaceError, openCompany, prepareDesk } from "./workspace";
 
 const officeSchema = type({
@@ -64,10 +68,6 @@ export interface OfficeToolDetails {
 
 /** Largest patch `diff` returns; a reviewer reads the rest at the desk. */
 const DIFF_MAX_BYTES = 60_000;
-
-// One assignment per desk at a time, across every seat in this process: two sessions at the
-// same worktree would overwrite each other.
-const busyDesks = new Set<string>();
 
 interface Assignment {
 	label: string;
@@ -298,12 +298,21 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 		if (desks.size !== assignments.length) {
 			throw new ToolError("Each assignee takes one task per call. Combine the tasks, or assign them in turn.");
 		}
-		const busy = assignments.find(assignment => busyDesks.has(assignment.desk.dir));
-		if (busy) throw new ToolError(`${busy.label} is still working on an earlier assignment.`);
-
 		const { company } = this.seat;
-		for (const assignment of assignments) busyDesks.add(assignment.desk.dir);
+		const by = this.seat.kind === "manager" ? MANAGER : this.seat.member.id;
+		const releases: Array<() => Promise<void>> = [];
 		try {
+			for (const assignment of assignments) {
+				const release = await claimDesk(company, {
+					desk: assignment.desk.dir,
+					office: assignment.office.number,
+					member: assignment.member.id,
+					role: assignment.member.role,
+					task: assignment.task,
+				});
+				if (!release) throw new ToolError(`${assignment.label} is still working on an earlier assignment.`);
+				releases.push(release);
+			}
 			for (const assignment of assignments) await prepareDesk(company, assignment.desk, this.session.settings);
 			const running = new Set(assignments.map(assignment => assignment.label));
 			const report = () =>
@@ -314,6 +323,18 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 			report();
 			const outcomes = await Promise.all(
 				assignments.map(async (assignment, index) => {
+					const runId = Snowflake.next();
+					const member = assignment.member.id;
+					await startRun(company, {
+						id: runId,
+						office: assignment.office.number,
+						member,
+						by,
+						task: assignment.task,
+					});
+					// The runner reports running totals; book what each report adds, when it adds it.
+					const booked = { tokens: 0, cost: 0, requests: 0 };
+					let sessionFile: string | undefined;
 					try {
 						const execution = await runStructuredSubagent({
 							session: this.session,
@@ -323,7 +344,7 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 							model: assignment.member.model || undefined,
 							cwd: assignment.desk.dir,
 							structured: false,
-							identity: { label: assignment.member.id },
+							identity: { label: member },
 							index,
 							parentToolCallId: toolCallId,
 							detached: false,
@@ -331,13 +352,32 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 							enableIrc: false,
 							maxRuntimeMs: cfgTaskMaxRuntimeMs.get(this.session.settings),
 							signal,
+							onProgress: progress => {
+								recordUsage(company, member, {
+									tokens: progress.tokens - booked.tokens,
+									cost: progress.cost - booked.cost,
+									requests: progress.requests - booked.requests,
+								});
+								booked.tokens = progress.tokens;
+								booked.cost = progress.cost;
+								booked.requests = progress.requests;
+								if (!sessionFile) {
+									sessionFile = AgentRegistry.global().get(progress.id)?.sessionFile ?? undefined;
+									if (sessionFile) void updateRun(company, runId, { sessionFile });
+								}
+							},
 						});
 						const { result } = execution;
 						const failed = result.exitCode !== 0 || result.error !== undefined || result.aborted === true;
-						return { assignment, failed, text: result.output.trim() || result.error || result.stderr.trim() };
+						return {
+							assignment,
+							runId,
+							failed,
+							text: result.output.trim() || result.error || result.stderr.trim(),
+						};
 					} catch (error) {
 						if (!(error instanceof StructuredSubagentError)) throw error;
-						return { assignment, failed: true, text: error.message };
+						return { assignment, runId, failed: true, text: error.message };
 					} finally {
 						running.delete(assignment.label);
 						report();
@@ -345,17 +385,22 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 				}),
 			);
 			const pulls = await this.#visiblePulls();
-			const sections = outcomes.map(({ assignment, failed, text }) => {
+			const endedAt = new Date().toISOString();
+			const sections: string[] = [];
+			for (const { assignment, runId, failed, text } of outcomes) {
 				const theirs = pulls.filter(
 					pull => pull.source === assignment.desk.branch && pull.status !== "merged" && pull.status !== "closed",
 				);
+				await updateRun(company, runId, { endedAt, failed, pr: theirs.at(-1)?.number });
 				const waiting =
 					theirs.length > 0 ? theirs.map(describePull).join("\n") : "No pull request is waiting from them.";
-				return `## ${assignment.label === assignment.member.id ? assignment.label : `${assignment.label} (${assignment.member.id})`}${failed ? " — did not finish" : ""}\n${text || "(no report)"}\n\n${waiting}`;
-			});
+				sections.push(
+					`## ${assignment.label === assignment.member.id ? assignment.label : `${assignment.label} (${assignment.member.id})`}${failed ? " — did not finish" : ""}\n${text || "(no report)"}\n\n${waiting}`,
+				);
+			}
 			return this.#result("assign", sections.join("\n\n"), pulls);
 		} finally {
-			for (const assignment of assignments) busyDesks.delete(assignment.desk.dir);
+			await Promise.all(releases.map(release => release()));
 		}
 	}
 

@@ -684,7 +684,7 @@
 			},
 			{
 				"name": "get_office_state",
-				"doc": "Virtual Office settings, roster, and pull requests for the session's checkout.",
+				"doc": "Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.",
 				"params": null,
 				"result": "OfficeState",
 				"nullable": false,
@@ -698,6 +698,17 @@
 				"doc": "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
 				"params": "OfficeCommandParams",
 				"result": "OfficeCommandResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "set_office_enabled",
+				"doc": "Turn Virtual Office on or off for this session only (not persisted). A protocol host starts with it off, whatever the user's CLI setting; `office_command` `on`/`off` does the same.",
+				"params": "SetOfficeEnabledParams",
+				"result": "OfficeState",
 				"nullable": false,
 				"unwrap": null,
 				"timeoutMs": null,
@@ -3863,6 +3874,31 @@
 					},
 					"description": "One entry per running office, in office order; empty when `company` is null."
 				},
+				"activity": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeActivity"
+					},
+					"description": "One entry per running office, in office order; empty when `company` is null."
+				},
+				"usage": {
+					"anyOf": [
+						{
+							"$ref": "#/$defs/OfficeUsage"
+						},
+						{
+							"type": "null"
+						}
+					],
+					"description": "Spend today and in total; null when `company` is null."
+				},
+				"runs": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeRun"
+					},
+					"description": "The most recent assignment runs, oldest first."
+				},
 				"reason": {
 					"type": "string",
 					"description": "Why `company` is null."
@@ -3874,8 +3910,158 @@
 				"offices",
 				"company",
 				"pulls",
-				"memory"
+				"memory",
+				"activity",
+				"usage",
+				"runs"
 			]
+		},
+		"OfficeActivity": {
+			"type": "object",
+			"properties": {
+				"office": {
+					"type": "integer"
+				},
+				"phase": {
+					"enum": [
+						"working",
+						"reviewing",
+						"awaiting_owner",
+						"awaiting_manager",
+						"idle"
+					],
+					"type": "string",
+					"description": "`reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge."
+				},
+				"working": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "Members at their desks right now."
+				},
+				"task": {
+					"type": "string",
+					"description": "The assignment the office's leader is on."
+				}
+			},
+			"required": [
+				"office",
+				"phase",
+				"working"
+			]
+		},
+		"OfficeUsageAmount": {
+			"type": "object",
+			"properties": {
+				"tokens": {
+					"type": "number",
+					"description": "Input + output + cache-write tokens; cache reads are not counted."
+				},
+				"cost": {
+					"type": "number",
+					"description": "Estimated USD at the model catalog's prices."
+				},
+				"requests": {
+					"type": "number"
+				}
+			},
+			"required": [
+				"tokens",
+				"cost",
+				"requests"
+			]
+		},
+		"OfficeMemberUsage": {
+			"type": "object",
+			"properties": {
+				"today": {
+					"$ref": "#/$defs/OfficeUsageAmount"
+				},
+				"total": {
+					"$ref": "#/$defs/OfficeUsageAmount"
+				}
+			},
+			"required": [
+				"today",
+				"total"
+			]
+		},
+		"OfficeUsage": {
+			"type": "object",
+			"properties": {
+				"day": {
+					"type": "string",
+					"description": "The local calendar day `today` covers, `YYYY-MM-DD`; it starts at 00:00 local time."
+				},
+				"members": {
+					"type": "object",
+					"properties": {},
+					"additionalProperties": {
+						"$ref": "#/$defs/OfficeMemberUsage"
+					},
+					"description": "By member name; the general manager is under `general-manager`. Removed members stay."
+				},
+				"today": {
+					"$ref": "#/$defs/OfficeUsageAmount"
+				},
+				"total": {
+					"$ref": "#/$defs/OfficeUsageAmount"
+				}
+			},
+			"required": [
+				"day",
+				"members",
+				"today",
+				"total"
+			]
+		},
+		"OfficeRun": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string"
+				},
+				"office": {
+					"type": "integer"
+				},
+				"member": {
+					"type": "string"
+				},
+				"by": {
+					"type": "string",
+					"description": "`general-manager` or the office's leader."
+				},
+				"task": {
+					"type": "string"
+				},
+				"startedAt": {
+					"type": "string"
+				},
+				"sessionFile": {
+					"type": "string",
+					"description": "The member's transcript; read it with `get_subagent_messages`."
+				},
+				"endedAt": {
+					"type": "string"
+				},
+				"failed": {
+					"type": "boolean"
+				},
+				"pr": {
+					"type": "integer",
+					"description": "Pull request the member left waiting when the run ended."
+				}
+			},
+			"required": [
+				"id",
+				"office",
+				"member",
+				"by",
+				"task",
+				"startedAt"
+			],
+			"description": "One assignment handed to a member."
 		},
 		"OfficeCompany": {
 			"type": "object",
@@ -5601,6 +5787,22 @@
 			],
 			"description": "A subagent's own session event; sent only at subscription level \"events\"."
 		},
+		"OfficeStateEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "office_state"
+				},
+				"state": {
+					"$ref": "#/$defs/OfficeState"
+				}
+			},
+			"required": [
+				"type",
+				"state"
+			],
+			"description": "The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off."
+		},
 		"LivePhase": {
 			"enum": [
 				"connecting",
@@ -6830,6 +7032,9 @@
 					"$ref": "#/$defs/SubagentEvent"
 				},
 				{
+					"$ref": "#/$defs/OfficeStateEvent"
+				},
+				{
 					"$ref": "#/$defs/LivePhaseEvent"
 				},
 				{
@@ -7810,6 +8015,17 @@
 			},
 			"required": [
 				"args"
+			]
+		},
+		"SetOfficeEnabledParams": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				}
+			},
+			"required": [
+				"enabled"
 			]
 		},
 		"GetSessionLeaseParams": {

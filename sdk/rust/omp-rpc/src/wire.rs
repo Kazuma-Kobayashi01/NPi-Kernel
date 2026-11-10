@@ -3498,9 +3498,76 @@ pub struct OfficeState {
 	pub pulls: Vec<OfficePull>,
 	/// One entry per running office, in office order; empty when `company` is null.
 	pub memory: Vec<OfficeMemory>,
+	/// One entry per running office, in office order; empty when `company` is null.
+	pub activity: Vec<OfficeActivity>,
+	/// Spend today and in total; null when `company` is null.
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub usage: Option<OfficeUsage>,
+	/// The most recent assignment runs, oldest first.
+	pub runs: Vec<OfficeRun>,
 	/// Why `company` is null.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeActivity {
+	pub office: i64,
+	/// `reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge.
+	pub phase: OfficeActivityPhase,
+	/// Members at their desks right now.
+	pub working: Vec<String>,
+	/// The assignment the office's leader is on.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub task: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeUsageAmount {
+	/// Input + output + cache-write tokens; cache reads are not counted.
+	pub tokens: f64,
+	/// Estimated USD at the model catalog's prices.
+	pub cost: f64,
+	pub requests: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeMemberUsage {
+	pub today: OfficeUsageAmount,
+	pub total: OfficeUsageAmount,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeUsage {
+	/// The local calendar day `today` covers, `YYYY-MM-DD`; it starts at 00:00 local time.
+	pub day: String,
+	/// By member name; the general manager is under `general-manager`. Removed members stay.
+	pub members: BTreeMap<String, OfficeMemberUsage>,
+	pub today: OfficeUsageAmount,
+	pub total: OfficeUsageAmount,
+}
+
+/// One assignment handed to a member.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeRun {
+	pub id: String,
+	pub office: i64,
+	pub member: String,
+	/// `general-manager` or the office's leader.
+	pub by: String,
+	pub task: String,
+	#[serde(rename = "startedAt")]
+	pub started_at: String,
+	/// The member's transcript; read it with `get_subagent_messages`.
+	#[serde(rename = "sessionFile", default, skip_serializing_if = "Option::is_none")]
+	pub session_file: Option<String>,
+	#[serde(rename = "endedAt", default, skip_serializing_if = "Option::is_none")]
+	pub ended_at: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub failed: Option<bool>,
+	/// Pull request the member left waiting when the run ended.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub pr: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -4470,6 +4537,12 @@ pub struct SubagentEvent {
 	pub payload: SubagentEventPayload,
 }
 
+/// The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeStateEvent {
+	pub state: OfficeState,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LivePhase {
 	#[serde(rename = "connecting")]
@@ -5240,6 +5313,8 @@ pub enum RpcNotification {
 	SubagentProgress(SubagentProgressEvent),
 	/// A subagent's own session event; sent only at subscription level "events".
 	SubagentEvent(SubagentEvent),
+	/// The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.
+	OfficeState(OfficeStateEvent),
 	LivePhase(LivePhaseEvent),
 	/// Microphone (`input`) and speaker (`output`) RMS in [0, 1], at most every 100 ms.
 	LiveLevels(LiveLevelsEvent),
@@ -5286,6 +5361,7 @@ impl RpcNotification {
 			Some("subagent_lifecycle") => |value| serde_json::from_value(value).map(Self::SubagentLifecycle),
 			Some("subagent_progress") => |value| serde_json::from_value(value).map(Self::SubagentProgress),
 			Some("subagent_event") => |value| serde_json::from_value(value).map(Self::SubagentEvent),
+			Some("office_state") => |value| serde_json::from_value(value).map(Self::OfficeState),
 			Some("live_phase") => |value| serde_json::from_value(value).map(Self::LivePhase),
 			Some("live_levels") => |value| serde_json::from_value(value).map(Self::LiveLevels),
 			Some("live_transcript") => |value| serde_json::from_value(value).map(Self::LiveTranscript),
@@ -5320,6 +5396,7 @@ impl Serialize for RpcNotification {
 			Self::SubagentLifecycle(member) => serialize_tagged(member, &[("type", "subagent_lifecycle")], serializer),
 			Self::SubagentProgress(member) => serialize_tagged(member, &[("type", "subagent_progress")], serializer),
 			Self::SubagentEvent(member) => serialize_tagged(member, &[("type", "subagent_event")], serializer),
+			Self::OfficeState(member) => serialize_tagged(member, &[("type", "office_state")], serializer),
 			Self::LivePhase(member) => serialize_tagged(member, &[("type", "live_phase")], serializer),
 			Self::LiveLevels(member) => serialize_tagged(member, &[("type", "live_levels")], serializer),
 			Self::LiveTranscript(member) => serialize_tagged(member, &[("type", "live_transcript")], serializer),
@@ -5364,7 +5441,7 @@ impl RpcServerFrame {
 		let decode: fn(Value) -> Result<Self, serde_json::Error> = match value.get("type").and_then(Value::as_str) {
 			Some("response") => |value| serde_json::from_value(value).map(Self::Response),
 			Some("host_tool_call" | "host_tool_cancel" | "host_uri_request" | "host_uri_cancel") => |value| serde_json::from_value(value).map(Self::RpcHostRequest),
-			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
+			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "office_state" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
 			_ => |value| Ok(Self::Unknown(value)),
 		};
 		decode(value)
@@ -5786,6 +5863,11 @@ pub struct BashParams {
 pub struct OfficeCommandParams {
 	/// The command words, e.g. `["merge", "4"]`.
 	pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetOfficeEnabledParams {
+	pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -6453,6 +6535,33 @@ impl OfficeLogEntryKind {
 		match self {
 			Self::Worker => "worker",
 			Self::Office => "office",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficeActivityPhase {
+	#[serde(rename = "working")]
+	Working,
+	#[serde(rename = "reviewing")]
+	Reviewing,
+	#[serde(rename = "awaiting_owner")]
+	AwaitingOwner,
+	#[serde(rename = "awaiting_manager")]
+	AwaitingManager,
+	#[serde(rename = "idle")]
+	Idle,
+}
+
+impl OfficeActivityPhase {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Working => "working",
+			Self::Reviewing => "reviewing",
+			Self::AwaitingOwner => "awaiting_owner",
+			Self::AwaitingManager => "awaiting_manager",
+			Self::Idle => "idle",
 		}
 	}
 }
@@ -7832,7 +7941,7 @@ impl Command for AbortBashCommand {
 	}
 }
 
-/// Virtual Office settings, roster, and pull requests for the session's checkout.
+/// Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GetOfficeStateCommand {}
 
@@ -7860,6 +7969,22 @@ impl Command for OfficeCommandCommand {
 
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		serde_json::from_value::<OfficeCommandResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Turn Virtual Office on or off for this session only (not persisted). A protocol host starts with it off, whatever the user's CLI setting; `office_command` `on`/`off` does the same.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetOfficeEnabledCommand {
+	pub enabled: bool,
+}
+
+impl Command for SetOfficeEnabledCommand {
+	const NAME: &'static str = "set_office_enabled";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = OfficeState;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<OfficeState>(data.unwrap_or_else(|| Value::Object(Map::new())))
 	}
 }
 

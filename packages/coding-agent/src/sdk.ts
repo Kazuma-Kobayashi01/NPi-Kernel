@@ -412,6 +412,7 @@ import {
 } from "./session/context-settings";
 import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager } from "./task/settings";
 import { renderManagerBrief } from "./office/brief";
+import { bookManagerUsage } from "./office/manager-usage";
 import { getSubagentConcurrencyLimit, readSubagentPreferences } from "./task/delegation-preferences";
 
 /** Agent-level tool-call switches, snapshotted by the agent loop per prompt run. */
@@ -2615,8 +2616,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		};
 		toolSession.getEvalPreludes = getEvalPreludes;
 		registerDelegationContext(toolSession);
-		initializeComputerUse(toolSession, () =>
-			!restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"));
+		initializeComputerUse(
+			toolSession,
+			() => !restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"),
+		);
 		// SessionTools owns the advertised snapshot; before it exists the base
 		// prompt is built from, and therefore advertises, the live set.
 		toolSession.getAdvertisedEvalPreludes = () => session?.getAdvertisedEvalPreludes() ?? getEvalPreludes();
@@ -5228,6 +5231,8 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			}
 		}
 		if (agentKind === "main") {
+			// The general manager's spend goes on the office's books with everyone else's.
+			session.subscribe(event => bookManagerUsage(settings, sessionManager.getCwd(), event));
 			// Live skills/commands discovery settings: rediscover skills and file slash
 			// commands, rebuild the prompt, and notify command pickers (TUI/RPC/ACP).
 			// `enabledProviders`/`disabledProviders` gate foreign provider sources.

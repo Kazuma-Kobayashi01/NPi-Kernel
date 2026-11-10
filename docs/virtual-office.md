@@ -85,11 +85,25 @@ Memory lives next to the pull requests in the repository's git directory (`npi-o
 
 ## For GUI hosts
 
-Two RPC commands cover everything the CLI does:
+An RPC session starts with Virtual Office **off**, whatever `office.enabled` says for the CLI: a host switches it on per session, so each of its tabs can be a general manager or not.
 
 | Command | Result |
 | --- | --- |
-| `get_office_state` | `OfficeState`: `enabled`, `scale`, `offices` (numbered, with members), `company` (`checkout`, `baseBranch`, or `null` with a `reason`), `pulls` (every pull request with its reviews), and `memory` (each office's lessons and merged-work log). |
-| `office_command` with `args: string[]` | Runs one subcommand from the table above, e.g. `["set", "Worker-1a2b3c", "capability", "expert"]` or `["merge", "4"]`. Returns `text` (what the CLI prints), `failed` when the command was refused, and the new `state`. |
+| `set_office_enabled` with `enabled: boolean` | Turns Virtual Office on or off for this session only; nothing is saved. The `office` tool and the general manager's brief appear or disappear at once. Returns the new `OfficeState`. |
+| `get_office_state` | `OfficeState`, described below. |
+| `office_command` with `args: string[]` | Runs one subcommand from the table above, e.g. `["set", "Worker-1a2b3c", "capability", "expert"]` or `["merge", "4"]`. Returns `text` (what the CLI prints), `failed` when the command was refused, and the new `state`. `["on"]` and `["off"]` act like `set_office_enabled`. |
+
+While Virtual Office is on, the session also sends an `office_state` frame (`{ type: "office_state", state }`) whenever the company changes, so a host never needs to poll. Changes made by another process (a second general manager, `npi office merge` in a shell) are not pushed; fetch the state again when that matters.
+
+`OfficeState` holds:
+
+- `enabled`, `scale`, `offices` (numbered, with members), and `company` (`checkout`, `baseBranch`, or `null` with a `reason`);
+- `pulls`: every pull request with its reviews;
+- `memory`: each office's lessons and merged-work log;
+- `activity`: per office, a `phase`, the members `working` at their desks right now, and the leader's current `task`. Phases, most pressing first: `working`, `reviewing` (the leader alone is at a desk with worker pull requests open), `awaiting_owner` (an approved office pull request waits for your merge), `awaiting_manager`, `idle`;
+- `usage`: tokens (input + output + cache writes), estimated USD cost and request count, `today` and in `total`, for the company and per member. The general manager is listed as `general-manager`. `today` is the local calendar day named in `day` and starts at 00:00; an assignment that runs across midnight is split between the two days;
+- `runs`: the most recent assignments: who got them, from whom, the task, the member's `sessionFile` (read it with `get_subagent_messages`), when it started and ended, and the pull request it left waiting.
+
+Usage and runs are kept in `npi-office/usage.json`, next to the pull requests. A desk takes one assignment at a time across every process working on the repository (`npi-office/desks/`); a claim left by a process that died is dropped.
 
 Members run as ordinary subagents named after the member, so `get_subagents`, subagent events and transcripts show who is working. The session's `office` tool calls carry `details.pulls`, the pull requests the call opened or changed.

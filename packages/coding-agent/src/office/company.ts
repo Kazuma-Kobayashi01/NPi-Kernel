@@ -13,8 +13,10 @@ import {
 	type OfficeScale,
 	staffOffices,
 } from "./model";
+import { type DeskClaim, readClaims } from "./desks";
 import { logMerge, type OfficeMemory, readOfficeMemories } from "./memory";
 import { assertMergeable, listPulls, type Pull, type PullActor, PullError, recordMerge, reviewPull } from "./pulls";
+import { type OfficeRun, type OfficeUsage, readRuns, readUsage } from "./usage";
 import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "./settings";
 import {
 	type Company,
@@ -140,6 +142,39 @@ export async function mergeApprovedPull(company: Company, number: number, actor:
 	return merged;
 }
 
+/** What an office is doing, most pressing first. */
+export type OfficePhase = "working" | "reviewing" | "awaiting_owner" | "awaiting_manager" | "idle";
+
+export interface OfficeActivity {
+	office: number;
+	phase: OfficePhase;
+	/** Members at their desks right now. */
+	working: string[];
+	/** The assignment the office's leader is on, when there is one. */
+	task?: string;
+}
+
+/** Runs a client gets with the state: enough for each member's recent history. */
+const STATE_RUNS = 120;
+
+/**
+ * The phase of office `number`: someone at a desk comes first (a leader alone with worker pull
+ * requests open is reviewing them), then whose turn it is on the office's own pull request.
+ */
+export function describeActivity(number: number, claims: readonly DeskClaim[], pulls: readonly Pull[]): OfficeActivity {
+	const mine = claims.filter(claim => claim.office === number);
+	const theirs = pulls.filter(pull => pull.office === number);
+	const working = mine.map(claim => claim.member);
+	const task = (mine.find(claim => claim.role === "leader") ?? mine[0])?.task;
+	let phase: OfficePhase = "idle";
+	if (mine.some(claim => claim.role === "worker")) phase = "working";
+	else if (mine.length > 0) {
+		phase = theirs.some(pull => pull.kind === "worker" && pull.status === "open") ? "reviewing" : "working";
+	} else if (theirs.some(pull => pull.kind === "office" && pull.status === "approved")) phase = "awaiting_owner";
+	else if (theirs.some(pull => pull.kind === "office" && pull.status === "open")) phase = "awaiting_manager";
+	return { office: number, phase, working, ...(task ? { task } : {}) };
+}
+
 /** Everything a client needs to draw the company: settings, roster, branch and pull requests. */
 export interface OfficeState {
 	enabled: boolean;
@@ -151,6 +186,12 @@ export interface OfficeState {
 	pulls: Pull[];
 	/** What each running office remembers about this project, in office order; empty without a company. */
 	memory: OfficeMemory[];
+	/** What each running office is doing, in office order; empty without a company. */
+	activity: OfficeActivity[];
+	/** Spend today and in total; `null` without a company. */
+	usage: OfficeUsage | null;
+	/** The most recent assignment runs, oldest first. */
+	runs: OfficeRun[];
 }
 
 /** Snapshot of the company for the checkout containing `cwd`. Read-only apart from staffing. */
@@ -162,6 +203,9 @@ export async function readOfficeState(settings: ScopeLike, cwd: string): Promise
 		company: null,
 		pulls: [],
 		memory: [],
+		activity: [],
+		usage: null,
+		runs: [],
 	};
 	try {
 		const company = await openCompany(cwd);
@@ -171,6 +215,10 @@ export async function readOfficeState(settings: ScopeLike, cwd: string): Promise
 			company,
 			state.offices.map(office => office.number),
 		);
+		const claims = await readClaims(company);
+		state.activity = state.offices.map(office => describeActivity(office.number, claims, state.pulls));
+		state.usage = await readUsage(company);
+		state.runs = (await readRuns(company)).slice(-STATE_RUNS);
 	} catch (error) {
 		state.reason = error instanceof Error ? error.message : String(error);
 	}

@@ -51,6 +51,8 @@ import {
 import { requestTextPrediction, textPredictionBackend } from "../../predict/client";
 import { runOfficeCommand } from "../../office/commands";
 import { readOfficeState } from "../../office/company";
+import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "../../office/settings";
+import { onOfficeChange } from "../../office/store";
 import { type AgentSession, type NavigateTreeResult, SessionBusyError } from "../../session/agent-session";
 import type { MCPManager } from "../../mcp/manager";
 import { reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
@@ -129,6 +131,7 @@ import type {
 	RpcRemoveQueuedMessageResult,
 	RpcResponse,
 	RpcSessionState,
+	RpcOfficeStateFrame,
 	RpcSubagentSubscriptionLevel,
 } from "./rpc-types";
 
@@ -1838,6 +1841,29 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 		uiContext: headless ? undefined : rpcUiContext,
 	});
 
+	// Push the Virtual Office to the host whenever it changes, coalescing bursts (a working
+	// member books usage and moves pull requests in quick succession).
+	let officePush: NodeJS.Timeout | undefined;
+	let officeWasEnabled = cfgOfficeEnabled.get(session.settings);
+	const pushOfficeState = (): void => {
+		if (officePush) return;
+		officePush = setTimeout(() => {
+			officePush = undefined;
+			const enabled = cfgOfficeEnabled.get(session.settings);
+			if (!enabled && !officeWasEnabled) return;
+			officeWasEnabled = enabled;
+			void readOfficeState(session.settings, session.sessionManager.getCwd()).then(
+				state => output({ type: "office_state", state } satisfies RpcOfficeStateFrame),
+				() => {},
+			);
+		}, 150);
+		officePush.unref?.();
+	};
+	onOfficeChange(pushOfficeState);
+	cfgOfficeEnabled.listen(session, pushOfficeState);
+	cfgOfficeScale.listen(session, pushOfficeState);
+	cfgOfficeOffices.listen(session, pushOfficeState);
+
 	// Output all agent events as JSON; prompt results follow the frame that settled them.
 	session.subscribe(event => {
 		sessionEvents.forward(event);
@@ -2814,11 +2840,32 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "office_command": {
 				const cwd = session.sessionManager.getCwd();
+				// A protocol host's switch is the session's, not the user's saved CLI setting.
+				const verb = command.args[0]?.toLowerCase();
+				if (command.args.length === 1 && (verb === "on" || verb === "off")) {
+					cfgOfficeEnabled.override(session.settings, verb === "on");
+					return success(id, "office_command", {
+						text: `Virtual Office is ${verb} for this session.`,
+						state: await readOfficeState(session.settings, cwd),
+					});
+				}
 				const result = await runOfficeCommand(command.args, session.settings, cwd);
 				return success(id, "office_command", {
 					...result,
 					state: await readOfficeState(session.settings, cwd),
 				});
+			}
+
+			case "set_office_enabled": {
+				if (typeof command.enabled !== "boolean") {
+					return error(id, "set_office_enabled", "`enabled` must be a boolean");
+				}
+				cfgOfficeEnabled.override(session.settings, command.enabled);
+				return success(
+					id,
+					"set_office_enabled",
+					await readOfficeState(session.settings, session.sessionManager.getCwd()),
+				);
 			}
 
 			case "get_session_stats": {

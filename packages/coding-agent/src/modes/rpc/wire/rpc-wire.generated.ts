@@ -793,8 +793,63 @@ export interface OfficeState {
 	pulls: OfficePull[];
 	/** One entry per running office, in office order; empty when `company` is null. */
 	memory: OfficeMemory[];
+	/** One entry per running office, in office order; empty when `company` is null. */
+	activity: OfficeActivity[];
+	/** Spend today and in total; null when `company` is null. */
+	usage: OfficeUsage | null;
+	/** The most recent assignment runs, oldest first. */
+	runs: OfficeRun[];
 	/** Why `company` is null. */
 	reason?: string;
+}
+
+export interface OfficeActivity {
+	office: number;
+	/** `reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge. */
+	phase: "working" | "reviewing" | "awaiting_owner" | "awaiting_manager" | "idle";
+	/** Members at their desks right now. */
+	working: string[];
+	/** The assignment the office's leader is on. */
+	task?: string;
+}
+
+export interface OfficeUsageAmount {
+	/** Input + output + cache-write tokens; cache reads are not counted. */
+	tokens: number;
+	/** Estimated USD at the model catalog's prices. */
+	cost: number;
+	requests: number;
+}
+
+export interface OfficeMemberUsage {
+	today: OfficeUsageAmount;
+	total: OfficeUsageAmount;
+}
+
+export interface OfficeUsage {
+	/** The local calendar day `today` covers, `YYYY-MM-DD`; it starts at 00:00 local time. */
+	day: string;
+	/** By member name; the general manager is under `general-manager`. Removed members stay. */
+	members: Record<string, OfficeMemberUsage>;
+	today: OfficeUsageAmount;
+	total: OfficeUsageAmount;
+}
+
+/** One assignment handed to a member. */
+export interface OfficeRun {
+	id: string;
+	office: number;
+	member: string;
+	/** `general-manager` or the office's leader. */
+	by: string;
+	task: string;
+	startedAt: string;
+	/** The member's transcript; read it with `get_subagent_messages`. */
+	sessionFile?: string;
+	endedAt?: string;
+	failed?: boolean;
+	/** Pull request the member left waiting when the run ended. */
+	pr?: number;
 }
 
 export interface OfficeCompany {
@@ -1321,6 +1376,12 @@ export interface SubagentEvent {
 	payload: SubagentEventPayload;
 }
 
+/** The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off. */
+export interface OfficeStateEvent {
+	type: "office_state";
+	state: OfficeState;
+}
+
 export type LivePhase = "connecting" | "listening" | "working" | "speaking" | "muted" | "error";
 
 export type LiveRole = "user" | "assistant";
@@ -1693,7 +1754,7 @@ export interface HostUriSchemeDefinition {
 }
 
 /** Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`. */
-export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
+export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
 
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
@@ -1995,6 +2056,10 @@ export interface OfficeCommandParams {
 	args: string[];
 }
 
+export interface SetOfficeEnabledParams {
+	enabled: boolean;
+}
+
 export interface GetSessionLeaseParams {
 	sessionIds: string[];
 }
@@ -2215,6 +2280,7 @@ export interface RpcWireCommands {
 	abort_bash: { params: undefined; result: undefined };
 	get_office_state: { params: undefined; result: OfficeState };
 	office_command: { params: OfficeCommandParams; result: OfficeCommandResult };
+	set_office_enabled: { params: SetOfficeEnabledParams; result: OfficeState };
 	get_session_stats: { params: undefined; result: SessionStats };
 	get_session_lease: { params: GetSessionLeaseParams; result: GetSessionLeaseResult };
 	export_html: { params: ExportHtmlParams; result: ExportHtmlResult };

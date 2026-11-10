@@ -3684,6 +3684,12 @@ type OfficeState struct {
 	Pulls   []OfficePull   `json:"pulls"`
 	// One entry per running office, in office order; empty when `company` is null.
 	Memory []OfficeMemory `json:"memory"`
+	// One entry per running office, in office order; empty when `company` is null.
+	Activity []OfficeActivity `json:"activity"`
+	// Spend today and in total; null when `company` is null.
+	Usage *OfficeUsage `json:"usage"`
+	// The most recent assignment runs, oldest first.
+	Runs []OfficeRun `json:"runs"`
 	// Why `company` is null.
 	Reason *string `json:"reason,omitempty"`
 }
@@ -3701,7 +3707,175 @@ func (v *OfficeState) decodeFrom(raw map[string]json.RawMessage) error {
 	d.nullable("company", &out.Company)
 	d.required("pulls", &out.Pulls)
 	d.required("memory", &out.Memory)
+	d.required("activity", &out.Activity)
+	d.nullable("usage", &out.Usage)
+	d.required("runs", &out.Runs)
 	d.optional("reason", &out.Reason)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeActivity struct {
+	Office int64 `json:"office"`
+	// `reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge.
+	Phase OfficeActivityPhase `json:"phase"`
+	// Members at their desks right now.
+	Working []string `json:"working"`
+	// The assignment the office's leader is on.
+	Task *string `json:"task,omitempty"`
+}
+
+func (v *OfficeActivity) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeActivity", v.decodeFrom)
+}
+
+func (v *OfficeActivity) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeActivity
+	d := fieldDecoder{raw: raw, owner: "OfficeActivity"}
+	d.required("office", &out.Office)
+	d.required("phase", &out.Phase)
+	d.required("working", &out.Working)
+	d.optional("task", &out.Task)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeActivityPhase string
+
+const (
+	OfficeActivityPhaseWorking         OfficeActivityPhase = "working"
+	OfficeActivityPhaseReviewing       OfficeActivityPhase = "reviewing"
+	OfficeActivityPhaseAwaitingOwner   OfficeActivityPhase = "awaiting_owner"
+	OfficeActivityPhaseAwaitingManager OfficeActivityPhase = "awaiting_manager"
+	OfficeActivityPhaseIdle            OfficeActivityPhase = "idle"
+)
+
+func (v *OfficeActivityPhase) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficeActivityPhase")
+	if err != nil {
+		return err
+	}
+	switch value := OfficeActivityPhase(s); value {
+	case OfficeActivityPhaseWorking, OfficeActivityPhaseReviewing, OfficeActivityPhaseAwaitingOwner, OfficeActivityPhaseAwaitingManager, OfficeActivityPhaseIdle:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficeActivityPhase", s)
+}
+
+type OfficeUsageAmount struct {
+	// Input + output + cache-write tokens; cache reads are not counted.
+	Tokens float64 `json:"tokens"`
+	// Estimated USD at the model catalog's prices.
+	Cost     float64 `json:"cost"`
+	Requests float64 `json:"requests"`
+}
+
+func (v *OfficeUsageAmount) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeUsageAmount", v.decodeFrom)
+}
+
+func (v *OfficeUsageAmount) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeUsageAmount
+	d := fieldDecoder{raw: raw, owner: "OfficeUsageAmount"}
+	d.required("tokens", &out.Tokens)
+	d.required("cost", &out.Cost)
+	d.required("requests", &out.Requests)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeMemberUsage struct {
+	Today OfficeUsageAmount `json:"today"`
+	Total OfficeUsageAmount `json:"total"`
+}
+
+func (v *OfficeMemberUsage) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeMemberUsage", v.decodeFrom)
+}
+
+func (v *OfficeMemberUsage) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeMemberUsage
+	d := fieldDecoder{raw: raw, owner: "OfficeMemberUsage"}
+	d.required("today", &out.Today)
+	d.required("total", &out.Total)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeUsage struct {
+	// The local calendar day `today` covers, `YYYY-MM-DD`; it starts at 00:00 local time.
+	Day string `json:"day"`
+	// By member name; the general manager is under `general-manager`. Removed members stay.
+	Members map[string]OfficeMemberUsage `json:"members"`
+	Today   OfficeUsageAmount            `json:"today"`
+	Total   OfficeUsageAmount            `json:"total"`
+}
+
+func (v *OfficeUsage) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeUsage", v.decodeFrom)
+}
+
+func (v *OfficeUsage) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeUsage
+	d := fieldDecoder{raw: raw, owner: "OfficeUsage"}
+	d.required("day", &out.Day)
+	d.required("members", &out.Members)
+	d.required("today", &out.Today)
+	d.required("total", &out.Total)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+// One assignment handed to a member.
+type OfficeRun struct {
+	ID     string `json:"id"`
+	Office int64  `json:"office"`
+	Member string `json:"member"`
+	// `general-manager` or the office's leader.
+	By        string `json:"by"`
+	Task      string `json:"task"`
+	StartedAt string `json:"startedAt"`
+	// The member's transcript; read it with `get_subagent_messages`.
+	SessionFile *string `json:"sessionFile,omitempty"`
+	EndedAt     *string `json:"endedAt,omitempty"`
+	Failed      *bool   `json:"failed,omitempty"`
+	// Pull request the member left waiting when the run ended.
+	Pr *int64 `json:"pr,omitempty"`
+}
+
+func (v *OfficeRun) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeRun", v.decodeFrom)
+}
+
+func (v *OfficeRun) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeRun
+	d := fieldDecoder{raw: raw, owner: "OfficeRun"}
+	d.required("id", &out.ID)
+	d.required("office", &out.Office)
+	d.required("member", &out.Member)
+	d.required("by", &out.By)
+	d.required("task", &out.Task)
+	d.required("startedAt", &out.StartedAt)
+	d.optional("sessionFile", &out.SessionFile)
+	d.optional("endedAt", &out.EndedAt)
+	d.optional("failed", &out.Failed)
+	d.optional("pr", &out.Pr)
 	if d.err != nil {
 		return d.err
 	}
@@ -5885,6 +6059,32 @@ func (v SubagentEvent) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), `"type":"subagent_event"`, nil)
 }
 
+// The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.
+type OfficeStateEvent struct {
+	State OfficeState `json:"state"`
+}
+
+func (v *OfficeStateEvent) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeStateEvent", v.decodeFrom)
+}
+
+func (v *OfficeStateEvent) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeStateEvent
+	d := fieldDecoder{raw: raw, owner: "OfficeStateEvent"}
+	d.constant("type", "office_state")
+	d.required("state", &out.State)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v OfficeStateEvent) MarshalJSON() ([]byte, error) {
+	type plain OfficeStateEvent
+	return encodeObject(plain(v), `"type":"office_state"`, nil)
+}
+
 type LivePhase string
 
 const (
@@ -7510,6 +7710,7 @@ func (AvailableCommandsUpdateEvent) isRpcNotification() {}
 func (SubagentLifecycleEvent) isRpcNotification()       {}
 func (SubagentProgressEvent) isRpcNotification()        {}
 func (SubagentEvent) isRpcNotification()                {}
+func (OfficeStateEvent) isRpcNotification()             {}
 func (LivePhaseEvent) isRpcNotification()               {}
 func (LiveLevelsEvent) isRpcNotification()              {}
 func (LiveTranscriptEvent) isRpcNotification()          {}
@@ -7592,6 +7793,8 @@ func (v *RpcNotification) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SubagentProgressEvent](raw)
 	case "subagent_event":
 		value, err = decodeVariant[SubagentEvent](raw)
+	case "office_state":
+		value, err = decodeVariant[OfficeStateEvent](raw)
 	case "live_phase":
 		value, err = decodeVariant[LivePhaseEvent](raw)
 	case "live_levels":
@@ -7721,6 +7924,7 @@ func (AvailableCommandsUpdateEvent) isRpcServerFrame() {}
 func (SubagentLifecycleEvent) isRpcServerFrame()       {}
 func (SubagentProgressEvent) isRpcServerFrame()        {}
 func (SubagentEvent) isRpcServerFrame()                {}
+func (OfficeStateEvent) isRpcServerFrame()             {}
 func (LivePhaseEvent) isRpcServerFrame()               {}
 func (LiveLevelsEvent) isRpcServerFrame()              {}
 func (LiveTranscriptEvent) isRpcServerFrame()          {}
@@ -7813,6 +8017,8 @@ func (v *RpcServerFrame) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SubagentProgressEvent](raw)
 	case "subagent_event":
 		value, err = decodeVariant[SubagentEvent](raw)
+	case "office_state":
+		value, err = decodeVariant[OfficeStateEvent](raw)
 	case "live_phase":
 		value, err = decodeVariant[LivePhaseEvent](raw)
 	case "live_levels":
@@ -9389,7 +9595,7 @@ func (c Commands) AbortBash(ctx context.Context) error {
 	return c.call(ctx, "abort_bash", nil, 0, nil)
 }
 
-// GetOfficeState sends "get_office_state": Virtual Office settings, roster, and pull requests for the session's checkout.
+// GetOfficeState sends "get_office_state": Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.
 func (c Commands) GetOfficeState(ctx context.Context) (OfficeState, error) {
 	var out OfficeState
 	err := c.call(ctx, "get_office_state", nil, 0, &out)
@@ -9406,6 +9612,18 @@ type OfficeCommandCommand struct {
 func (c Commands) OfficeCommand(ctx context.Context, p OfficeCommandCommand) (OfficeCommandResult, error) {
 	var out OfficeCommandResult
 	err := c.call(ctx, "office_command", p, 0, &out)
+	return out, err
+}
+
+// SetOfficeEnabledCommand holds the parameters of "set_office_enabled".
+type SetOfficeEnabledCommand struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetOfficeEnabled sends "set_office_enabled": Turn Virtual Office on or off for this session only (not persisted). A protocol host starts with it off, whatever the user's CLI setting; `office_command` `on`/`off` does the same.
+func (c Commands) SetOfficeEnabled(ctx context.Context, p SetOfficeEnabledCommand) (OfficeState, error) {
+	var out OfficeState
+	err := c.call(ctx, "set_office_enabled", p, 0, &out)
 	return out, err
 }
 

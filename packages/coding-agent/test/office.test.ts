@@ -11,6 +11,9 @@ import {
 	readOfficeState,
 	resolveSeat,
 } from "@oh-my-pi/pi-coding-agent/office/company";
+import { claimDesk, readClaims } from "@oh-my-pi/pi-coding-agent/office/desks";
+import { onOfficeChange, storePath } from "@oh-my-pi/pi-coding-agent/office/store";
+import { flushUsage, readUsage, recordUsage } from "@oh-my-pi/pi-coding-agent/office/usage";
 import {
 	MAX_NOTE_LENGTH,
 	MAX_OFFICE_NOTES,
@@ -272,6 +275,77 @@ describe("office pull requests", () => {
 		const forgot = await runOfficeCommand(["forget", "1"], settings, repoDir);
 		expect(forgot.failed).toBeUndefined();
 		expect((await readOfficeMemory(company, 1)).notes).toEqual([]);
+	});
+
+	it("lets one process at a time take a desk, and drops a claim whose process is gone", async () => {
+		const desk = deskOfWorker(company, 1, workerName).dir;
+		const claim = { desk, office: 1, member: workerName, role: "worker" as const, task: "fix it" };
+		const release = await claimDesk(company, claim);
+		expect(release).not.toBeNull();
+		expect(await claimDesk(company, claim)).toBeNull();
+		expect((await readOfficeState(settings, repoDir)).activity[0]).toMatchObject({
+			phase: "working",
+			working: [workerName],
+			task: "fix it",
+		});
+		await release?.();
+		expect(await readClaims(company)).toEqual([]);
+
+		// A claim left by a process that died does not block the desk.
+		const dir = storePath(company, "desks");
+		const [name] = await fs.readdir(dir).catch(() => [] as string[]);
+		expect(name).toBeUndefined();
+		const again = await claimDesk(company, claim);
+		const [file] = await fs.readdir(dir);
+		await Bun.write(path.join(dir, file), JSON.stringify({ ...claim, pid: 2 ** 30, startedAt: "" }));
+		expect(await readClaims(company)).toEqual([]);
+		expect(await claimDesk(company, claim)).not.toBeNull();
+		await again?.();
+	});
+
+	it("names the office's phase from its pull requests when nobody is at a desk", async () => {
+		expect((await readOfficeState(settings, repoDir)).activity[0].phase).toBe("idle");
+		const workerPull = await workerSubmits("one\ntwo\nthree\nfour\n", "Add four");
+		await reviewPull(company, workerPull.number, leader, "approve", "");
+		await mergeApprovedPull(company, workerPull.number, leader);
+		const desk = deskOfOffice(company, 1);
+		await commitDesk(company, desk, "Add four");
+		const officePull = await submitPull(company, {
+			kind: "office",
+			office: 1,
+			author: leader.kind === "leader" ? leader.member : "",
+			title: "Add four",
+			body: "",
+			source: desk.branch,
+			target: desk.upstream,
+		});
+		expect((await readOfficeState(settings, repoDir)).activity[0].phase).toBe("awaiting_manager");
+		await reviewPull(company, officePull.number, { kind: "manager" }, "approve", "");
+		expect((await readOfficeState(settings, repoDir)).activity[0].phase).toBe("awaiting_owner");
+	});
+
+	it("books usage to the local day it happened on, so a run across midnight is split", async () => {
+		const before = new Date(2026, 10, 9, 23, 59, 30);
+		const after = new Date(2026, 10, 10, 0, 0, 30);
+		let changes = 0;
+		const stop = onOfficeChange(() => changes++);
+		recordUsage(company, workerName, { tokens: 100, cost: 0.5, requests: 1 }, before);
+		recordUsage(company, workerName, { tokens: 40, cost: 0.2, requests: 1 }, after);
+		recordUsage(company, "general-manager", { tokens: 10, cost: 0.1, requests: 1 }, after);
+		await flushUsage();
+		stop();
+		expect(changes).toBe(1);
+
+		const usage = await readUsage(company, after);
+		expect(usage.day).toBe("2026-11-10");
+		expect(usage.members[workerName].today.tokens).toBe(40);
+		expect(usage.members[workerName].total.tokens).toBe(140);
+		expect(usage.today).toEqual({ tokens: 50, cost: expect.closeTo(0.3, 6), requests: 2 });
+		expect(usage.total.cost).toBeCloseTo(0.8, 6);
+		// The next day starts from zero; the total stays.
+		const nextDay = await readUsage(company, new Date(2026, 10, 11, 8));
+		expect(nextDay.today.tokens).toBe(0);
+		expect(nextDay.total.tokens).toBe(150);
 	});
 
 	it("has no company on a detached HEAD", async () => {

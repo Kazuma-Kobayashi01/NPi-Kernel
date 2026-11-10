@@ -21,6 +21,22 @@ export async function readStore<T>(file: string, empty: () => T): Promise<T> {
 	}
 }
 
+const listeners = new Set<() => void>();
+
+/**
+ * Call `listener` whenever this process changes something a client draws: a pull request, an
+ * office's memory, the usage ledger, or who is at a desk. Returns the unsubscribe function.
+ */
+export function onOfficeChange(listener: () => void): () => void {
+	listeners.add(listener);
+	return () => listeners.delete(listener);
+}
+
+/** Tell {@link onOfficeChange} listeners the company changed. */
+export function notifyOfficeChange(): void {
+	for (const listener of listeners) listener();
+}
+
 // One writer at a time per file: every desk of a company runs in this process.
 const writes = new Map<string, Promise<unknown>>();
 
@@ -33,6 +49,7 @@ export async function updateStore<T, R>(file: string, empty: () => T, change: (v
 			const value = await readStore(file, empty);
 			const result = change(value);
 			await Bun.write(file, JSON.stringify(value, null, "\t"));
+			notifyOfficeChange();
 			return result;
 		});
 	writes.set(file, run);

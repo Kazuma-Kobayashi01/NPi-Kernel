@@ -203,6 +203,7 @@ import {
 } from "./session/settings";
 import { cfgDisabledProviders, cfgEnabledModels } from "./config/model-settings";
 import { cfgTaskAgentIdleTtlMs } from "./task/settings";
+import { cfgOfficeEnabled } from "./office/settings";
 import { cfgSkillsIncludeSkills } from "./extensibility/settings";
 import { cfgWorkspaceAdditionalDirectories } from "./session/context-settings";
 
@@ -2009,6 +2010,9 @@ export async function runRootCommand(
 		if (parsedArgs.maxCost !== undefined) cfgSessionMaxCost.override(settingsInstance, parsedArgs.maxCost);
 		if (parsedArgs.mode === "rpc" || parsedArgs.mode === "rpc-ui") {
 			applyProtocolDefaults("rpc", settingsInstance);
+			// A protocol host turns Virtual Office on per session (`set_office_enabled`), whatever
+			// the user chose for the CLI.
+			cfgOfficeEnabled.override(settingsInstance, false);
 		} else if (parsedArgs.mode === "acp") {
 			applyProtocolDefaults("acp", settingsInstance);
 		}
