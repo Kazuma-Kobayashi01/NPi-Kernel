@@ -1,9 +1,10 @@
 /**
  * Fullscreen `/usage` dashboard (the /settings idiom): mounted as an overlay
- * on the alternate screen so it takes no transcript space. Shows a compact
- * subscriptions grid (one card per provider, worst window per quota bucket)
- * above a GitHub-style daily activity heatmap fed by the local stats DB.
- * Enter flips into the classic full per-account report, scrollable in place.
+ * on the alternate screen so it takes no transcript space. Tabs switch with
+ * ←/→, Tab, Shift+Tab or 1-3: Overview lists every provider credential with
+ * its limit windows (↑/↓ select, Enter opens it), Details shows the selected
+ * credential's windows and saved resets, and Tokens shows the session's and
+ * the local stats DB's token and cost figures next to a daily activity heatmap.
  */
 import * as os from "node:os";
 import { resolveUsedFraction, type UsageLimit, type UsageReport } from "@oh-my-pi/pi-ai";
@@ -28,7 +29,7 @@ import {
 import { colorToAnsi } from "../theme/color";
 import { ensureThemeSync, theme } from "../theme/theme";
 import { formatAbsoluteOnlyAmount } from "../prompt/usage-amounts";
-import { truncateMiddleToWidth } from "../render/render-utils";
+import { ListDialogFrame } from "../chrome/list-dialog";
 import { sanitizeDisplayLine } from "./extensions/display-text";
 import {
 	matchesSelectCancel,
@@ -37,7 +38,25 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../keybinding-matchers";
-import { OverlayPanel, PanelDivider, PanelRows } from "../chrome/overlay-box";
+import { divider, row } from "../chrome/overlay-box";
+import { getTabBarTheme } from "../chrome/shared";
+import { TabBar } from "../components/tab-bar";
+import { renderUsageDetail } from "./usage-panel-detail";
+import {
+	type ActiveUsageAccount,
+	buildUsageEntries,
+	moveUsageSelection,
+	stepUsageTab,
+	type UnavailableUsageAccount,
+	USAGE_STATS_PERIODS,
+	USAGE_TABS,
+	type UsageEntry,
+	type UsageStatsPeriodId,
+	type UsageTab,
+	type UsageTokensData,
+} from "./usage-panel-model";
+import { renderUsageOverview } from "./usage-panel-overview";
+import { renderUsageTokens } from "./usage-panel-tokens";
 import { formatKeyHint } from "../app-keybindings";
 import { editorKey, editorKeys } from "../chrome/keybinding-hints";
 import type { TspSpan, TspTableColumn, TspText, TspTone } from "@oh-my-pi/pi-wire";
@@ -71,11 +90,7 @@ export interface CardWindowRow {
 	usedText?: string;
 }
 
-/** A connected account whose usage lookup produced no attributable report. */
-export interface UnavailableUsageAccount {
-	provider: string;
-	label: string;
-}
+export type { UnavailableUsageAccount };
 
 /** Compact per-provider summary backing one card in the subscriptions grid. */
 export interface ProviderCard {
@@ -619,15 +634,16 @@ function formatActivityTotals(layout: HeatmapLayout): string {
 // Component
 // =============================================================================
 
+/** The reports of one fetch and the connected accounts that produced none. */
+export interface UsageSnapshot {
+	reports: UsageReport[];
+	unavailableAccounts: readonly UnavailableUsageAccount[];
+}
+
 /** Callbacks and data sources for {@link UsageDashboardComponent}. */
 export interface UsageDashboardOptions {
 	reports: UsageReport[];
 	unavailableAccounts?: readonly UnavailableUsageAccount[];
-	/**
-	 * Full classic `/usage` report of `reports` (the latest refresh) for the
-	 * expanded detail view; re-invoked per terminal width.
-	 */
-	renderDetail: (width: number, reports: UsageReport[]) => string;
 	/**
 	 * Stream daily activity into the heatmap: push cached DB rows immediately,
 	 * then push again after an incremental session sync. Resolves when the sync
@@ -635,8 +651,14 @@ export interface UsageDashboardOptions {
 	 * the dashboard closes so an in-flight sync can stop early.
 	 */
 	loadActivity: (push: (points: DailyActivityPoint[]) => void, signal: AbortSignal) => Promise<void>;
+	/** Load the session's and the local stats DB's token figures (the Tokens tab); `r` on that tab re-runs it. */
+	loadTokens: () => Promise<UsageTokensData>;
+	/** Fetch the reports as soon as the panel opens; entries without a report read as loading until it settles. */
+	autoRefresh?: boolean;
+	/** The credential this session uses; its entry is marked in the panel. */
+	activeAccount?: ActiveUsageAccount;
 	/** Re-fetch the usage reports (`r`); omitted when the host can't. Resolves null when nothing came back. */
-	refresh?: () => Promise<UsageReport[] | null>;
+	refresh?: () => Promise<UsageSnapshot | null>;
 	requestRender: () => void;
 	onClose: () => void;
 }
@@ -656,45 +678,43 @@ export function formatActivityErrorDetail(error: string, homeDir = os.homedir())
 	return text.replace(/\.+$/, "");
 }
 
-const CARD_MIN_WIDTH = 32;
-const CARD_GUTTER = 3;
 const CARD_MAX_WINDOWS = 4;
-const CARD_MIN_BAR_WIDTH = 12;
-const CARD_MAX_LABEL_LINES = 2;
 
-interface CardRowLayout {
-	labelWidth: number;
-	resetWidth: number;
-	barWidth: number;
-	stacked: boolean;
-	labelHeights: number[];
-}
+/** Number keys that jump to the tab at the same position in {@link USAGE_TABS}. */
+const TAB_NUMBER_KEYS = ["1", "2", "3"] as const;
 
 export class UsageDashboardComponent implements Component {
 	/** The terminal draws the sheet: a large glass overlay titled Usage. */
 	readonly nativeOverlay = { role: "omp.overlay.usage", size: "lg", anchor: "center", head: "Usage" } as const;
 	#options: UsageDashboardOptions;
 	#reports: UsageReport[];
-	#cards: ProviderCard[];
+	#unavailable: readonly UnavailableUsageAccount[];
+	#cards: ProviderCard[] = [];
+	#entries: UsageEntry[] = [];
 	#nowMs: number;
 	#refreshing = false;
 	#refreshError: string | null = null;
 	/** Bumped whenever anything the native description shows changes. */
 	#revision = 0;
-	#view: "overview" | "detail" = "overview";
+	#view: UsageTab = "overview";
+	/** Key of the selected credential in {@link #entries}; survives refreshes while the entry exists. */
+	#selectedKey: string | undefined;
+	#statsPeriod: UsageStatsPeriodId = "month";
 	#scroll = 0;
+	/** Scroll the overview so the selected credential is on screen on the next render. */
+	#revealSelection = true;
 	#activity: DailyActivityPoint[] | null = null;
 	#activityError: string | null = null;
 	#syncing = true;
-	#detailCache: { width: number; lines: string[] } | null = null;
-	/** ANSI overview rows; rebuilt when the revision or width changes. */
-	#overviewCache: { revision: number; width: number; lines: string[] } | null = null;
+	#tokens: UsageTokensData | undefined;
+	#tokensLoading = false;
+	#tokensError: string | undefined;
+	#tokensRequested = false;
 	#lastViewportRows = 10;
+	#tabRowStart = 0;
+	#tabRowCount = 0;
 	#closed = false;
-	readonly #panel: OverlayPanel;
-	readonly #header: PanelRows;
-	readonly #body: PanelRows;
-	readonly #footer: PanelRows;
+	readonly #tabBar: TabBar;
 	readonly #closeController = new AbortController();
 	#nativeCache: { revision: number; meter: boolean; chart: boolean; node: NativeNode } | undefined;
 
@@ -702,19 +722,21 @@ export class UsageDashboardComponent implements Component {
 		ensureThemeSync();
 		this.#options = options;
 		this.#reports = options.reports;
+		this.#unavailable = options.unavailableAccounts ?? [];
 		this.#nowMs = Date.now();
-		this.#cards = buildProviderCards(this.#reports, this.#nowMs, options.unavailableAccounts);
-		this.#panel = new OverlayPanel("Usage");
-		this.#header = new PanelRows();
-		this.#header.setHeight(1);
-		this.#body = new PanelRows();
-		this.#footer = new PanelRows();
-		this.#footer.setHeight(1);
-		this.#panel.addChild(this.#header);
-		this.#panel.addChild(this.#body);
-		this.#panel.addChild(new PanelDivider());
-		this.#panel.addChild(this.#footer);
+		this.#tabBar = new TabBar(
+			"",
+			[
+				{ id: "overview", label: "Overview" },
+				{ id: "detail", label: "Details" },
+				{ id: "tokens", label: "Tokens" },
+			],
+			getTabBarTheme(),
+		);
+		this.#tabBar.showHint = false;
+		this.#rebuild();
 		void this.#loadActivity();
+		if (options.autoRefresh) void this.#refresh();
 	}
 
 	async #loadActivity(): Promise<void> {
@@ -732,212 +754,44 @@ export class UsageDashboardComponent implements Component {
 		}
 	}
 
+	/** Load the Tokens tab's figures; a failure keeps the previous figures and shows its message. */
+	async #loadTokens(): Promise<void> {
+		if (this.#tokensLoading || this.#closed) return;
+		this.#tokensRequested = true;
+		this.#tokensLoading = true;
+		this.#tokensError = undefined;
+		this.#changed();
+		try {
+			const tokens = await this.#options.loadTokens();
+			if (!this.#closed) this.#tokens = tokens;
+		} catch (error) {
+			this.#tokensError = error instanceof Error ? error.message : String(error);
+		} finally {
+			this.#tokensLoading = false;
+			if (!this.#closed) this.#changed();
+		}
+	}
+
+	/** Derive the cards (native) and the selectable credential entries from the current reports. */
+	#rebuild(): void {
+		this.#cards = buildProviderCards(this.#reports, this.#nowMs, this.#unavailable);
+		this.#entries = buildUsageEntries(collapseSharedUsageReports(this.#reports), this.#unavailable, {
+			loading: this.#refreshing,
+			error: this.#refreshError,
+			activeAccount: this.#options.activeAccount,
+		});
+		if (!this.#entries.some(entry => entry.key === this.#selectedKey)) this.#selectedKey = this.#entries[0]?.key;
+	}
+
 	invalidate(): void {
-		this.#detailCache = null;
-		this.#overviewCache = null;
-		this.#panel.invalidate();
+		this.#tabBar.invalidate();
 	}
 
 	dispose(): void {
 		this.#closed = true;
 		this.#closeController.abort();
-		this.#panel.dispose();
 	}
 
-	// ---------------------------------------------------------------------------
-	// Subscriptions grid rendering
-	// ---------------------------------------------------------------------------
-
-	#statusIcon(status: UsageLimit["status"]): string {
-		if (status === "exhausted") return theme.fg("error", theme.status.error);
-		if (status === "warning") return theme.fg("warning", theme.status.warning);
-		if (status === "ok") return theme.fg("success", theme.status.success);
-		return theme.fg("dim", theme.status.info);
-	}
-
-	#statusColor(status: UsageLimit["status"]): "success" | "warning" | "error" | "dim" {
-		if (status === "exhausted") return "error";
-		if (status === "warning") return "warning";
-		if (status === "ok") return "success";
-		return "dim";
-	}
-
-	#miniBar(fraction: number | undefined, status: UsageLimit["status"], width: number): string {
-		if (fraction === undefined) return theme.fg("dim", "·".repeat(width));
-		const clamped = Math.min(Math.max(fraction, 0), 1);
-		const filled = Math.round(clamped * width);
-		const bar = "█".repeat(filled);
-		const empty = "░".repeat(width - filled);
-		return `${theme.fg(this.#statusColor(status), bar)}${theme.fg("dim", empty)}`;
-	}
-
-	#renderCardLines(card: ProviderCard, width: number, labels: string[][], layout: CardRowLayout): string[] {
-		const lines: string[] = [];
-		const cardStatus =
-			card.unavailableAccounts.length > 0
-				? statusWithUnavailableAccounts(card.windows)
-				: card.unlimited
-					? "ok"
-					: aggregateStatus(card.windows);
-		const accountsText = card.accounts > 1 ? theme.fg("dim", `${card.accounts} accts`) : "";
-		const titleBudget = width - 2 - visibleWidth(accountsText) - (accountsText ? 1 : 0);
-		const title = theme.bold(truncateToWidth(card.name, Math.max(4, titleBudget)));
-		const titlePad = Math.max(0, width - 2 - visibleWidth(title) - visibleWidth(accountsText));
-		lines.push(`${this.#statusIcon(cardStatus)} ${title}${" ".repeat(titlePad)}${accountsText}`);
-
-		for (const account of card.daybreakAccounts ?? []) {
-			const label = sanitizeText(account.replace(/[\r\n\t]+/g, " "));
-			lines.push(`  ${theme.fg("success", truncateToWidth(`daybreak · ${label}`, width - 2))}`);
-		}
-
-		if (card.resetCredits) {
-			const resets = card.resetCredits;
-			let resetText = `✦ ${resets.bankedCount} reset${resets.bankedCount === 1 ? "" : "s"}`;
-			if (resets.redeemableCount !== resets.bankedCount) {
-				resetText += ` · ${resets.redeemableCount} usable`;
-			}
-			if (resets.soonestExpiryMs !== undefined) {
-				resetText +=
-					resets.soonestExpiryMs > 0 ? ` · expires ${formatDuration(resets.soonestExpiryMs)}` : " · expired";
-			}
-			lines.push(
-				`  ${theme.fg(resets.redeemableCount > 0 ? "success" : "warning", truncateToWidth(resetText, width - 2))}`,
-			);
-			if (resets.redeemableCount === 0 && resets.unavailableReasons.length > 0) {
-				const reason = sanitizeText(resets.unavailableReasons.join(" • ").replace(/[\r\n\t]+/g, " "));
-				lines.push(`  ${theme.fg("dim", truncateToWidth(`unavailable: ${reason}`, width - 2))}`);
-			}
-		}
-
-		for (const account of card.unavailableAccounts) {
-			const text = sanitizeDisplayLine(`${account} — usage unavailable`);
-			for (const line of wrapTextWithAnsi(text, Math.max(1, width - 2))) {
-				lines.push(`  ${theme.fg("dim", line)}`);
-			}
-		}
-
-		if (card.unlimited) {
-			lines.push(`  ${theme.fg("dim", "no limits")}`);
-			return lines;
-		}
-
-		const hidden = card.windows.length - CARD_MAX_WINDOWS;
-		const { labelWidth, resetWidth, barWidth, stacked, labelHeights } = layout;
-		const contentWidth = Math.max(1, width - 2);
-		for (let index = 0; index < Math.min(card.windows.length, CARD_MAX_WINDOWS); index++) {
-			const window = card.windows[index]!;
-			const labelLines = labels[index]!;
-			const label = labelLines[0] ?? "";
-			const prefix = stacked ? "" : `${label}${" ".repeat(labelWidth - visibleWidth(label))} `;
-			if (stacked) {
-				for (let line = 0; line < labelHeights[index]; line++) {
-					lines.push(`  ${labelLines[line] ?? ""}`);
-				}
-			}
-			if (window.fraction === undefined) {
-				const text = theme.fg("dim", window.usedText ?? "no data");
-				for (const line of wrapTextWithAnsi(`${prefix}${text}`, contentWidth)) lines.push(`  ${line}`);
-				continue;
-			}
-			const freePct = Math.max(0, Math.round((1 - window.fraction) * 100));
-			const pctText = theme.fg(this.#statusColor(window.status), `${freePct}%`.padStart(5));
-			const resetPlain = window.resetMs !== undefined ? formatDuration(window.resetMs) : "";
-			const resetText = resetWidth > 0 ? ` ${theme.fg("dim", resetPlain.padStart(resetWidth))}` : "";
-			for (const line of wrapTextWithAnsi(
-				`${prefix}${this.#miniBar(window.fraction, window.status, barWidth)}${pctText}${resetText}`,
-				contentWidth,
-			)) {
-				lines.push(`  ${line}`);
-			}
-		}
-		if (hidden > 0) lines.push(`  ${theme.fg("dim", `+${hidden} more`)}`);
-		return lines;
-	}
-
-	#renderCardsGrid(innerWidth: number): string[] {
-		if (this.#cards.length === 0) return [theme.fg("dim", "No usage data available.")];
-		const active = this.#cards.filter(card => !card.idle);
-		const idle = this.#cards.filter(card => card.idle);
-		const columns = Math.max(1, Math.floor((innerWidth + CARD_GUTTER) / (CARD_MIN_WIDTH + CARD_GUTTER)));
-		const cardWidth = Math.floor((innerWidth - (columns - 1) * CARD_GUTTER) / columns);
-		const lines: string[] = [];
-		for (let start = 0; start < active.length; start += columns) {
-			const cards = active.slice(start, start + columns);
-			const windows = cards.map(card => card.windows.slice(0, CARD_MAX_WINDOWS));
-			const labels = windows.map(rows =>
-				rows.map(window => {
-					const label = theme.fg("muted", sanitizeDisplayLine(window.label));
-					const tag = window.windowTag ? sanitizeDisplayLine(window.windowTag) : "";
-					return tag ? `${label} ${theme.fg("dim", tag)}` : label;
-				}),
-			);
-			// One geometry per grid row: labels, bars, and resets share columns,
-			// and every card stacks together when inline bars would be too short.
-			const labelWidth = labels.reduce(
-				(max, rows) => rows.reduce((width, label) => Math.max(width, visibleWidth(label)), max),
-				0,
-			);
-			const resetWidth = windows.reduce(
-				(max, rows) =>
-					rows.reduce(
-						(width, window) =>
-							Math.max(width, window.resetMs !== undefined ? formatDuration(window.resetMs).length : 0),
-						max,
-					),
-				0,
-			);
-			const contentWidth = Math.max(1, cardWidth - 2);
-			const suffixWidth = 5 + (resetWidth > 0 ? resetWidth + 1 : 0);
-			const inlineBarWidth = contentWidth - labelWidth - 1 - suffixWidth;
-			const stacked = inlineBarWidth < CARD_MIN_BAR_WIDTH;
-			const labelLines = labels.map(rows =>
-				rows.map(label => {
-					if (!stacked) return [label];
-					// Bound wrapping work as well as height, keeping the suffix that
-					// distinguishes model-specific quota buckets.
-					const bounded = truncateMiddleToWidth(label, contentWidth * CARD_MAX_LABEL_LINES);
-					const lines = wrapTextWithAnsi(bounded, contentWidth);
-					if (lines.length <= CARD_MAX_LABEL_LINES) return lines;
-					// Word wrapping can waste enough cells to create a third line even
-					// when the label fits. Use a grapheme-safe column split in that case.
-					const first = sliceWithWidth(bounded, 0, contentWidth, true);
-					const rest = sliceWithWidth(bounded, first.width, visibleWidth(bounded) - first.width, true);
-					return [first.text, truncateMiddleToWidth(rest.text, contentWidth)];
-				}),
-			);
-			const labelHeights = Array.from({ length: CARD_MAX_WINDOWS }, (_, index) =>
-				Math.max(0, ...labelLines.map(rows => rows[index]?.length ?? 0)),
-			);
-			const layout: CardRowLayout = {
-				labelWidth,
-				resetWidth,
-				barWidth: Math.max(1, stacked ? contentWidth - suffixWidth : inlineBarWidth),
-				stacked,
-				labelHeights,
-			};
-			const rowCards = cards.map((card, index) =>
-				this.#renderCardLines(card, cardWidth, labelLines[index]!, layout),
-			);
-			const height = Math.max(...rowCards.map(card => card.length));
-			for (let lineIdx = 0; lineIdx < height; lineIdx++) {
-				const segments = rowCards.map(card => {
-					const line = card[lineIdx] ?? "";
-					return line + " ".repeat(Math.max(0, cardWidth - visibleWidth(line)));
-				});
-				lines.push(segments.join(" ".repeat(CARD_GUTTER)).trimEnd());
-			}
-			if (start + columns < active.length) lines.push("");
-		}
-		// Untouched providers collapse into a single tick line: their windows
-		// are all at 100% free (or have no limits), so per-window bars are noise.
-		if (idle.length > 0) {
-			if (active.length > 0) lines.push("");
-			const names = idle.map(card => card.name).join(" · ");
-			const prefix = `${theme.fg("success", theme.status.success)} `;
-			lines.push(truncateToWidth(`${prefix}${theme.fg("dim", `untouched: ${names}`)}`, innerWidth));
-		}
-		return lines;
-	}
 
 	// ---------------------------------------------------------------------------
 	// Heatmap rendering
@@ -1011,60 +865,98 @@ export class UsageDashboardComponent implements Component {
 	// Frame
 	// ---------------------------------------------------------------------------
 
-	#overviewLines(innerWidth: number): string[] {
-		const cached = this.#overviewCache;
-		if (cached?.revision === this.#revision && cached.width === innerWidth) return cached.lines;
-		const lines: string[] = [];
-		lines.push(...this.#renderCardsGrid(innerWidth));
-		lines.push("");
-		lines.push(...this.#renderHeatmap(innerWidth));
-		this.#overviewCache = { revision: this.#revision, width: innerWidth, lines };
-		return lines;
+	#selectedIndex(): number {
+		return Math.max(
+			0,
+			this.#entries.findIndex(entry => entry.key === this.#selectedKey),
+		);
 	}
 
-	#detailLines(innerWidth: number): string[] {
-		if (this.#detailCache?.width !== innerWidth) {
-			this.#detailCache = {
-				width: innerWidth,
-				lines: this.#options.renderDetail(innerWidth, this.#reports).split("\n"),
-			};
+	/** Body lines of the active tab; the overview also reports which lines hold the selected credential. */
+	#bodyLines(innerWidth: number, nowMs: number): { lines: string[]; selection?: { start: number; end: number } } {
+		switch (this.#view) {
+			case "overview": {
+				const overview = renderUsageOverview(this.#entries, {
+					width: innerWidth,
+					nowMs,
+					selected: this.#selectedIndex(),
+				});
+				return {
+					lines: overview.lines,
+					selection: {
+						start: this.#selectedIndex() === 0 ? 0 : overview.selectedStart,
+						end: overview.selectedEnd,
+					},
+				};
+			}
+			case "detail":
+				return { lines: renderUsageDetail(this.#entries[this.#selectedIndex()], { width: innerWidth, nowMs }) };
+			case "tokens":
+				return {
+					lines: [
+						...renderUsageTokens({
+							width: innerWidth,
+							data: this.#tokens,
+							loading: this.#tokensLoading,
+							error: this.#tokensError,
+							period: this.#statsPeriod,
+						}),
+						"",
+						...this.#renderHeatmap(innerWidth),
+					],
+				};
 		}
-		return this.#detailCache.lines;
+	}
+
+	/** The freshness row under the tabs: refreshing, the last failure, or how old the reports are. */
+	#statusLine(nowMs: number): string {
+		if (this.#refreshing) return theme.fg("dim", "refreshing…");
+		if (this.#refreshError) return theme.fg("warning", `Refresh failed: ${sanitizeDisplayLine(this.#refreshError)}`);
+		const latestFetchedAt = Math.max(0, ...this.#reports.map(report => report.fetchedAt ?? 0));
+		return latestFetchedAt ? theme.fg("dim", `checked ${formatDuration(nowMs - latestFetchedAt)} ago`) : "";
+	}
+
+	#hint(): string {
+		const select = editorKeys("tui.select.up", "tui.select.down");
+		const hints = ["←/→ tab"];
+		if (this.#view === "overview") hints.push(`${select} select`, `${formatKeyHint("enter")} details`);
+		else if (this.#view === "detail") hints.push(`${select} provider`);
+		else hints.push(`${select} scroll`, "p period");
+		if (this.#view === "tokens" || this.#options.refresh) hints.push("r refresh");
+		hints.push(`${editorKey("tui.select.cancel")} close`);
+		return hints.join(" · ");
 	}
 
 	render(width: number): readonly string[] {
 		const height = Math.max(14, process.stdout.rows || 40);
 		const innerWidth = Math.max(20, width - 4);
+		const nowMs = Date.now();
+		const tabLines = this.#tabBar.render(innerWidth);
+		const body = this.#bodyLines(innerWidth, nowMs);
 
-		const contentSource = this.#view === "detail" ? this.#detailLines(innerWidth) : this.#overviewLines(innerWidth);
-		// Fixed chrome: top border, blank, content…, divider, hint, bottom border.
-		const contentRows = Math.max(5, height - 5);
+		// Fixed chrome: top border, tabs, divider, status, content…, divider, hint, bottom border.
+		const contentRows = Math.max(4, height - tabLines.length - 6);
 		this.#lastViewportRows = contentRows;
-		const maxScroll = Math.max(0, contentSource.length - contentRows);
+		if (body.selection && this.#revealSelection) {
+			if (body.selection.end >= this.#scroll + contentRows) this.#scroll = body.selection.end - contentRows + 1;
+			if (body.selection.start < this.#scroll) this.#scroll = body.selection.start;
+		}
+		this.#revealSelection = false;
+		const maxScroll = Math.max(0, body.lines.length - contentRows);
 		if (this.#scroll > maxScroll) this.#scroll = maxScroll;
 
-		const latestFetchedAt = Math.max(0, ...this.#reports.map(report => report.fetchedAt ?? 0));
-		const checkedText = this.#refreshing
-			? "refreshing…"
-			: latestFetchedAt
-				? `checked ${formatDuration(this.#nowMs - latestFetchedAt)} ago`
-				: "";
-		const title = this.#view === "detail" ? "Usage · Details" : "Usage";
-
-		const scrollHint = maxScroll > 0 ? `${editorKeys("tui.select.up", "tui.select.down")} scroll · ` : "";
-		const cancel = editorKey("tui.select.cancel");
-		const refreshHint = this.#options.refresh ? "r refresh · " : "";
-		const hint =
-			this.#view === "detail"
-				? `${scrollHint}${refreshHint}${cancel} back`
-				: `${scrollHint}${refreshHint}${formatKeyHint("enter")} details · ${cancel} close`;
-		this.#panel.title = title;
-		this.#header.setLines([checkedText ? theme.fg("dim", checkedText) : ""]);
-		this.#body.setLines(contentSource.slice(this.#scroll, this.#scroll + contentRows));
-		this.#body.setHeight(contentRows);
-		this.#footer.setLines([theme.fg("dim", hint)]);
-		return this.#panel.render(width);
+		const frame = new ListDialogFrame(width, "Usage");
+		const out = frame.lines;
+		this.#tabRowStart = out.length;
+		this.#tabRowCount = tabLines.length;
+		for (const line of tabLines) out.push(row(line, width));
+		out.push(divider(width));
+		out.push(row(truncateToWidth(this.#statusLine(nowMs), innerWidth), width));
+		const visible = body.lines.slice(this.#scroll, this.#scroll + contentRows);
+		for (let i = 0; i < contentRows; i++) out.push(row(visible[i] ?? "", width));
+		return frame.finish(truncateToWidth(this.#hint(), innerWidth));
 	}
+
 
 	// ---------------------------------------------------------------------------
 	// Native description
@@ -1747,21 +1639,24 @@ export class UsageDashboardComponent implements Component {
 		if (!refresh || this.#refreshing || this.#closed) return;
 		this.#refreshing = true;
 		this.#refreshError = null;
+		this.#rebuild();
 		this.#changed();
 		try {
-			const reports = await refresh();
+			const snapshot = await refresh();
 			if (this.#closed) return;
-			if (reports) {
-				this.#reports = reports;
+			if (snapshot) {
+				this.#reports = snapshot.reports;
+				this.#unavailable = snapshot.unavailableAccounts;
 				this.#nowMs = Date.now();
-				this.#cards = buildProviderCards(reports, this.#nowMs, this.#options.unavailableAccounts);
-				this.#detailCache = null;
 			}
 		} catch (error) {
 			this.#refreshError = error instanceof Error ? error.message : String(error);
 		} finally {
 			this.#refreshing = false;
-			if (!this.#closed) this.#changed();
+			if (!this.#closed) {
+				this.#rebuild();
+				this.#changed();
+			}
 		}
 	}
 
@@ -1776,8 +1671,27 @@ export class UsageDashboardComponent implements Component {
 		this.#options.requestRender();
 	}
 
-	#setView(view: "overview" | "detail"): void {
+	#setView(view: UsageTab): void {
+		if (view === this.#view) return;
 		this.#view = view;
+		this.#tabBar.setActiveIndex(USAGE_TABS.indexOf(view));
+		this.#scroll = 0;
+		this.#revealSelection = true;
+		if (view === "tokens" && !this.#tokensRequested) void this.#loadTokens();
+		this.#changed();
+	}
+
+	#selectBy(delta: number): void {
+		const next = moveUsageSelection(this.#selectedIndex(), delta, this.#entries.length);
+		this.#selectedKey = this.#entries[next]?.key;
+		this.#revealSelection = true;
+		if (this.#view === "detail") this.#scroll = 0;
+		this.#changed();
+	}
+
+	#cyclePeriod(): void {
+		const next = (USAGE_STATS_PERIODS.indexOf(this.#statsPeriod) + 1) % USAGE_STATS_PERIODS.length;
+		this.#statsPeriod = USAGE_STATS_PERIODS[next]!;
 		this.#scroll = 0;
 		this.#changed();
 	}
@@ -1785,40 +1699,66 @@ export class UsageDashboardComponent implements Component {
 	handleInput(data: string): void {
 		if (
 			routeSgrMouseInput(data, event => {
-				if (event.wheel === null) return false;
-				this.#scrollBy(event.wheel * 2);
+				if (event.wheel !== null) {
+					this.#scrollBy(event.wheel * 2);
+					return true;
+				}
+				const tabLine = event.row - this.#tabRowStart;
+				if (tabLine < 0 || tabLine >= this.#tabRowCount) return true;
+				const tab = this.#tabBar.tabAt(tabLine, event.col - 2);
+				if (event.motion) {
+					this.#tabBar.setHoverTab(tab?.id ?? null);
+					this.#options.requestRender();
+				} else if (event.leftClick && tab) {
+					this.#setView(tab.id as UsageTab);
+				}
 				return true;
 			})
 		) {
 			return;
 		}
 		if (matchesSelectCancel(data) || matchesKey(data, "q")) {
-			if (this.#view === "detail") {
-				this.#setView("overview");
-				return;
-			}
 			this.#close();
 			return;
 		}
 		if (matchesKey(data, "r")) {
-			void this.#refresh();
+			if (this.#view === "tokens") void this.#loadTokens();
+			else void this.#refresh();
 			return;
 		}
-		if (
-			this.#view === "overview" &&
-			(matchesKey(data, "return") || matchesKey(data, "tab") || matchesKey(data, "d"))
-		) {
+		if (matchesKey(data, "left") || matchesKey(data, "shift+tab")) {
+			this.#setView(stepUsageTab(this.#view, -1));
+			return;
+		}
+		if (matchesKey(data, "right") || matchesKey(data, "tab")) {
+			this.#setView(stepUsageTab(this.#view, 1));
+			return;
+		}
+		for (const [index, key] of TAB_NUMBER_KEYS.entries()) {
+			if (matchesKey(data, key)) {
+				this.#setView(USAGE_TABS[index]!);
+				return;
+			}
+		}
+		if (this.#view === "overview" && matchesKey(data, "return")) {
 			this.#setView("detail");
 			return;
 		}
-		if (matchesSelectUp(data)) this.#scrollBy(-1);
-		else if (matchesSelectDown(data)) this.#scrollBy(1);
-		else if (matchesSelectPageUp(data)) this.#scrollBy(-this.#lastViewportRows);
+		if (this.#view === "tokens" && matchesKey(data, "p")) {
+			this.#cyclePeriod();
+			return;
+		}
+		const selectable = this.#view !== "tokens";
+		if (matchesSelectUp(data)) {
+			if (selectable) this.#selectBy(-1);
+			else this.#scrollBy(-1);
+		} else if (matchesSelectDown(data)) {
+			if (selectable) this.#selectBy(1);
+			else this.#scrollBy(1);
+		} else if (matchesSelectPageUp(data)) this.#scrollBy(-this.#lastViewportRows);
 		else if (matchesSelectPageDown(data)) this.#scrollBy(this.#lastViewportRows);
-		else if (matchesKey(data, "home")) {
-			this.#scroll = 0;
-			this.#options.requestRender();
-		} else if (matchesKey(data, "end")) this.#scrollBy(Number.MAX_SAFE_INTEGER);
+		else if (matchesKey(data, "home")) this.#scrollBy(-Number.MAX_SAFE_INTEGER);
+		else if (matchesKey(data, "end")) this.#scrollBy(Number.MAX_SAFE_INTEGER);
 	}
 
 	#close(): void {

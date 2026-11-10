@@ -32,6 +32,8 @@ export interface UsageEntry {
 	state: "ok" | "loading" | "unavailable" | "error";
 	report?: UsageReport;
 	error?: string;
+	/** The credential this session is currently using. */
+	active?: boolean;
 }
 
 /** Stable, human account name for a report. */
@@ -48,11 +50,32 @@ export function reportAccountLabel(report: UsageReport, index: number): string {
 	return sanitizeDisplayLine(org && org !== identity ? `${identity} (${org})` : identity);
 }
 
+/** Identity of the credential the session is using, as the auth storage reports it. */
+export interface ActiveUsageAccount {
+	provider: string;
+	email?: string;
+	accountId?: string;
+	orgId?: string;
+	projectId?: string;
+}
+
 export interface BuildUsageEntriesOptions {
 	/** A fetch is in flight: accounts without a report read as loading. */
 	loading: boolean;
 	/** The last fetch failed: accounts without a report read as error. */
 	error?: string | null;
+	/** Marks the report entry whose metadata matches the session's credential. */
+	activeAccount?: ActiveUsageAccount;
+}
+
+/** Whether a report was fetched for the credential in use: account id first, then email, then project. */
+function reportMatchesActive(report: UsageReport, active: ActiveUsageAccount | undefined): boolean {
+	if (!active || active.provider !== report.provider) return false;
+	const metadata = report.metadata;
+	const orgMatches = !active.orgId || !metadata?.orgId || metadata.orgId === active.orgId;
+	if (active.accountId) return metadata?.accountId === active.accountId && orgMatches;
+	if (active.email) return metadata?.email === active.email && orgMatches;
+	return !!active.projectId && metadata?.projectId === active.projectId;
 }
 
 /**
@@ -80,7 +103,12 @@ export function buildUsageEntries(
 	for (const report of reports) {
 		const index = providerReportCount.get(report.provider) ?? 0;
 		providerReportCount.set(report.provider, index + 1);
-		add(report.provider, { account: reportAccountLabel(report, index), state: "ok", report });
+		add(report.provider, {
+			account: reportAccountLabel(report, index),
+			state: "ok",
+			report,
+			...(reportMatchesActive(report, options.activeAccount) ? { active: true } : {}),
+		});
 	}
 	const missing: UsageEntry["state"] = options.loading ? "loading" : options.error ? "error" : "unavailable";
 	for (const account of unavailableAccounts) {
@@ -136,6 +164,7 @@ export interface UsageSessionTokens {
 }
 
 export type UsageStatsPeriodId = "day" | "week" | "month" | "year";
+export const USAGE_STATS_PERIODS: readonly UsageStatsPeriodId[] = ["day", "week", "month", "year"];
 
 /** Local stats-DB figures (every session on this machine) since a period start. */
 export interface UsageStatsPeriod {
