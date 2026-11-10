@@ -273,4 +273,48 @@ describe("renderUsageDetail", () => {
 		expect(percentText).not.toContain("requests");
 		expect(percentText).not.toContain("remaining");
 	});
+
+	it("shows active session badge when active and respects width limits", () => {
+		const baseEntry: UsageEntry = {
+			key: "anthropic#0",
+			provider: "anthropic",
+			providerName: "Anthropic",
+			account: "user@example.com",
+			state: "ok",
+			report: {
+				provider: "anthropic",
+				fetchedAt: nowMs - 60_000,
+				limits: [
+					makeLimit("5h", "Claude 3.5 Sonnet", 5 * 3_600_000, 0.42, "ok", nowMs + 7_200_000),
+				],
+			},
+		};
+
+		const activeEntry: UsageEntry = {
+			...baseEntry,
+			active: true,
+		};
+		const inactiveEntry: UsageEntry = {
+			...baseEntry,
+			active: false,
+		};
+
+		const activeText = renderUsageDetail(activeEntry, { width: 80, nowMs })
+			.map(l => Bun.stripANSI(l))
+			.join("\n");
+		expect(activeText).toContain("in use by this session");
+
+		const inactiveText = renderUsageDetail(inactiveEntry, { width: 80, nowMs })
+			.map(l => Bun.stripANSI(l))
+			.join("\n");
+		expect(inactiveText).not.toContain("in use by this session");
+
+		for (const width of [20, 40, 100]) {
+			const lines = renderUsageDetail(activeEntry, { width, nowMs });
+			expect(lines.length).toBeGreaterThan(0);
+			for (const line of lines) {
+				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+			}
+		}
+	});
 });

@@ -131,6 +131,10 @@ export function renderUsageDetail(entry: UsageEntry | undefined, options: UsageD
 	const headLine = headParts.join(" · ");
 	lines.push(visibleWidth(headLine) > width ? truncateToWidth(headLine, width) : headLine);
 
+	if (entry.active) {
+		lines.push(theme.fg("accent", "in use by this session"));
+	}
+
 	// State branching
 	if (entry.state === "loading") {
 		lines.push(theme.fg("dim", "Loading usage…"));
