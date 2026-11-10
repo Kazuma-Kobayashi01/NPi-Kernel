@@ -177,6 +177,10 @@ export const usageHelp = {
 	description: "Show provider usage limits for every authenticated account",
 } satisfies CommandMetadata;
 
+export const officeHelp = {
+	description: "Manage the Virtual Office: roster, company size, and approved pull requests",
+} satisfies CommandMetadata;
+
 export const worktreeHelp = {
 	description: "Add, list, or clear git worktrees (clone-first when enabled)",
 } satisfies CommandMetadata;

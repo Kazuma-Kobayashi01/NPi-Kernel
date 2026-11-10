@@ -3333,6 +3333,428 @@ func (v *SessionCredits) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type OfficeScale string
+
+const (
+	OfficeScaleTeam       OfficeScale = "team"
+	OfficeScaleStudio     OfficeScale = "studio"
+	OfficeScaleEnterprise OfficeScale = "enterprise"
+)
+
+func (v *OfficeScale) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficeScale")
+	if err != nil {
+		return err
+	}
+	switch value := OfficeScale(s); value {
+	case OfficeScaleTeam, OfficeScaleStudio, OfficeScaleEnterprise:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficeScale", s)
+}
+
+type OfficeMember struct {
+	// Permanent name, `Worker-xxxxxx`.
+	ID   string           `json:"id"`
+	Role OfficeMemberRole `json:"role"`
+	// Model selector; empty uses the default subagent model.
+	Model      string                 `json:"model"`
+	Capability OfficeMemberCapability `json:"capability"`
+}
+
+func (v *OfficeMember) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeMember", v.decodeFrom)
+}
+
+func (v *OfficeMember) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeMember
+	d := fieldDecoder{raw: raw, owner: "OfficeMember"}
+	d.required("id", &out.ID)
+	d.required("role", &out.Role)
+	d.required("model", &out.Model)
+	d.required("capability", &out.Capability)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeMemberRole string
+
+const (
+	OfficeMemberRoleLeader OfficeMemberRole = "leader"
+	OfficeMemberRoleWorker OfficeMemberRole = "worker"
+)
+
+func (v *OfficeMemberRole) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficeMemberRole")
+	if err != nil {
+		return err
+	}
+	switch value := OfficeMemberRole(s); value {
+	case OfficeMemberRoleLeader, OfficeMemberRoleWorker:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficeMemberRole", s)
+}
+
+type OfficeMemberCapability string
+
+const (
+	OfficeMemberCapabilityCommon       OfficeMemberCapability = "common"
+	OfficeMemberCapabilityProfessional OfficeMemberCapability = "professional"
+	OfficeMemberCapabilityExpert       OfficeMemberCapability = "expert"
+)
+
+func (v *OfficeMemberCapability) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficeMemberCapability")
+	if err != nil {
+		return err
+	}
+	switch value := OfficeMemberCapability(s); value {
+	case OfficeMemberCapabilityCommon, OfficeMemberCapabilityProfessional, OfficeMemberCapabilityExpert:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficeMemberCapability", s)
+}
+
+type Office struct {
+	Number  int64          `json:"number"`
+	Members []OfficeMember `json:"members"`
+}
+
+func (v *Office) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "Office", v.decodeFrom)
+}
+
+func (v *Office) decodeFrom(raw map[string]json.RawMessage) error {
+	var out Office
+	d := fieldDecoder{raw: raw, owner: "Office"}
+	d.required("number", &out.Number)
+	d.required("members", &out.Members)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficePullReview struct {
+	// Member name, `general-manager`, or `owner`.
+	By      string                  `json:"by"`
+	Verdict OfficePullReviewVerdict `json:"verdict"`
+	Comment string                  `json:"comment"`
+	At      string                  `json:"at"`
+}
+
+func (v *OfficePullReview) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficePullReview", v.decodeFrom)
+}
+
+func (v *OfficePullReview) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficePullReview
+	d := fieldDecoder{raw: raw, owner: "OfficePullReview"}
+	d.required("by", &out.By)
+	d.required("verdict", &out.Verdict)
+	d.required("comment", &out.Comment)
+	d.required("at", &out.At)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficePullReviewVerdict string
+
+const (
+	OfficePullReviewVerdictApprove        OfficePullReviewVerdict = "approve"
+	OfficePullReviewVerdictRequestChanges OfficePullReviewVerdict = "request_changes"
+)
+
+func (v *OfficePullReviewVerdict) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficePullReviewVerdict")
+	if err != nil {
+		return err
+	}
+	switch value := OfficePullReviewVerdict(s); value {
+	case OfficePullReviewVerdictApprove, OfficePullReviewVerdictRequestChanges:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficePullReviewVerdict", s)
+}
+
+// A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch.
+type OfficePull struct {
+	Number      int64              `json:"number"`
+	Kind        OfficePullKind     `json:"kind"`
+	Office      int64              `json:"office"`
+	Author      string             `json:"author"`
+	Title       string             `json:"title"`
+	Body        string             `json:"body"`
+	Source      string             `json:"source"`
+	Target      string             `json:"target"`
+	Status      OfficePullStatus   `json:"status"`
+	Reviews     []OfficePullReview `json:"reviews"`
+	CreatedAt   string             `json:"createdAt"`
+	UpdatedAt   string             `json:"updatedAt"`
+	MergeCommit *string            `json:"mergeCommit,omitempty"`
+}
+
+func (v *OfficePull) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficePull", v.decodeFrom)
+}
+
+func (v *OfficePull) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficePull
+	d := fieldDecoder{raw: raw, owner: "OfficePull"}
+	d.required("number", &out.Number)
+	d.required("kind", &out.Kind)
+	d.required("office", &out.Office)
+	d.required("author", &out.Author)
+	d.required("title", &out.Title)
+	d.required("body", &out.Body)
+	d.required("source", &out.Source)
+	d.required("target", &out.Target)
+	d.required("status", &out.Status)
+	d.required("reviews", &out.Reviews)
+	d.required("createdAt", &out.CreatedAt)
+	d.required("updatedAt", &out.UpdatedAt)
+	d.optional("mergeCommit", &out.MergeCommit)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficePullKind string
+
+const (
+	OfficePullKindWorker OfficePullKind = "worker"
+	OfficePullKindOffice OfficePullKind = "office"
+)
+
+func (v *OfficePullKind) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficePullKind")
+	if err != nil {
+		return err
+	}
+	switch value := OfficePullKind(s); value {
+	case OfficePullKindWorker, OfficePullKindOffice:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficePullKind", s)
+}
+
+type OfficePullStatus string
+
+const (
+	OfficePullStatusOpen             OfficePullStatus = "open"
+	OfficePullStatusChangesRequested OfficePullStatus = "changes_requested"
+	OfficePullStatusApproved         OfficePullStatus = "approved"
+	OfficePullStatusMerged           OfficePullStatus = "merged"
+	OfficePullStatusClosed           OfficePullStatus = "closed"
+)
+
+func (v *OfficePullStatus) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficePullStatus")
+	if err != nil {
+		return err
+	}
+	switch value := OfficePullStatus(s); value {
+	case OfficePullStatusOpen, OfficePullStatusChangesRequested, OfficePullStatusApproved, OfficePullStatusMerged, OfficePullStatusClosed:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficePullStatus", s)
+}
+
+type OfficeNote struct {
+	By   string `json:"by"`
+	Text string `json:"text"`
+	At   string `json:"at"`
+}
+
+func (v *OfficeNote) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeNote", v.decodeFrom)
+}
+
+func (v *OfficeNote) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeNote
+	d := fieldDecoder{raw: raw, owner: "OfficeNote"}
+	d.required("by", &out.By)
+	d.required("text", &out.Text)
+	d.required("at", &out.At)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeLogEntry struct {
+	Pr     int64              `json:"pr"`
+	Kind   OfficeLogEntryKind `json:"kind"`
+	Title  string             `json:"title"`
+	Author string             `json:"author"`
+	// Branch the pull request merged into.
+	Target string   `json:"target"`
+	Files  []string `json:"files"`
+	At     string   `json:"at"`
+}
+
+func (v *OfficeLogEntry) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeLogEntry", v.decodeFrom)
+}
+
+func (v *OfficeLogEntry) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeLogEntry
+	d := fieldDecoder{raw: raw, owner: "OfficeLogEntry"}
+	d.required("pr", &out.Pr)
+	d.required("kind", &out.Kind)
+	d.required("title", &out.Title)
+	d.required("author", &out.Author)
+	d.required("target", &out.Target)
+	d.required("files", &out.Files)
+	d.required("at", &out.At)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeLogEntryKind string
+
+const (
+	OfficeLogEntryKindWorker OfficeLogEntryKind = "worker"
+	OfficeLogEntryKindOffice OfficeLogEntryKind = "office"
+)
+
+func (v *OfficeLogEntryKind) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "OfficeLogEntryKind")
+	if err != nil {
+		return err
+	}
+	switch value := OfficeLogEntryKind(s); value {
+	case OfficeLogEntryKindWorker, OfficeLogEntryKindOffice:
+		*v = value
+		return nil
+	}
+	return unknownValue("OfficeLogEntryKind", s)
+}
+
+// What one office remembers about the project: kept lessons and merged pull requests, oldest first.
+type OfficeMemory struct {
+	Office int64            `json:"office"`
+	Notes  []OfficeNote     `json:"notes"`
+	Log    []OfficeLogEntry `json:"log"`
+}
+
+func (v *OfficeMemory) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeMemory", v.decodeFrom)
+}
+
+func (v *OfficeMemory) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeMemory
+	d := fieldDecoder{raw: raw, owner: "OfficeMemory"}
+	d.required("office", &out.Office)
+	d.required("notes", &out.Notes)
+	d.required("log", &out.Log)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeState struct {
+	Enabled bool        `json:"enabled"`
+	Scale   OfficeScale `json:"scale"`
+	Offices []Office    `json:"offices"`
+	// The checkout and branch the offices work for; null outside a git repository or on a detached HEAD.
+	Company *OfficeCompany `json:"company"`
+	Pulls   []OfficePull   `json:"pulls"`
+	// One entry per running office, in office order; empty when `company` is null.
+	Memory []OfficeMemory `json:"memory"`
+	// Why `company` is null.
+	Reason *string `json:"reason,omitempty"`
+}
+
+func (v *OfficeState) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeState", v.decodeFrom)
+}
+
+func (v *OfficeState) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeState
+	d := fieldDecoder{raw: raw, owner: "OfficeState"}
+	d.required("enabled", &out.Enabled)
+	d.required("scale", &out.Scale)
+	d.required("offices", &out.Offices)
+	d.nullable("company", &out.Company)
+	d.required("pulls", &out.Pulls)
+	d.required("memory", &out.Memory)
+	d.optional("reason", &out.Reason)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeCompany struct {
+	Checkout   string `json:"checkout"`
+	BaseBranch string `json:"baseBranch"`
+}
+
+func (v *OfficeCompany) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeCompany", v.decodeFrom)
+}
+
+func (v *OfficeCompany) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeCompany
+	d := fieldDecoder{raw: raw, owner: "OfficeCompany"}
+	d.required("checkout", &out.Checkout)
+	d.required("baseBranch", &out.BaseBranch)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type OfficeCommandResult struct {
+	// What the same `/office` command prints.
+	Text  string      `json:"text"`
+	State OfficeState `json:"state"`
+	// The command was refused or malformed; `text` says why.
+	Failed *bool `json:"failed,omitempty"`
+}
+
+func (v *OfficeCommandResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeCommandResult", v.decodeFrom)
+}
+
+func (v *OfficeCommandResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeCommandResult
+	d := fieldDecoder{raw: raw, owner: "OfficeCommandResult"}
+	d.required("text", &out.Text)
+	d.required("state", &out.State)
+	d.optional("failed", &out.Failed)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type SessionStats struct {
 	SessionID         string             `json:"sessionId"`
 	UserMessages      int64              `json:"userMessages"`
@@ -8965,6 +9387,26 @@ func (c Commands) Bash(ctx context.Context, p BashCommand) (BashResult, error) {
 // AbortBash sends "abort_bash": Abort the running shell command.
 func (c Commands) AbortBash(ctx context.Context) error {
 	return c.call(ctx, "abort_bash", nil, 0, nil)
+}
+
+// GetOfficeState sends "get_office_state": Virtual Office settings, roster, and pull requests for the session's checkout.
+func (c Commands) GetOfficeState(ctx context.Context) (OfficeState, error) {
+	var out OfficeState
+	err := c.call(ctx, "get_office_state", nil, 0, &out)
+	return out, err
+}
+
+// OfficeCommandCommand holds the parameters of "office_command".
+type OfficeCommandCommand struct {
+	// The command words, e.g. `["merge", "4"]`.
+	Args []string `json:"args"`
+}
+
+// OfficeCommand sends "office_command": Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.
+func (c Commands) OfficeCommand(ctx context.Context, p OfficeCommandCommand) (OfficeCommandResult, error) {
+	var out OfficeCommandResult
+	err := c.call(ctx, "office_command", p, 0, &out)
+	return out, err
 }
 
 // GetSessionStats sends "get_session_stats": Session statistics.

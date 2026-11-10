@@ -49,6 +49,8 @@ import {
 	wordCompletionQuery,
 } from "@oh-my-pi/pi-tui/prompt/word-completion";
 import { requestTextPrediction, textPredictionBackend } from "../../predict/client";
+import { runOfficeCommand } from "../../office/commands";
+import { readOfficeState } from "../../office/company";
 import { type AgentSession, type NavigateTreeResult, SessionBusyError } from "../../session/agent-session";
 import type { MCPManager } from "../../mcp/manager";
 import { reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
@@ -2801,6 +2803,23 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			// =================================================================
 			// Session
 			// =================================================================
+
+			case "get_office_state": {
+				return success(
+					id,
+					"get_office_state",
+					await readOfficeState(session.settings, session.sessionManager.getCwd()),
+				);
+			}
+
+			case "office_command": {
+				const cwd = session.sessionManager.getCwd();
+				const result = await runOfficeCommand(command.args, session.settings, cwd);
+				return success(id, "office_command", {
+					...result,
+					state: await readOfficeState(session.settings, cwd),
+				});
+			}
 
 			case "get_session_stats": {
 				const stats = session.getSessionStats();

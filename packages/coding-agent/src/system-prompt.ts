@@ -68,6 +68,7 @@ import {
 	cfgPersonality,
 } from "./session/settings";
 import { cfgTaskBatch, cfgTaskDelegationAppetite, cfgTaskEager, cfgTaskSubagentModelMode } from "./task/settings";
+import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "./office/settings";
 import type { SubagentPreferences } from "./task/delegation-preferences";
 import {
 	cfgAsyncEnabled,
@@ -109,6 +110,10 @@ export const cfgSystemPromptInputs = combine({
 	taskBatch: cfgTaskBatch,
 	taskDelegationAppetite: cfgTaskDelegationAppetite,
 	taskSubagentModelMode: cfgTaskSubagentModelMode,
+	// The general manager's brief lists the offices and their members.
+	officeEnabled: cfgOfficeEnabled,
+	officeScale: cfgOfficeScale,
+	officeOffices: cfgOfficeOffices,
 	// Rule bucketing (TTSR registrations, rulebook, always-apply) runs at rebuild time.
 	ttsrEnabled: cfgTtsrEnabled,
 	ttsrBuiltinRules: cfgTtsrBuiltinRules,

@@ -683,6 +683,28 @@
 				"clientOmit": []
 			},
 			{
+				"name": "get_office_state",
+				"doc": "Virtual Office settings, roster, and pull requests for the session's checkout.",
+				"params": null,
+				"result": "OfficeState",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
+				"name": "office_command",
+				"doc": "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
+				"params": "OfficeCommandParams",
+				"result": "OfficeCommandResult",
+				"nullable": false,
+				"unwrap": null,
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "get_session_stats",
 				"doc": "Session statistics.",
 				"params": null,
@@ -3551,6 +3573,343 @@
 				"cost",
 				"committedCost",
 				"acuCost"
+			]
+		},
+		"OfficeScale": {
+			"enum": [
+				"team",
+				"studio",
+				"enterprise"
+			],
+			"type": "string"
+		},
+		"OfficeMember": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"description": "Permanent name, `Worker-xxxxxx`."
+				},
+				"role": {
+					"enum": [
+						"leader",
+						"worker"
+					],
+					"type": "string"
+				},
+				"model": {
+					"type": "string",
+					"description": "Model selector; empty uses the default subagent model."
+				},
+				"capability": {
+					"enum": [
+						"common",
+						"professional",
+						"expert"
+					],
+					"type": "string"
+				}
+			},
+			"required": [
+				"id",
+				"role",
+				"model",
+				"capability"
+			]
+		},
+		"Office": {
+			"type": "object",
+			"properties": {
+				"number": {
+					"type": "integer"
+				},
+				"members": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeMember"
+					}
+				}
+			},
+			"required": [
+				"number",
+				"members"
+			]
+		},
+		"OfficePullReview": {
+			"type": "object",
+			"properties": {
+				"by": {
+					"type": "string",
+					"description": "Member name, `general-manager`, or `owner`."
+				},
+				"verdict": {
+					"enum": [
+						"approve",
+						"request_changes"
+					],
+					"type": "string"
+				},
+				"comment": {
+					"type": "string"
+				},
+				"at": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"by",
+				"verdict",
+				"comment",
+				"at"
+			]
+		},
+		"OfficePull": {
+			"type": "object",
+			"properties": {
+				"number": {
+					"type": "integer"
+				},
+				"kind": {
+					"enum": [
+						"worker",
+						"office"
+					],
+					"type": "string"
+				},
+				"office": {
+					"type": "integer"
+				},
+				"author": {
+					"type": "string"
+				},
+				"title": {
+					"type": "string"
+				},
+				"body": {
+					"type": "string"
+				},
+				"source": {
+					"type": "string"
+				},
+				"target": {
+					"type": "string"
+				},
+				"status": {
+					"enum": [
+						"open",
+						"changes_requested",
+						"approved",
+						"merged",
+						"closed"
+					],
+					"type": "string"
+				},
+				"reviews": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficePullReview"
+					}
+				},
+				"createdAt": {
+					"type": "string"
+				},
+				"updatedAt": {
+					"type": "string"
+				},
+				"mergeCommit": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"number",
+				"kind",
+				"office",
+				"author",
+				"title",
+				"body",
+				"source",
+				"target",
+				"status",
+				"reviews",
+				"createdAt",
+				"updatedAt"
+			],
+			"description": "A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch."
+		},
+		"OfficeNote": {
+			"type": "object",
+			"properties": {
+				"by": {
+					"type": "string"
+				},
+				"text": {
+					"type": "string"
+				},
+				"at": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"by",
+				"text",
+				"at"
+			]
+		},
+		"OfficeLogEntry": {
+			"type": "object",
+			"properties": {
+				"pr": {
+					"type": "integer"
+				},
+				"kind": {
+					"enum": [
+						"worker",
+						"office"
+					],
+					"type": "string"
+				},
+				"title": {
+					"type": "string"
+				},
+				"author": {
+					"type": "string"
+				},
+				"target": {
+					"type": "string",
+					"description": "Branch the pull request merged into."
+				},
+				"files": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"at": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"pr",
+				"kind",
+				"title",
+				"author",
+				"target",
+				"files",
+				"at"
+			]
+		},
+		"OfficeMemory": {
+			"type": "object",
+			"properties": {
+				"office": {
+					"type": "integer"
+				},
+				"notes": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeNote"
+					}
+				},
+				"log": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeLogEntry"
+					}
+				}
+			},
+			"required": [
+				"office",
+				"notes",
+				"log"
+			],
+			"description": "What one office remembers about the project: kept lessons and merged pull requests, oldest first."
+		},
+		"OfficeState": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"scale": {
+					"$ref": "#/$defs/OfficeScale"
+				},
+				"offices": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/Office"
+					}
+				},
+				"company": {
+					"anyOf": [
+						{
+							"$ref": "#/$defs/OfficeCompany"
+						},
+						{
+							"type": "null"
+						}
+					],
+					"description": "The checkout and branch the offices work for; null outside a git repository or on a detached HEAD."
+				},
+				"pulls": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficePull"
+					}
+				},
+				"memory": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/OfficeMemory"
+					},
+					"description": "One entry per running office, in office order; empty when `company` is null."
+				},
+				"reason": {
+					"type": "string",
+					"description": "Why `company` is null."
+				}
+			},
+			"required": [
+				"enabled",
+				"scale",
+				"offices",
+				"company",
+				"pulls",
+				"memory"
+			]
+		},
+		"OfficeCompany": {
+			"type": "object",
+			"properties": {
+				"checkout": {
+					"type": "string"
+				},
+				"baseBranch": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"checkout",
+				"baseBranch"
+			]
+		},
+		"OfficeCommandResult": {
+			"type": "object",
+			"properties": {
+				"text": {
+					"type": "string",
+					"description": "What the same `/office` command prints."
+				},
+				"state": {
+					"$ref": "#/$defs/OfficeState"
+				},
+				"failed": {
+					"type": "boolean",
+					"description": "The command was refused or malformed; `text` says why."
+				}
+			},
+			"required": [
+				"text",
+				"state"
 			]
 		},
 		"SessionStats": {
@@ -7436,6 +7795,21 @@
 			},
 			"required": [
 				"command"
+			]
+		},
+		"OfficeCommandParams": {
+			"type": "object",
+			"properties": {
+				"args": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"description": "The command words, e.g. `[\"merge\", \"4\"]`."
+				}
+			},
+			"required": [
+				"args"
 			]
 		},
 		"GetSessionLeaseParams": {

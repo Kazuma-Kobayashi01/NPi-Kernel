@@ -719,6 +719,97 @@ export interface SessionCredits {
 	acuCost: number;
 }
 
+export type OfficeScale = "team" | "studio" | "enterprise";
+
+export interface OfficeMember {
+	/** Permanent name, `Worker-xxxxxx`. */
+	id: string;
+	role: "leader" | "worker";
+	/** Model selector; empty uses the default subagent model. */
+	model: string;
+	capability: "common" | "professional" | "expert";
+}
+
+export interface Office {
+	number: number;
+	members: OfficeMember[];
+}
+
+export interface OfficePullReview {
+	/** Member name, `general-manager`, or `owner`. */
+	by: string;
+	verdict: "approve" | "request_changes";
+	comment: string;
+	at: string;
+}
+
+/** A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch. */
+export interface OfficePull {
+	number: number;
+	kind: "worker" | "office";
+	office: number;
+	author: string;
+	title: string;
+	body: string;
+	source: string;
+	target: string;
+	status: "open" | "changes_requested" | "approved" | "merged" | "closed";
+	reviews: OfficePullReview[];
+	createdAt: string;
+	updatedAt: string;
+	mergeCommit?: string;
+}
+
+export interface OfficeNote {
+	by: string;
+	text: string;
+	at: string;
+}
+
+export interface OfficeLogEntry {
+	pr: number;
+	kind: "worker" | "office";
+	title: string;
+	author: string;
+	/** Branch the pull request merged into. */
+	target: string;
+	files: string[];
+	at: string;
+}
+
+/** What one office remembers about the project: kept lessons and merged pull requests, oldest first. */
+export interface OfficeMemory {
+	office: number;
+	notes: OfficeNote[];
+	log: OfficeLogEntry[];
+}
+
+export interface OfficeState {
+	enabled: boolean;
+	scale: OfficeScale;
+	offices: Office[];
+	/** The checkout and branch the offices work for; null outside a git repository or on a detached HEAD. */
+	company: OfficeCompany | null;
+	pulls: OfficePull[];
+	/** One entry per running office, in office order; empty when `company` is null. */
+	memory: OfficeMemory[];
+	/** Why `company` is null. */
+	reason?: string;
+}
+
+export interface OfficeCompany {
+	checkout: string;
+	baseBranch: string;
+}
+
+export interface OfficeCommandResult {
+	/** What the same `/office` command prints. */
+	text: string;
+	state: OfficeState;
+	/** The command was refused or malformed; `text` says why. */
+	failed?: boolean;
+}
+
 export interface SessionStats {
 	sessionId: string;
 	userMessages: number;
@@ -1899,6 +1990,11 @@ export interface BashParams {
 	command: string;
 }
 
+export interface OfficeCommandParams {
+	/** The command words, e.g. `["merge", "4"]`. */
+	args: string[];
+}
+
 export interface GetSessionLeaseParams {
 	sessionIds: string[];
 }
@@ -2117,6 +2213,8 @@ export interface RpcWireCommands {
 	abort_retry: { params: undefined; result: undefined };
 	bash: { params: BashParams; result: BashResult };
 	abort_bash: { params: undefined; result: undefined };
+	get_office_state: { params: undefined; result: OfficeState };
+	office_command: { params: OfficeCommandParams; result: OfficeCommandResult };
 	get_session_stats: { params: undefined; result: SessionStats };
 	get_session_lease: { params: GetSessionLeaseParams; result: GetSessionLeaseResult };
 	export_html: { params: ExportHtmlParams; result: ExportHtmlResult };

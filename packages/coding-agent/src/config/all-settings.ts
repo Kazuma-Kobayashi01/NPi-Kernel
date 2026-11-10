@@ -23,6 +23,7 @@ import * as execSettings from "../exec/settings";
 import * as sandboxSettings from "../sandbox/settings";
 import * as evalSettings from "../eval/settings";
 import * as taskSettings from "../task/settings";
+import * as officeSettings from "../office/settings";
 import * as planModeSettings from "../plan-mode/settings";
 import * as goalsSettings from "../goals/settings";
 import * as titleSettings from "../utils/title-settings";
@@ -65,6 +66,7 @@ const DOMAINS: readonly Readonly<Record<string, unknown>>[] = [
 	sandboxSettings,
 	evalSettings,
 	taskSettings,
+	officeSettings,
 	planModeSettings,
 	goalsSettings,
 	titleSettings,

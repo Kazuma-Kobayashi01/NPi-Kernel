@@ -135,6 +135,11 @@ _SLOW_MODE_SCOPE_VALUES: Final[frozenset[str]] = frozenset({"session", "global"}
 _decode_slow_mode_scope = cast("Decoder[SlowModeScope]", literal(_SLOW_MODE_SCOPE_VALUES))
 
 
+OfficeScale: TypeAlias = Literal["team", "studio", "enterprise"]
+_OFFICE_SCALE_VALUES: Final[frozenset[str]] = frozenset({"team", "studio", "enterprise"})
+_decode_office_scale = cast("Decoder[OfficeScale]", literal(_OFFICE_SCALE_VALUES))
+
+
 BtwStatus: TypeAlias = Literal["running", "complete", "cancelled", "error", "interrupted"]
 """Side-question turn lifecycle; `interrupted` marks a turn whose process died while it ran."""
 _BTW_STATUS_VALUES: Final[frozenset[str]] = frozenset({"running", "complete", "cancelled", "error", "interrupted"})
@@ -899,6 +904,105 @@ class SessionCredits:
     cost: float
     committed_cost: float
     acu_cost: float
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeMember:
+    id: str
+    """Permanent name, `Worker-xxxxxx`."""
+    role: Literal["leader", "worker"]
+    model: str
+    """Model selector; empty uses the default subagent model."""
+    capability: Literal["common", "professional", "expert"]
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class Office:
+    number: int
+    members: tuple[OfficeMember, ...]
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficePullReview:
+    by: str
+    """Member name, `general-manager`, or `owner`."""
+    verdict: Literal["approve", "request_changes"]
+    comment: str
+    at: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficePull:
+    """A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch."""
+    number: int
+    kind: Literal["worker", "office"]
+    office: int
+    author: str
+    title: str
+    body: str
+    source: str
+    target: str
+    status: Literal["open", "changes_requested", "approved", "merged", "closed"]
+    reviews: tuple[OfficePullReview, ...]
+    created_at: str
+    updated_at: str
+    merge_commit: str | None = None
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeNote:
+    by: str
+    text: str
+    at: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeLogEntry:
+    pr: int
+    kind: Literal["worker", "office"]
+    title: str
+    author: str
+    target: str
+    """Branch the pull request merged into."""
+    files: tuple[str, ...]
+    at: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeMemory:
+    """What one office remembers about the project: kept lessons and merged pull requests, oldest first."""
+    office: int
+    notes: tuple[OfficeNote, ...]
+    log: tuple[OfficeLogEntry, ...]
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeState:
+    enabled: bool
+    scale: OfficeScale
+    offices: tuple[Office, ...]
+    company: OfficeCompany | None
+    """The checkout and branch the offices work for; null outside a git repository or on a detached HEAD."""
+    pulls: tuple[OfficePull, ...]
+    memory: tuple[OfficeMemory, ...]
+    """One entry per running office, in office order; empty when `company` is null."""
+    reason: str | None = None
+    """Why `company` is null."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeCompany:
+    checkout: str
+    base_branch: str
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeCommandResult:
+    text: str
+    """What the same `/office` command prints."""
+    state: OfficeState
+    failed: bool | None = None
+    """The command was refused or malformed; `text` says why."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -2421,6 +2525,114 @@ def parse_session_credits(value: object, path: str = "SessionCredits") -> Sessio
     )
 
 
+def parse_office_member(value: object, path: str = "OfficeMember") -> OfficeMember:
+    payload = expect_object(value, path)
+    return OfficeMember(
+        id=required(payload, "id", decode_str, path),
+        role=required(payload, "role", cast('Decoder[Literal["leader", "worker"]]', literal(frozenset({"leader", "worker"}))), path),
+        model=required(payload, "model", decode_str, path),
+        capability=required(payload, "capability", cast('Decoder[Literal["common", "professional", "expert"]]', literal(frozenset({"common", "professional", "expert"}))), path),
+    )
+
+
+def parse_office(value: object, path: str = "Office") -> Office:
+    payload = expect_object(value, path)
+    return Office(
+        number=required(payload, "number", decode_int, path),
+        members=required(payload, "members", array(parse_office_member), path),
+    )
+
+
+def parse_office_pull_review(value: object, path: str = "OfficePullReview") -> OfficePullReview:
+    payload = expect_object(value, path)
+    return OfficePullReview(
+        by=required(payload, "by", decode_str, path),
+        verdict=required(payload, "verdict", cast('Decoder[Literal["approve", "request_changes"]]', literal(frozenset({"approve", "request_changes"}))), path),
+        comment=required(payload, "comment", decode_str, path),
+        at=required(payload, "at", decode_str, path),
+    )
+
+
+def parse_office_pull(value: object, path: str = "OfficePull") -> OfficePull:
+    payload = expect_object(value, path)
+    return OfficePull(
+        number=required(payload, "number", decode_int, path),
+        kind=required(payload, "kind", cast('Decoder[Literal["worker", "office"]]', literal(frozenset({"worker", "office"}))), path),
+        office=required(payload, "office", decode_int, path),
+        author=required(payload, "author", decode_str, path),
+        title=required(payload, "title", decode_str, path),
+        body=required(payload, "body", decode_str, path),
+        source=required(payload, "source", decode_str, path),
+        target=required(payload, "target", decode_str, path),
+        status=required(payload, "status", cast('Decoder[Literal["open", "changes_requested", "approved", "merged", "closed"]]', literal(frozenset({"open", "changes_requested", "approved", "merged", "closed"}))), path),
+        reviews=required(payload, "reviews", array(parse_office_pull_review), path),
+        created_at=required(payload, "createdAt", decode_str, path),
+        updated_at=required(payload, "updatedAt", decode_str, path),
+        merge_commit=optional(payload, "mergeCommit", decode_str, path),
+    )
+
+
+def parse_office_note(value: object, path: str = "OfficeNote") -> OfficeNote:
+    payload = expect_object(value, path)
+    return OfficeNote(
+        by=required(payload, "by", decode_str, path),
+        text=required(payload, "text", decode_str, path),
+        at=required(payload, "at", decode_str, path),
+    )
+
+
+def parse_office_log_entry(value: object, path: str = "OfficeLogEntry") -> OfficeLogEntry:
+    payload = expect_object(value, path)
+    return OfficeLogEntry(
+        pr=required(payload, "pr", decode_int, path),
+        kind=required(payload, "kind", cast('Decoder[Literal["worker", "office"]]', literal(frozenset({"worker", "office"}))), path),
+        title=required(payload, "title", decode_str, path),
+        author=required(payload, "author", decode_str, path),
+        target=required(payload, "target", decode_str, path),
+        files=required(payload, "files", array(decode_str), path),
+        at=required(payload, "at", decode_str, path),
+    )
+
+
+def parse_office_memory(value: object, path: str = "OfficeMemory") -> OfficeMemory:
+    payload = expect_object(value, path)
+    return OfficeMemory(
+        office=required(payload, "office", decode_int, path),
+        notes=required(payload, "notes", array(parse_office_note), path),
+        log=required(payload, "log", array(parse_office_log_entry), path),
+    )
+
+
+def parse_office_state(value: object, path: str = "OfficeState") -> OfficeState:
+    payload = expect_object(value, path)
+    return OfficeState(
+        enabled=required(payload, "enabled", decode_bool, path),
+        scale=required(payload, "scale", _decode_office_scale, path),
+        offices=required(payload, "offices", array(parse_office), path),
+        company=required(payload, "company", nullable(parse_office_company), path),
+        pulls=required(payload, "pulls", array(parse_office_pull), path),
+        memory=required(payload, "memory", array(parse_office_memory), path),
+        reason=optional(payload, "reason", decode_str, path),
+    )
+
+
+def parse_office_company(value: object, path: str = "OfficeCompany") -> OfficeCompany:
+    payload = expect_object(value, path)
+    return OfficeCompany(
+        checkout=required(payload, "checkout", decode_str, path),
+        base_branch=required(payload, "baseBranch", decode_str, path),
+    )
+
+
+def parse_office_command_result(value: object, path: str = "OfficeCommandResult") -> OfficeCommandResult:
+    payload = expect_object(value, path)
+    return OfficeCommandResult(
+        text=required(payload, "text", decode_str, path),
+        state=required(payload, "state", parse_office_state, path),
+        failed=optional(payload, "failed", decode_bool, path),
+    )
+
+
 def parse_session_stats(value: object, path: str = "SessionStats") -> SessionStats:
     payload = expect_object(value, path)
     return SessionStats(
@@ -3925,6 +4137,17 @@ class WireClient:
         params: dict[str, object] = {}
         self._command("abort_bash", params)
 
+    def get_office_state(self) -> OfficeState:
+        """Virtual Office settings, roster, and pull requests for the session's checkout."""
+        params: dict[str, object] = {}
+        return parse_office_state(self._command("get_office_state", params), "get_office_state")
+
+    def office_command(self, args: Sequence[str]) -> OfficeCommandResult:
+        """Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state."""
+        params: dict[str, object] = {}
+        params["args"] = list(args)
+        return parse_office_command_result(self._command("office_command", params), "office_command")
+
     def get_session_stats(self) -> SessionStats:
         """Session statistics."""
         params: dict[str, object] = {}
@@ -4451,6 +4674,17 @@ __all__ = [
     "NoticeEvent",
     "NotifyType",
     "NotifyUiRequest",
+    "Office",
+    "OfficeCommandResult",
+    "OfficeCompany",
+    "OfficeLogEntry",
+    "OfficeMember",
+    "OfficeMemory",
+    "OfficeNote",
+    "OfficePull",
+    "OfficePullReview",
+    "OfficeScale",
+    "OfficeState",
     "OpenSessionResult",
     "OpenUrlUiRequest",
     "PendingUi",
@@ -4648,6 +4882,16 @@ __all__ = [
     "parse_notice_event",
     "parse_notification",
     "parse_notify_ui_request",
+    "parse_office",
+    "parse_office_command_result",
+    "parse_office_company",
+    "parse_office_log_entry",
+    "parse_office_member",
+    "parse_office_memory",
+    "parse_office_note",
+    "parse_office_pull",
+    "parse_office_pull_review",
+    "parse_office_state",
     "parse_open_session_result",
     "parse_open_url_ui_request",
     "parse_pending_ui",

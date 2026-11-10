@@ -119,6 +119,14 @@ export interface StructuredSubagentRequest {
 	assignment: string;
 	context?: string;
 	agent?: string;
+	/**
+	 * Run this definition instead of looking `agent` up by name. For callers that build the agent
+	 * themselves (Virtual Office members); it still passes the depth, spawn-policy and
+	 * disabled-agent checks under its own name.
+	 */
+	agentDefinition?: AgentDefinition;
+	/** Directory the child works in; defaults to the parent session's. */
+	cwd?: string;
 	/** Saved source session selected for the bundled seance agent. */
 	sourceSession?: string;
 	model?: string | string[];
@@ -366,14 +374,14 @@ export async function resolveEffectiveSubagentPolicy(
 		throw new StructuredSubagentError("preflight", "Subagent delegation is off.");
 	}
 	const spawnPolicy = resolveSpawnPolicy(request.session.getSessionSpawns());
-	const agentName = request.agent?.trim() || spawnPolicy.defaultAgent;
+	const agentName = request.agentDefinition?.name ?? (request.agent?.trim() || spawnPolicy.defaultAgent);
 	const planMode = request.session.getPlanModeState?.()?.enabled === true;
 	if (agentName !== SEANCE_AGENT_NAME) assertPlanControlsAllowed(request, planMode);
 	assertDepthAndSpawnAllowed(request, agentName);
 
 	const discovery = await discoverAgentsShared(request.session.cwd, request.session.effectiveExtensionRoots?.());
 	const agents = [...discovery.agents, ...(request.session.getSessionAgents?.() ?? [])];
-	const agent = getAgent(agents, agentName);
+	const agent = request.agentDefinition ?? getAgent(agents, agentName);
 	if (!agent) {
 		const available = agents.map(candidate => candidate.name).join(", ") || "none";
 		const searched = discovery.searchedDirs?.map(dir => shortenPath(dir)).join(", ") || "none";
@@ -604,7 +612,7 @@ function buildExecutorOptions(
 	const restrictToolNames = preparedSession !== undefined || policy.planMode || session.restrictToolNames === true;
 	const enableMCP = !restrictToolNames && (session.enableMCP ?? true);
 	return {
-		cwd: session.cwd,
+		cwd: request.cwd ?? session.cwd,
 		costGate: session.costGate,
 		additionalDirectories: session.additionalDirectories,
 		getApiKey: session.getApiKey,

@@ -411,6 +411,7 @@ import {
 	cfgWorkspaceAdditionalDirectories,
 } from "./session/context-settings";
 import { cfgTaskBatch, cfgTaskDisabledAgents, cfgTaskEager } from "./task/settings";
+import { renderManagerBrief } from "./office/brief";
 import { getSubagentConcurrencyLimit, readSubagentPreferences } from "./task/delegation-preferences";
 
 /** Agent-level tool-call switches, snapshotted by the agent loop per prompt run. */
@@ -4143,6 +4144,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			const appendParts: string[] = [];
 			if (memoryInstructions) appendParts.push(memoryInstructions);
 			if (autoLearnInstructions) appendParts.push(autoLearnInstructions);
+			if (agentKind === "main") {
+				const managerBrief = await renderManagerBrief(settings, promptCwd);
+				if (managerBrief) appendParts.push(managerBrief);
+			}
 			// List each mounted MCP tool once. A routed tool that the xd:// catalog
 			// would list carries its catalog summary on the route line and gets no
 			// catalog line; a tool the route bound omits keeps its catalog line.

@@ -1,7 +1,13 @@
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { directoryExists, getProjectDir, normalizePathForComparison, setProjectDir } from "@oh-my-pi/pi-utils";
 import type { Args } from "./args";
+
+/** Where a CLI started in the home folder works: `~/Documents/NPi/Code`. */
+export function defaultWorkspaceDir(home: string): string {
+	return path.join(home, "Documents", "NPi", "Code");
+}
 
 async function maybeAutoChdir(parsed: Args): Promise<void> {
 	if (parsed.allowHome || parsed.cwd) {
@@ -19,6 +25,18 @@ async function maybeAutoChdir(parsed: Args): Promise<void> {
 	const normalizedHome = normalizePath(home);
 	if (cwd !== normalizedHome) {
 		return;
+	}
+
+	// The NPi workspace comes first, created on first use, so a session opened from the home
+	// folder lands in a real project directory instead of a scratch one shared by every such
+	// session (whose memory and history would otherwise pile up under `/tmp`).
+	const workspace = defaultWorkspaceDir(home);
+	try {
+		await fs.mkdir(workspace, { recursive: true });
+		setProjectDir(workspace);
+		return;
+	} catch {
+		// No access to Documents (macOS privacy prompt declined, read-only home): use a temp dir.
 	}
 
 	const candidates =

@@ -17,6 +17,8 @@ import type {
 	ToolExample,
 } from "@oh-my-pi/pi-ai";
 import type { BashResult } from "../../exec/bash-executor";
+import type { OfficeCommandResult } from "../../office/commands";
+import type { OfficeState } from "../../office/company";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
 import type { SessionLeaseReport } from "../../session/session-storage";
@@ -146,6 +148,8 @@ export type RpcCommand =
 	| { id?: string; type: "abort_bash" }
 
 	// Session
+	| { id?: string; type: "get_office_state" }
+	| { id?: string; type: "office_command"; args: string[] }
 	| { id?: string; type: "get_session_stats" }
 	| { id?: string; type: "get_session_lease"; sessionIds: string[] }
 	| { id?: string; type: "export_html"; outputPath?: string }
@@ -633,6 +637,14 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "abort_bash"; success: true }
 
 	// Session
+	| { id?: string; type: "response"; command: "get_office_state"; success: true; data: OfficeState }
+	| {
+			id?: string;
+			type: "response";
+			command: "office_command";
+			success: true;
+			data: OfficeCommandResult & { state: OfficeState };
+	  }
 	| { id?: string; type: "response"; command: "get_session_stats"; success: true; data: SessionStats }
 	| { id?: string; type: "response"; command: "get_session_lease"; success: true; data: SessionLeaseReport }
 	| { id?: string; type: "response"; command: "export_html"; success: true; data: { path: string } }

@@ -330,6 +330,17 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 	{ name: "bash", doc: "Run a shell command.", params: { command: "string" }, result: "BashResult" },
 	{ name: "abort_bash", doc: "Abort the running shell command." },
 
+	{
+		name: "get_office_state",
+		doc: "Virtual Office settings, roster, and pull requests for the session's checkout.",
+		result: "OfficeState",
+	},
+	{
+		name: "office_command",
+		doc: "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
+		params: { args: doc("string[]", 'The command words, e.g. `["merge", "4"]`.') },
+		result: "OfficeCommandResult",
+	},
 	{ name: "get_session_stats", doc: "Session statistics.", result: "SessionStats" },
 	{
 		name: "get_session_lease",

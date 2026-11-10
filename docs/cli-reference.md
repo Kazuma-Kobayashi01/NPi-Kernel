@@ -84,7 +84,7 @@ saved custom widths remain supported.
 | --------------------- | -------------------------------------------------------------------------------------------- |
 | `--cwd <dir>`         | Directory to start in (overrides the launch cwd).                                            |
 | `--add-dir <dir>`     | Add a workspace directory beyond the working directory (repeatable).                         |
-| `--allow-home`        | Allow starting in `~` without auto-switching to a temp dir.                                  |
+| `--allow-home`        | Stay in `~` instead of switching to the NPi workspace, `~/Documents/NPi/Code`.               |
 | `--profile <name>`    | Use an isolated profile for auth, sessions, settings, and caches.                            |
 | `--alias <name>`      | Create a shell shortcut for a named profile and exit; requires `--profile` or `OMP_PROFILE`. |
 | `--config <file>`     | Load an extra `config.yml`-style overlay for this run (repeatable).                          |

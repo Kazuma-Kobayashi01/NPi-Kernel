@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
+import * as fsPromises from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { applyStartupCwd } from "@oh-my-pi/pi-coding-agent/cli/startup-cwd";
+import { applyStartupCwd, defaultWorkspaceDir } from "@oh-my-pi/pi-coding-agent/cli/startup-cwd";
 import * as utils from "@oh-my-pi/pi-utils";
 
 const originalProjectDir = utils.getProjectDir();
@@ -106,7 +107,33 @@ describe("parseArgs — --cwd flag", () => {
 		}
 	});
 
-	it("uses the system temporary directory for Windows home launches", async () => {
+	it("opens a home-folder launch in the NPi workspace, creating it", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "omp-cwd-home-"));
+		vi.spyOn(os, "homedir").mockReturnValue(home);
+		vi.spyOn(utils, "getProjectDir").mockReturnValue(home);
+		const setProjectDir = vi.spyOn(utils, "setProjectDir").mockImplementation(() => {});
+
+		await applyStartupCwd(parseArgs([]));
+
+		const workspace = path.join(home, "Documents", "NPi", "Code");
+		expect(defaultWorkspaceDir(home)).toBe(workspace);
+		expect(setProjectDir).toHaveBeenCalledWith(workspace);
+		expect(fs.statSync(workspace).isDirectory()).toBe(true);
+	});
+
+	it("keeps --allow-home launches in the home folder", async () => {
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "omp-cwd-allow-home-"));
+		vi.spyOn(os, "homedir").mockReturnValue(home);
+		vi.spyOn(utils, "getProjectDir").mockReturnValue(home);
+		const setProjectDir = vi.spyOn(utils, "setProjectDir").mockImplementation(() => {});
+
+		await applyStartupCwd(parseArgs(["--allow-home"]));
+
+		expect(setProjectDir).not.toHaveBeenCalled();
+		expect(fs.existsSync(defaultWorkspaceDir(home))).toBe(false);
+	});
+
+	it("uses the system temporary directory for Windows home launches when the workspace is out of reach", async () => {
 		const home = String.raw`C:\Users\reporter`;
 		const fallback = String.raw`C:\Users\reporter\AppData\Local\Temp`;
 		if (!platformDescriptor) throw new Error("process.platform descriptor is unavailable");
@@ -114,6 +141,7 @@ describe("parseArgs — --cwd flag", () => {
 		vi.spyOn(os, "homedir").mockReturnValue(home);
 		vi.spyOn(os, "tmpdir").mockReturnValue(fallback);
 		vi.spyOn(utils, "getProjectDir").mockReturnValue(home);
+		vi.spyOn(fsPromises, "mkdir").mockRejectedValue(Object.assign(new Error("denied"), { code: "EPERM" }));
 		vi.spyOn(utils, "directoryExists").mockImplementation(async candidate => {
 			return candidate === "/tmp" || candidate === fallback;
 		});

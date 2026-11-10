@@ -3393,6 +3393,133 @@ pub struct SessionCredits {
 	pub acu_cost: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficeScale {
+	#[serde(rename = "team")]
+	Team,
+	#[serde(rename = "studio")]
+	Studio,
+	#[serde(rename = "enterprise")]
+	Enterprise,
+}
+
+impl OfficeScale {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Team => "team",
+			Self::Studio => "studio",
+			Self::Enterprise => "enterprise",
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeMember {
+	/// Permanent name, `Worker-xxxxxx`.
+	pub id: String,
+	pub role: OfficeMemberRole,
+	/// Model selector; empty uses the default subagent model.
+	pub model: String,
+	pub capability: OfficeMemberCapability,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Office {
+	pub number: i64,
+	pub members: Vec<OfficeMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficePullReview {
+	/// Member name, `general-manager`, or `owner`.
+	pub by: String,
+	pub verdict: OfficePullReviewVerdict,
+	pub comment: String,
+	pub at: String,
+}
+
+/// A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficePull {
+	pub number: i64,
+	pub kind: OfficePullKind,
+	pub office: i64,
+	pub author: String,
+	pub title: String,
+	pub body: String,
+	pub source: String,
+	pub target: String,
+	pub status: OfficePullStatus,
+	pub reviews: Vec<OfficePullReview>,
+	#[serde(rename = "createdAt")]
+	pub created_at: String,
+	#[serde(rename = "updatedAt")]
+	pub updated_at: String,
+	#[serde(rename = "mergeCommit", default, skip_serializing_if = "Option::is_none")]
+	pub merge_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeNote {
+	pub by: String,
+	pub text: String,
+	pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeLogEntry {
+	pub pr: i64,
+	pub kind: OfficeLogEntryKind,
+	pub title: String,
+	pub author: String,
+	/// Branch the pull request merged into.
+	pub target: String,
+	pub files: Vec<String>,
+	pub at: String,
+}
+
+/// What one office remembers about the project: kept lessons and merged pull requests, oldest first.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeMemory {
+	pub office: i64,
+	pub notes: Vec<OfficeNote>,
+	pub log: Vec<OfficeLogEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeState {
+	pub enabled: bool,
+	pub scale: OfficeScale,
+	pub offices: Vec<Office>,
+	/// The checkout and branch the offices work for; null outside a git repository or on a detached HEAD.
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub company: Option<OfficeCompany>,
+	pub pulls: Vec<OfficePull>,
+	/// One entry per running office, in office order; empty when `company` is null.
+	pub memory: Vec<OfficeMemory>,
+	/// Why `company` is null.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeCompany {
+	pub checkout: String,
+	#[serde(rename = "baseBranch")]
+	pub base_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeCommandResult {
+	/// What the same `/office` command prints.
+	pub text: String,
+	pub state: OfficeState,
+	/// The command was refused or malformed; `text` says why.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub failed: Option<bool>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionStats {
 	#[serde(rename = "sessionId")]
@@ -5656,6 +5783,12 @@ pub struct BashParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeCommandParams {
+	/// The command words, e.g. `["merge", "4"]`.
+	pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetSessionLeaseParams {
 	#[serde(rename = "sessionIds")]
 	pub session_ids: Vec<String>,
@@ -6200,6 +6333,126 @@ impl<'de> Deserialize<'de> for LitWaitingInput {
 			Ok(Self)
 		} else {
 			Err(D::Error::custom(format!("expected \"waiting_input\", got {value}")))
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficeMemberRole {
+	#[serde(rename = "leader")]
+	Leader,
+	#[serde(rename = "worker")]
+	Worker,
+}
+
+impl OfficeMemberRole {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Leader => "leader",
+			Self::Worker => "worker",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficeMemberCapability {
+	#[serde(rename = "common")]
+	Common,
+	#[serde(rename = "professional")]
+	Professional,
+	#[serde(rename = "expert")]
+	Expert,
+}
+
+impl OfficeMemberCapability {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Common => "common",
+			Self::Professional => "professional",
+			Self::Expert => "expert",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficePullReviewVerdict {
+	#[serde(rename = "approve")]
+	Approve,
+	#[serde(rename = "request_changes")]
+	RequestChanges,
+}
+
+impl OfficePullReviewVerdict {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Approve => "approve",
+			Self::RequestChanges => "request_changes",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficePullKind {
+	#[serde(rename = "worker")]
+	Worker,
+	#[serde(rename = "office")]
+	Office,
+}
+
+impl OfficePullKind {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Worker => "worker",
+			Self::Office => "office",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficePullStatus {
+	#[serde(rename = "open")]
+	Open,
+	#[serde(rename = "changes_requested")]
+	ChangesRequested,
+	#[serde(rename = "approved")]
+	Approved,
+	#[serde(rename = "merged")]
+	Merged,
+	#[serde(rename = "closed")]
+	Closed,
+}
+
+impl OfficePullStatus {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Open => "open",
+			Self::ChangesRequested => "changes_requested",
+			Self::Approved => "approved",
+			Self::Merged => "merged",
+			Self::Closed => "closed",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OfficeLogEntryKind {
+	#[serde(rename = "worker")]
+	Worker,
+	#[serde(rename = "office")]
+	Office,
+}
+
+impl OfficeLogEntryKind {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Worker => "worker",
+			Self::Office => "office",
 		}
 	}
 }
@@ -7576,6 +7829,37 @@ impl Command for AbortBashCommand {
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		let _ = data;
 		Ok(())
+	}
+}
+
+/// Virtual Office settings, roster, and pull requests for the session's checkout.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct GetOfficeStateCommand {}
+
+impl Command for GetOfficeStateCommand {
+	const NAME: &'static str = "get_office_state";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = OfficeState;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<OfficeState>(data.unwrap_or_else(|| Value::Object(Map::new())))
+	}
+}
+
+/// Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeCommandCommand {
+	/// The command words, e.g. `["merge", "4"]`.
+	pub args: Vec<String>,
+}
+
+impl Command for OfficeCommandCommand {
+	const NAME: &'static str = "office_command";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = OfficeCommandResult;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<OfficeCommandResult>(data.unwrap_or_else(|| Value::Object(Map::new())))
 	}
 }
 
