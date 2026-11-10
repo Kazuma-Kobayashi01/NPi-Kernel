@@ -659,8 +659,26 @@ export function formatActivityErrorDetail(error: string, homeDir = os.homedir())
 const CARD_MIN_WIDTH = 32;
 const CARD_GUTTER = 3;
 const CARD_MAX_WINDOWS = 4;
-const CARD_MIN_BAR_WIDTH = 12;
+const CARD_MIN_BAR_WIDTH = 10;
+const CARD_MAX_BAR_WIDTH = 28;
 const CARD_MAX_LABEL_LINES = 2;
+/** Columns a pressured row reserves for its status glyph. */
+const ROW_MARKER_WIDTH = 2;
+
+function isPressured(status: UsageLimit["status"]): boolean {
+	return status === "exhausted" || status === "warning";
+}
+
+/** A section title in the accent with its quiet facts after it, held to one row. */
+function sectionLine(title: string, meta: string, innerWidth: number): string {
+	const head = theme.bold(theme.fg("accent", title));
+	return truncateToWidth(meta ? `${head}  ${theme.fg("dim", meta)}` : head, innerWidth);
+}
+
+/** `Dec 8, 2025`: the ends of the heatmap range. */
+function formatDay(date: Date): string {
+	return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+}
 
 interface CardRowLayout {
 	labelWidth: number;
@@ -668,6 +686,8 @@ interface CardRowLayout {
 	barWidth: number;
 	stacked: boolean;
 	labelHeights: number[];
+	/** Columns reserved before each row for the pressure glyph (0 when no row in the grid row is pressured). */
+	markerWidth: number;
 }
 
 export class UsageDashboardComponent implements Component {
@@ -762,13 +782,25 @@ export class UsageDashboardComponent implements Component {
 		return "dim";
 	}
 
+	/**
+	 * Remaining-quota gauge: the filled part is what is left, so the bar and the
+	 * percentage beside it agree and a draining quota visibly shrinks.
+	 */
 	#miniBar(fraction: number | undefined, status: UsageLimit["status"], width: number): string {
 		if (fraction === undefined) return theme.fg("dim", "·".repeat(width));
-		const clamped = Math.min(Math.max(fraction, 0), 1);
-		const filled = Math.round(clamped * width);
+		const left = 1 - Math.min(Math.max(fraction, 0), 1);
+		const filled = Math.round(left * width);
 		const bar = "█".repeat(filled);
 		const empty = "░".repeat(width - filled);
 		return `${theme.fg(this.#statusColor(status), bar)}${theme.fg("dim", empty)}`;
+	}
+
+	/** Leading glyph of a pressured row, so urgency never rests on color alone; blank otherwise. */
+	#rowMarker(status: UsageLimit["status"], width: number): string {
+		if (width === 0) return "";
+		if (!isPressured(status)) return " ".repeat(width);
+		const icon = this.#statusIcon(status);
+		return `${theme.bold(icon)}${" ".repeat(Math.max(0, width - visibleWidth(icon)))}`;
 	}
 
 	#renderCardLines(card: ProviderCard, width: number, labels: string[][], layout: CardRowLayout): string[] {
@@ -822,40 +854,53 @@ export class UsageDashboardComponent implements Component {
 		}
 
 		const hidden = card.windows.length - CARD_MAX_WINDOWS;
-		const { labelWidth, resetWidth, barWidth, stacked, labelHeights } = layout;
-		const contentWidth = Math.max(1, width - 2);
+		const { labelWidth, resetWidth, barWidth, stacked, labelHeights, markerWidth } = layout;
+		const contentWidth = Math.max(1, width - 2 - markerWidth);
+		const indent = " ".repeat(markerWidth);
 		for (let index = 0; index < Math.min(card.windows.length, CARD_MAX_WINDOWS); index++) {
 			const window = card.windows[index]!;
 			const labelLines = labels[index]!;
 			const label = labelLines[0] ?? "";
 			const prefix = stacked ? "" : `${label}${" ".repeat(labelWidth - visibleWidth(label))} `;
+			const marker = this.#rowMarker(window.status, markerWidth);
+			// Stacked rows carry the glyph on the label, so it sits beside the quota's name.
+			const lead = stacked ? indent : marker;
 			if (stacked) {
 				for (let line = 0; line < labelHeights[index]; line++) {
-					lines.push(`  ${labelLines[line] ?? ""}`);
+					lines.push(`  ${line === 0 ? marker : indent}${labelLines[line] ?? ""}`);
 				}
 			}
 			if (window.fraction === undefined) {
-				const text = theme.fg("dim", window.usedText ?? "no data");
-				for (const line of wrapTextWithAnsi(`${prefix}${text}`, contentWidth)) lines.push(`  ${line}`);
+				// A balance or spend figure is the headline of its row, so it keeps full contrast.
+				const value = window.usedText ?? theme.fg("dim", "no data");
+				wrapTextWithAnsi(`${prefix}${value}`, contentWidth).forEach((line, lineIndex) => {
+					lines.push(`  ${lineIndex === 0 ? lead : indent}${line}`);
+				});
 				continue;
 			}
 			const freePct = Math.max(0, Math.round((1 - window.fraction) * 100));
-			const pctText = theme.fg(this.#statusColor(window.status), `${freePct}%`.padStart(5));
+			const pressured = isPressured(window.status);
+			const pctPlain = `${freePct}%`.padStart(4);
+			const pctText = theme.fg(this.#statusColor(window.status), pressured ? theme.bold(pctPlain) : pctPlain);
 			const resetPlain = window.resetMs !== undefined ? formatDuration(window.resetMs) : "";
-			const resetText = resetWidth > 0 ? ` ${theme.fg("dim", resetPlain.padStart(resetWidth))}` : "";
-			for (const line of wrapTextWithAnsi(
-				`${prefix}${this.#miniBar(window.fraction, window.status, barWidth)}${pctText}${resetText}`,
-				contentWidth,
-			)) {
-				lines.push(`  ${line}`);
-			}
+			const resetColor = window.status === "exhausted" ? "error" : "dim";
+			const resetText = resetWidth > 0 ? ` ${theme.fg(resetColor, resetPlain.padStart(resetWidth))}` : "";
+			const valueRow = `${prefix}${this.#miniBar(window.fraction, window.status, barWidth)} ${pctText}${resetText}`;
+			wrapTextWithAnsi(valueRow, contentWidth).forEach((line, lineIndex) => {
+				lines.push(`  ${lineIndex === 0 ? lead : indent}${line}`);
+			});
 		}
 		if (hidden > 0) lines.push(`  ${theme.fg("dim", `+${hidden} more`)}`);
 		return lines;
 	}
 
 	#renderCardsGrid(innerWidth: number): string[] {
-		if (this.#cards.length === 0) return [theme.fg("dim", "No usage data available.")];
+		if (this.#cards.length === 0) {
+			const next = this.#options.refresh
+				? "Connect a provider with /login, then press r to refresh."
+				: "Connect a provider with /login.";
+			return [theme.fg("dim", "No usage data available."), theme.fg("dim", next)];
+		}
 		const active = this.#cards.filter(card => !card.idle);
 		const idle = this.#cards.filter(card => card.idle);
 		const columns = Math.max(1, Math.floor((innerWidth + CARD_GUTTER) / (CARD_MIN_WIDTH + CARD_GUTTER)));
@@ -886,7 +931,10 @@ export class UsageDashboardComponent implements Component {
 					),
 				0,
 			);
-			const contentWidth = Math.max(1, cardWidth - 2);
+			const markerWidth = windows.some(rows => rows.some(window => isPressured(window.status)))
+				? ROW_MARKER_WIDTH
+				: 0;
+			const contentWidth = Math.max(1, cardWidth - 2 - markerWidth);
 			const suffixWidth = 5 + (resetWidth > 0 ? resetWidth + 1 : 0);
 			const inlineBarWidth = contentWidth - labelWidth - 1 - suffixWidth;
 			const stacked = inlineBarWidth < CARD_MIN_BAR_WIDTH;
@@ -910,8 +958,9 @@ export class UsageDashboardComponent implements Component {
 			);
 			const layout: CardRowLayout = {
 				labelWidth,
+				markerWidth,
 				resetWidth,
-				barWidth: Math.max(1, stacked ? contentWidth - suffixWidth : inlineBarWidth),
+				barWidth: Math.min(CARD_MAX_BAR_WIDTH, Math.max(1, stacked ? contentWidth - suffixWidth : inlineBarWidth)),
 				stacked,
 				labelHeights,
 			};
@@ -965,24 +1014,32 @@ export class UsageDashboardComponent implements Component {
 	}
 
 	#renderHeatmap(innerWidth: number): string[] {
-		const summary: string[] = [];
 		if (this.#activityError) {
 			const detail = formatActivityErrorDetail(this.#activityError);
-			return [theme.fg("dim", detail ? `Usage history unavailable (${detail}).` : "Usage history unavailable.")];
+			const note = detail ? `Usage history unavailable (${detail}).` : "Usage history unavailable.";
+			// Two rows keep the reason readable on narrow terminals without letting a long path take the sheet.
+			const wrapped = wrapTextWithAnsi(note, innerWidth);
+			const shown = wrapped
+				.slice(0, 2)
+				.map((line, index) => truncateToWidth(index === 1 && wrapped.length > 2 ? `${line}…` : line, innerWidth));
+			return [sectionLine("Activity", "", innerWidth), ...shown.map(line => theme.fg("dim", line))];
 		}
 		const points = this.#activity;
-		if (!points) return [theme.fg("dim", "Loading usage history…")];
+		if (!points) return [sectionLine("Activity", "", innerWidth), theme.fg("dim", "Loading usage history…")];
 
 		const labelWidth = 2;
 		const weeks = Math.max(4, Math.min(53, Math.floor((innerWidth - labelWidth) / 2)));
 		const layout = buildHeatmapLayout(points, weeks);
-		const ramp = this.#heatRamp();
-		const reset = "\x1b[39m";
-
-		summary.push(
-			`${theme.bold(theme.fg("accent", "Activity"))} ${theme.fg("dim", `${formatActivityTotals(layout)} · last ${weeks} weeks`)}${this.#syncing ? theme.fg("dim", " · syncing…") : ""}`,
-		);
-		summary.push("");
+		const syncing = this.#syncing ? " · syncing…" : "";
+		if (layout.totalRequests === 0 && layout.totalCost === 0) {
+			return [
+				sectionLine("Activity", `last ${weeks} weeks${syncing}`, innerWidth),
+				theme.fg("dim", "No activity recorded in this range yet."),
+			];
+		}
+		const today = new Date();
+		const range = `${formatDay(layout.start)} – ${formatDay(today)}`;
+		const lines = [sectionLine("Activity", `${formatActivityTotals(layout)} · ${range}${syncing}`, innerWidth)];
 
 		let monthLine = " ".repeat(labelWidth);
 		for (let week = 0; week < weeks; week++) {
@@ -992,19 +1049,34 @@ export class UsageDashboardComponent implements Component {
 				monthLine = monthLine.padEnd(targetCol) + label;
 			}
 		}
-		summary.push(theme.fg("dim", truncateToWidth(monthLine, innerWidth)));
+		lines.push(theme.fg("dim", truncateToWidth(monthLine, innerWidth)));
 
+		const ramp = this.#heatRamp();
+		const reset = "\x1b[39m";
 		for (let day = 0; day < 7; day++) {
-			let line = theme.fg("dim", HEATMAP_DAY_LABELS[day]) + " ";
+			let line = theme.fg("dim", HEATMAP_ROW_LABELS[day].padEnd(labelWidth));
 			for (let week = 0; week < weeks; week++) {
 				const cell = layout.cells[day][week];
 				if (cell === null) line += "  ";
 				else if (cell === 0) line += `${theme.fg("dim", "·")} `;
 				else line += `${ramp[cell - 1]}■${reset} `;
 			}
-			summary.push(line.trimEnd());
+			lines.push(line.trimEnd());
 		}
-		return summary;
+
+		const swatches = ramp.map(color => `${color}■${reset}`).join(" ");
+		const legend = `${" ".repeat(labelWidth)}${theme.fg("dim", "Less ·")} ${swatches} ${theme.fg("dim", "More")}`;
+		const figures = activityFigures(points, layout, today);
+		const facts: string[] = [];
+		if (figures.busiest) {
+			const amount = figures.priced ? formatCost(figures.busiest.cost) : requestsText(figures.busiest.requests);
+			facts.push(`busiest ${shortDate(figures.busiest.date)} ${amount}`);
+		}
+		facts.push(`${figures.activeDays} active day${figures.activeDays === 1 ? "" : "s"}`);
+		const factText = theme.fg("dim", facts.join(" · "));
+		const gap = innerWidth - visibleWidth(legend) - visibleWidth(factText);
+		lines.push(gap >= 3 ? `${legend}${" ".repeat(gap)}${factText}` : legend);
+		return lines;
 	}
 
 	// ---------------------------------------------------------------------------
@@ -1015,6 +1087,7 @@ export class UsageDashboardComponent implements Component {
 		const cached = this.#overviewCache;
 		if (cached?.revision === this.#revision && cached.width === innerWidth) return cached.lines;
 		const lines: string[] = [];
+		if (this.#cards.length > 0) lines.push(sectionLine("Quota", "what is left · resets in", innerWidth));
 		lines.push(...this.#renderCardsGrid(innerWidth));
 		lines.push("");
 		lines.push(...this.#renderHeatmap(innerWidth));
@@ -1037,33 +1110,74 @@ export class UsageDashboardComponent implements Component {
 		const innerWidth = Math.max(20, width - 4);
 
 		const contentSource = this.#view === "detail" ? this.#detailLines(innerWidth) : this.#overviewLines(innerWidth);
-		// Fixed chrome: top border, blank, content…, divider, hint, bottom border.
+		// Fixed chrome: title row, nav row, content…, divider, hint row, closing row.
 		const contentRows = Math.max(5, height - 5);
 		this.#lastViewportRows = contentRows;
 		const maxScroll = Math.max(0, contentSource.length - contentRows);
 		if (this.#scroll > maxScroll) this.#scroll = maxScroll;
 
-		const latestFetchedAt = Math.max(0, ...this.#reports.map(report => report.fetchedAt ?? 0));
-		const checkedText = this.#refreshing
-			? "refreshing…"
-			: latestFetchedAt
-				? `checked ${formatDuration(this.#nowMs - latestFetchedAt)} ago`
-				: "";
-		const title = this.#view === "detail" ? "Usage · Details" : "Usage";
-
-		const scrollHint = maxScroll > 0 ? `${editorKeys("tui.select.up", "tui.select.down")} scroll · ` : "";
-		const cancel = editorKey("tui.select.cancel");
-		const refreshHint = this.#options.refresh ? "r refresh · " : "";
-		const hint =
-			this.#view === "detail"
-				? `${scrollHint}${refreshHint}${cancel} back`
-				: `${scrollHint}${refreshHint}${formatKeyHint("enter")} details · ${cancel} close`;
-		this.#panel.title = title;
-		this.#header.setLines([checkedText ? theme.fg("dim", checkedText) : ""]);
+		this.#panel.title = "Usage";
+		this.#header.setLines([this.#navLine(innerWidth)]);
 		this.#body.setLines(contentSource.slice(this.#scroll, this.#scroll + contentRows));
 		this.#body.setHeight(contentRows);
-		this.#footer.setLines([theme.fg("dim", hint)]);
+		this.#footer.setLines([this.#hintLine(innerWidth, contentSource.length, contentRows, maxScroll > 0)]);
 		return this.#panel.render(width);
+	}
+
+	/** View tabs on the left, refresh state on the right: one stable row under the title. */
+	#navLine(innerWidth: number): string {
+		const tab = (label: string, active: boolean): string =>
+			active ? theme.bold(theme.fg("accent", label)) : theme.fg("dim", label);
+		const tabs = `${tab("Overview", this.#view === "overview")}  ${tab("Details", this.#view === "detail")}`;
+		// Longest wording first; the row falls back to a shorter one before dropping the status.
+		let candidates: string[] = [];
+		if (this.#refreshing) {
+			candidates = [theme.fg("accent", "refreshing…")];
+		} else if (this.#refreshError) {
+			const reason = sanitizeDisplayLine(this.#refreshError);
+			candidates = [theme.fg("warning", `refresh failed: ${reason}`), theme.fg("warning", "refresh failed")];
+		} else {
+			const latestFetchedAt = Math.max(0, ...this.#reports.map(report => report.fetchedAt ?? 0));
+			if (latestFetchedAt) {
+				const age = formatDuration(this.#nowMs - latestFetchedAt);
+				candidates = [theme.fg("dim", `checked ${age} ago`), theme.fg("dim", `${age} ago`)];
+			}
+		}
+		const gap = 3;
+		const room = innerWidth - visibleWidth(tabs) - gap;
+		const fits = candidates.find(candidate => visibleWidth(candidate) <= room);
+		if (fits) return `${tabs}${" ".repeat(innerWidth - visibleWidth(tabs) - visibleWidth(fits))}${fits}`;
+		const last = candidates.at(-1);
+		if (!last || room < 8) return truncateToWidth(tabs, innerWidth);
+		const shown = truncateToWidth(last, room);
+		return `${tabs}${" ".repeat(innerWidth - visibleWidth(tabs) - visibleWidth(shown))}${shown}`;
+	}
+
+	/** Key hints on the left, scroll position on the right; low-value hints drop first on narrow terminals. */
+	#hintLine(innerWidth: number, total: number, viewport: number, scrollable: boolean): string {
+		const hints: { key: string; action: string; priority: number }[] = [];
+		if (scrollable)
+			hints.push({ key: editorKeys("tui.select.up", "tui.select.down"), action: "scroll", priority: 3 });
+		if (this.#options.refresh) hints.push({ key: "r", action: "refresh", priority: 2 });
+		if (this.#view === "overview") hints.push({ key: formatKeyHint("enter"), action: "details", priority: 1 });
+		hints.push({
+			key: editorKey("tui.select.cancel"),
+			action: this.#view === "detail" ? "back" : "close",
+			priority: 4,
+		});
+		const separator = theme.fg("dim", " · ");
+		const compose = (items: typeof hints): string =>
+			items.map(item => `${theme.fg("muted", item.key)} ${theme.fg("dim", item.action)}`).join(separator);
+		let shown = hints;
+		while (shown.length > 1 && visibleWidth(compose(shown)) > innerWidth) {
+			const lowest = Math.min(...shown.map(item => item.priority));
+			shown = shown.filter(item => item.priority !== lowest);
+		}
+		const left = truncateToWidth(compose(shown), innerWidth);
+		if (!scrollable) return left;
+		const position = theme.fg("dim", `${this.#scroll + 1}–${Math.min(total, this.#scroll + viewport)} of ${total}`);
+		const gap = innerWidth - visibleWidth(left) - visibleWidth(position);
+		return gap >= 3 ? `${left}${" ".repeat(gap)}${position}` : left;
 	}
 
 	// ---------------------------------------------------------------------------
@@ -1804,10 +1918,11 @@ export class UsageDashboardComponent implements Component {
 			void this.#refresh();
 			return;
 		}
-		if (
-			this.#view === "overview" &&
-			(matchesKey(data, "return") || matchesKey(data, "tab") || matchesKey(data, "d"))
-		) {
+		if (matchesKey(data, "tab")) {
+			this.#setView(this.#view === "overview" ? "detail" : "overview");
+			return;
+		}
+		if (this.#view === "overview" && (matchesKey(data, "return") || matchesKey(data, "d"))) {
 			this.#setView("detail");
 			return;
 		}

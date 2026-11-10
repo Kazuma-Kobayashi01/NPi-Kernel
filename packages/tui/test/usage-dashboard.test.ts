@@ -1,5 +1,5 @@
 import * as os from "node:os";
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { DescribeContext } from "../src/native/node";
 import type { TspText } from "@oh-my-pi/pi-wire";
 import type { DailyActivityPoint, UnavailableUsageAccount } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
@@ -9,6 +9,7 @@ import {
 	buildProviderCards,
 	formatActivityErrorDetail,
 	UsageDashboardComponent,
+	type UsageDashboardOptions,
 } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
 import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
 import { visibleWidth } from "@oh-my-pi/pi-tui/utils";
@@ -577,5 +578,176 @@ describe("formatActivityErrorDetail", () => {
 		const home = "/Users/testuser";
 		const input = `Error: failed to open ${home}/.omp/stats.db...`;
 		expect(formatActivityErrorDetail(input, home)).toBe("Error: failed to open ~/.omp/stats.db");
+	});
+});
+
+describe("UsageDashboardComponent frame", () => {
+	const savedRows = Object.getOwnPropertyDescriptor(process.stdout, "rows");
+	beforeAll(async () => {
+		await initTheme(false);
+	});
+	afterAll(() => {
+		if (savedRows) Object.defineProperty(process.stdout, "rows", savedRows);
+		else delete (process.stdout as { rows?: number }).rows;
+	});
+
+	function open(
+		reports: UsageReport[],
+		extra: Partial<UsageDashboardOptions> = {},
+		unavailableAccounts: UnavailableUsageAccount[] = [],
+	): UsageDashboardComponent {
+		return new UsageDashboardComponent({
+			reports,
+			unavailableAccounts,
+			renderDetail: () => "classic report body",
+			loadActivity: async push => {
+				push(extra.loadActivity ? [] : [day("2026-08-30", 12, 40), day("2026-08-29", 3, 9)]);
+			},
+			requestRender: () => {},
+			onClose: () => {},
+			...extra,
+		});
+	}
+	function plain(component: UsageDashboardComponent, width: number, rows: number): string[] {
+		Object.defineProperty(process.stdout, "rows", { value: rows, configurable: true });
+		return component.render(width).map(line => Bun.stripANSI(line));
+	}
+	const rich = (): UsageReport[] => [
+		report("anthropic", "a@test", [
+			limit("anthropic", "a", "5h", "Claude 5 Hour", 0.82, "warning", Date.now() + 4_000_000),
+			limit("anthropic", "a", "7d", "Claude 7 Day", 1, "exhausted", Date.now() + 90_000_000),
+		]),
+		report("openai", "a@test", [limit("openai", "a", "5h", "Codex 5h", 0.2, "ok", Date.now() + 4_000_000)]),
+	];
+
+	it("puts the view tabs and refresh state on one row under the title", async () => {
+		const component = open(rich());
+		try {
+			await Bun.sleep(5);
+			const lines = plain(component, 100, 30);
+			expect(lines[0]).toContain("Usage");
+			expect(lines[1]).toContain("Overview");
+			expect(lines[1]).toContain("Details");
+			expect(lines[1]).toMatch(/checked .* ago/);
+			// Narrow terminals fall back to the short age before dropping the status.
+			expect(plain(component, 32, 30)[1]).toMatch(/ago/);
+			expect(plain(component, 32, 30)[1]).not.toContain("checked");
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("shows a failed refresh on the nav row and keeps the last report", async () => {
+		const refreshed = Promise.withResolvers<void>();
+		const component = open(rich(), {
+			refresh: async () => {
+				refreshed.resolve();
+				throw new Error("429 Too Many Requests");
+			},
+		});
+		try {
+			component.handleInput("r");
+			await refreshed.promise;
+			await Bun.sleep(5);
+			const lines = plain(component, 100, 30);
+			expect(lines[1]).toContain("refresh failed: 429 Too Many Requests");
+			expect(lines.join("\n")).toContain("Claude 5 Hour");
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("draws quota as what is left and flags pressured rows with a glyph, not only color", () => {
+		const component = open(rich());
+		try {
+			// One column keeps every quota row inline, so each bar sits on its own labelled line.
+			const lines = plain(component, 50, 40);
+			const exhausted = lines.find(line => line.includes("Claude 7 Day"))!;
+			const warning = lines.find(line => line.includes("Claude 5 Hour"))!;
+			const healthy = lines.find(line => line.includes("Codex 5h"))!;
+			expect(exhausted).toContain(theme.status.error);
+			expect(warning).toContain(theme.status.warning);
+			expect(healthy).not.toContain(theme.status.error);
+			const filled = (line: string) => (line.match(/█/g) ?? []).length;
+			expect(filled(exhausted)).toBe(0);
+			expect(exhausted).toContain("0%");
+			expect(filled(healthy)).toBeGreaterThan(filled(warning));
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("labels the heatmap range and legend, and says so when nothing was recorded", async () => {
+		const component = open(rich());
+		const quiet = open(rich(), { loadActivity: async push => push([]) });
+		try {
+			await Bun.sleep(5);
+			const lines = plain(component, 100, 40);
+			expect(lines.some(line => /^Activity\s+\$\d/.test(line.replace(/^▎ /, "")) && /–/.test(line))).toBe(true);
+			expect(lines.some(line => line.includes("Less") && line.includes("More"))).toBe(true);
+			expect(plain(quiet, 100, 40).join("\n")).toContain("No activity recorded in this range yet.");
+		} finally {
+			component.dispose();
+			quiet.dispose();
+		}
+	});
+
+	it("guides an empty dashboard toward login and refresh", () => {
+		const component = open([], { refresh: async () => [] });
+		try {
+			const output = plain(component, 80, 24).join("\n");
+			expect(output).toContain("No usage data available.");
+			expect(output).toContain("/login");
+			expect(output).toContain("press r");
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("holds exact height and never overflows from 20 to 140 columns, in both views", () => {
+		const component = open(
+			[
+				...rich(),
+				report("a-provider-with-an-unreasonably-long-display-name-for-testing", "z@z.test", [
+					limit("p", "z", "5h", "5時間の上限（実験的）".repeat(3), 0.62, "warning", Date.now() + 3_600_000),
+				]),
+			],
+			{},
+			[{ provider: "anthropic", label: `${"long-account-".repeat(8)}@example.test` }],
+		);
+		try {
+			for (const rows of [14, 24, 40]) {
+				for (const width of [20, 36, 60, 80, 120, 140]) {
+					for (const view of ["overview", "detail"] as const) {
+						if (view === "detail") component.handleInput("\t");
+						const lines = plain(component, width, rows);
+						expect(lines).toHaveLength(rows);
+						for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+						if (view === "detail") component.handleInput("\t");
+					}
+				}
+			}
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("toggles views with tab, scrolls, and closes with escape", () => {
+		let closed = false;
+		const component = open(rich(), { onClose: () => (closed = true) });
+		try {
+			expect(plain(component, 80, 24).join("\n")).toContain("details");
+			component.handleInput("\t");
+			expect(plain(component, 80, 24).join("\n")).toContain("classic report body");
+			component.handleInput("\t");
+			expect(plain(component, 80, 24).join("\n")).toContain("Quota");
+			component.handleInput("\x1b[B");
+			component.handleInput("\x1b[6~");
+			component.handleInput("\x1b[<65;10;10M");
+			component.handleInput("\x1b");
+			expect(closed).toBe(true);
+		} finally {
+			component.dispose();
+		}
 	});
 });
