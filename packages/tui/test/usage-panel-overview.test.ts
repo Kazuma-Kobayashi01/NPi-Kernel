@@ -216,4 +216,26 @@ describe("renderUsageOverview", () => {
 			}
 		}
 	});
+
+	it("tags the credential in use, cutting the label before the tag at narrow widths", () => {
+		const [anthropic, openai] = createTestEntries();
+		const entries = [
+			{ ...anthropic!, active: true },
+			{ ...openai!, active: false },
+		];
+		const wide = renderUsageOverview(entries, { width: 100, nowMs: NOW, selected: 0 });
+		const text = wide.lines.map(line => Bun.stripANSI(line));
+		const activeHeader = text.find(line => line.includes("alice@example.com"));
+		const inactiveHeader = text.find(line => line.includes("bob@example.com"));
+		expect(activeHeader).toContain("in use");
+		expect(inactiveHeader).not.toContain("in use");
+		const narrow = renderUsageOverview(entries, { width: 20, nowMs: NOW, selected: 0 });
+		const narrowHeader = Bun.stripANSI(narrow.lines[narrow.selectedStart]!);
+		expect(narrowHeader).toContain("in use");
+		for (const w of [20, 40, 100]) {
+			for (const line of renderUsageOverview(entries, { width: w, nowMs: NOW, selected: 0 }).lines) {
+				expect(visibleWidth(line)).toBeLessThanOrEqual(w);
+			}
+		}
+	});
 });

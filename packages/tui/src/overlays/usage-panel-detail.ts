@@ -2,7 +2,6 @@ import {
 	resolveUsedFraction,
 	type UsageAmount,
 	type UsageLimit,
-	type UsageReport,
 	type UsageWindow,
 } from "@oh-my-pi/pi-ai";
 import { formatDuration, formatNumber } from "@oh-my-pi/pi-utils";

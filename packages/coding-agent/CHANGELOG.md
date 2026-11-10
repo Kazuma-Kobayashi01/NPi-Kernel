@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `/usage` in the terminal UI is now a full-screen panel with Overview, Details and Tokens tabs (←/→, Tab/Shift+Tab or 1–3): every credential with its limit windows and reset countdowns, one credential's limits and saved resets, and this session's and this machine's token and cost figures per model. ↑/↓ select, Enter opens details, `r` refreshes, `p` changes the Tokens period, Esc or `q` closes; the credential this session uses is marked `in use`.
 - Virtual Office keeps far less on disk: a desk is a plain checkout whose dependency folders are shared with your checkout, idle desks are removed once their work is committed (the branches stay), and the pull request ledger keeps only the newest finished pull requests.
 
 ### Added

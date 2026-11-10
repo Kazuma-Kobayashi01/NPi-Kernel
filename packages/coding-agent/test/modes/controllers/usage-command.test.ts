@@ -451,22 +451,26 @@ describe("interactive /usage account visibility", () => {
 		await command(async () => [report]).handleUsageCommand();
 
 		const overview = display();
-		expect(overview).toContain("2 accts");
 		expect(overview).toContain(email);
 		expect(overview).toContain("org-personal");
 		expect(overview).toContain("usage unavailable");
-		expect(overview).toContain("75%");
+		expect(overview).toContain("25% used");
+		expect(overview).toMatch(/org-personal in use/);
 		expect(overview).not.toContain("Tavily");
 
+		// Enter opens the selected credential (the one with a report) on the Details tab.
 		mounted?.handleInput("\r");
 		const details = display();
-		expect(details).toMatch(/shared@example\.test.*org-personal.*usage unavailable/);
-		expect(details).toContain("shared@example.test (org-team)");
-		expect(details).toContain("75% free");
-		expect(details).toContain("2 saved resets");
-		expect(details).toContain("1 usable now");
-		expect(details).toContain("in use by this session: shared@example.test (org-personal)");
-		expect(details).not.toMatch(/org-team.*usage unavailable/);
+		expect(details).toContain(email);
+		expect(details).toContain("75% left");
+		expect(details).toContain("2 saved resets available");
+		expect(details).toContain("1 redeemable now");
+		expect(details).not.toContain("in use by this session");
+		// The next credential has no usage; it is the one this session uses.
+		mounted?.handleInput("\x1b[B");
+		const missing = display();
+		expect(missing).toContain("org-personal");
+		expect(missing).toContain("in use by this session");
 	});
 
 	it.each(["empty", "null", "error"] as const)(
@@ -478,7 +482,6 @@ describe("interactive /usage account visibility", () => {
 			}).handleUsageCommand();
 
 			const overview = display();
-			expect(overview).toContain("2 accts");
 			expect(overview.match(/shared@example\.test/g)).toHaveLength(2);
 			expect(overview).toContain("org-team");
 			expect(overview).toContain("org-personal");
@@ -488,16 +491,14 @@ describe("interactive /usage account visibility", () => {
 			expect(overview).not.toContain("no limits");
 			expect(overview).not.toContain("Tavily");
 
+			mounted?.handleInput("\x1b[B");
 			mounted?.handleInput("\r");
 			const details = display();
-			expect(details).toMatch(/shared@example\.test.*org-team.*usage unavailable/);
-			expect(details).toMatch(/shared@example\.test.*org-personal.*usage unavailable/);
-			expect(details).toContain("in use by this session: shared@example.test (org-personal)");
+			expect(details).toContain("org-personal");
+			expect(details).toContain("in use by this session");
 			expect(details).not.toContain("%");
 			expect(details).not.toContain("Infinity");
 
-			mounted?.handleInput("\x1b");
-			expect(display()).toContain("2 accts");
 			mounted?.handleInput("\x1b");
 			expect(mounted).toBeUndefined();
 		},

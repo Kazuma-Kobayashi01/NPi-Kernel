@@ -284,9 +284,7 @@ describe("renderUsageDetail", () => {
 			report: {
 				provider: "anthropic",
 				fetchedAt: nowMs - 60_000,
-				limits: [
-					makeLimit("5h", "Claude 3.5 Sonnet", 5 * 3_600_000, 0.42, "ok", nowMs + 7_200_000),
-				],
+				limits: [makeLimit("5h", "Claude 3.5 Sonnet", 5 * 3_600_000, 0.42, "ok", nowMs + 7_200_000)],
 			},
 		};
 

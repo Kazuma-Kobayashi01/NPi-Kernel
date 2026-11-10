@@ -83,6 +83,7 @@ import {
 	collectUnreportedAccounts,
 	selectReportableAccounts,
 } from "../../slash-commands/helpers/usage-accounts";
+import { loadUsageTokensData } from "../../slash-commands/helpers/usage-tokens";
 import { loadDailyActivity } from "../../stats/activity-client";
 import {
 	AUTO_THINKING,
@@ -130,7 +131,6 @@ import { ThinkingSelectorComponent } from "@oh-my-pi/pi-tui/overlays/thinking-se
 import { UsageDashboardComponent } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
 import { OfficePanelComponent, type OfficePanelOptions } from "@oh-my-pi/pi-tui/overlays/office-panel";
 import { RankDashboardComponent, type RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
-import { renderUsageReports } from "./command-controller";
 import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 
 import { cfgAdvisorSyncBacklog } from "../../advisor/settings";
@@ -441,9 +441,8 @@ export class SelectorController {
 	}
 
 	/**
-	 * Fullscreen `/usage` dashboard on the alternate screen (the /settings
-	 * idiom): compact subscriptions grid + daily activity heatmap, with the
-	 * classic full report one keypress away. Takes no transcript space.
+	 * Fullscreen `/usage` panel on the alternate screen (the /settings idiom):
+	 * Overview, Details and Tokens tabs. Takes no transcript space.
 	 */
 	showUsageDashboard(reports: UsageReport[]): void {
 		// Checked here, not before the fetch: a repeat `/usage` whose fetch lands
@@ -458,15 +457,21 @@ export class SelectorController {
 			this.ctx.showWarning("No usage data available.");
 			return;
 		}
-		const unavailableAccounts = collectUnreportedAccounts(reports, accounts).map(account => ({
-			provider: account.provider,
-			label: accountIdentityLabel(account),
-		}));
+		const unavailableOf = (fetched: UsageReport[]) =>
+			collectUnreportedAccounts(fetched, accounts).map(account => ({
+				provider: account.provider,
+				label: accountIdentityLabel(account),
+				identity: {
+					accountId: account.accountId,
+					email: account.email,
+					orgId: account.orgId,
+					projectId: account.projectId,
+				},
+			}));
 		const currentProvider = this.ctx.session.model?.provider;
-		const activeAccount = currentProvider
+		const identity = currentProvider
 			? this.ctx.session.modelRegistry.authStorage.oauth.identity(currentProvider, this.ctx.session.sessionId)
 			: undefined;
-		const usageModelSelectors = this.ctx.session.getUsageReportingModelSelectors(reports);
 		const done = () => {
 			menu.handle?.hide();
 			this.#releaseMenu("usage-dashboard", menu);
@@ -475,19 +480,14 @@ export class SelectorController {
 		};
 		const dashboard = new UsageDashboardComponent({
 			reports,
-			unavailableAccounts,
-			renderDetail: (width, current) =>
-				renderUsageReports(
-					current,
-					theme,
-					Date.now(),
-					width,
-					provider => (provider === currentProvider ? activeAccount : undefined),
-					usageModelSelectors,
-					unavailableAccounts,
-				),
+			unavailableAccounts: unavailableOf(reports),
+			activeAccount: currentProvider && identity ? { provider: currentProvider, ...identity } : undefined,
 			loadActivity: loadDailyActivity,
-			refresh: () => this.ctx.session.fetchUsageReports(),
+			loadTokens: () => loadUsageTokensData(this.ctx.session),
+			refresh: async () => {
+				const fetched = await this.ctx.session.fetchUsageReports();
+				return fetched ? { reports: fetched, unavailableAccounts: unavailableOf(fetched) } : null;
+			},
 			requestRender: () => this.ctx.ui.requestRender(),
 			onClose: done,
 		});

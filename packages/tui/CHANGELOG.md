@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `UsageDashboardComponent` is tabbed (Overview, Details, Tokens): it takes `loadTokens` and `activeAccount`, `refresh` resolves a `UsageSnapshot`, and `renderDetail` is gone.
+
 ### Added
 
 - `OfficePanelComponent` takes `thinkingLevels` and `watch`, and draws office activity, spend and recent assignments when the state carries them.

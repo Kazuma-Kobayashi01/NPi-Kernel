@@ -10,8 +10,7 @@ import {
 	formatActivityErrorDetail,
 	UsageDashboardComponent,
 } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
-import { initTheme, theme } from "@oh-my-pi/pi-tui/theme";
-import { visibleWidth } from "@oh-my-pi/pi-tui/utils";
+import { initTheme } from "@oh-my-pi/pi-tui/theme";
 
 function day(day: string, cost: number, requests = 1): DailyActivityPoint {
 	return { day, cost, requests };
@@ -305,7 +304,10 @@ describe("UsageDashboardComponent", () => {
 		return new UsageDashboardComponent({
 			reports,
 			unavailableAccounts,
-			renderDetail: () => "",
+			loadTokens: async () => ({
+				session: { totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, models: [] },
+				periods: [],
+			}),
 			loadActivity: async push => {
 				push([]);
 			},
@@ -313,170 +315,6 @@ describe("UsageDashboardComponent", () => {
 			onClose: () => {},
 		});
 	}
-
-	it("keeps usable bars and matching label rows across multi-column cards", () => {
-		const component = dashboard([
-			report("anthropic", "a@test", [
-				limit("anthropic", "a", "7d", "Claude 7 Day", 0.9, "warning"),
-				limit("anthropic", "a", "fable", "Claude 7 Day (Fable)", 0.16, "ok"),
-			]),
-			report("openai", "a@test", [
-				limit("openai", "a", "5h", "Codex 5h", 0.4, "ok"),
-				limit("openai", "a", "7d", "Codex Weekly", 0.2, "ok"),
-			]),
-			report("google", "a@test", [
-				limit("google", "a", "5h", "Gemini 5h", 0.3, "ok"),
-				limit("google", "a", "7d", "Gemini Weekly", 0.1, "ok"),
-			]),
-		]);
-		try {
-			// Two stacked cards, two inline cards, then three stacked cards.
-			for (const [width, columns, stacked] of [
-				[72, 2, true],
-				[100, 2, false],
-				[120, 3, true],
-			] as const) {
-				const lines = component.render(width).map(line => Bun.stripANSI(line));
-				const labelLine = lines.find(line => line.includes("Claude 7 Day"))!;
-				expect(labelLine).toContain("Codex 5h");
-				expect(/[█░]/.test(labelLine)).toBe(!stacked);
-				const quotaLines = lines.filter(line => /[█░]/.test(line)).slice(0, 2);
-				expect(quotaLines).toHaveLength(2);
-				for (const line of quotaLines) {
-					const bars = [...line.matchAll(/[█░]+/g)];
-					expect(bars).toHaveLength(columns);
-					expect(bars[0][0].length).toBeGreaterThanOrEqual(12);
-					for (const bar of bars) expect(bar[0].length).toBe(bars[0][0].length);
-				}
-				expect(quotaLines[0]).toContain("10%");
-				expect(quotaLines[1]).toContain("84%");
-				for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-			}
-		} finally {
-			component.dispose();
-		}
-	});
-
-	it("sanitizes provider labels and duplicate-window tags before rendering", () => {
-		const label = "Claude\t7 Day\x1b[2J\x07\r\n(Fable)";
-		const component = dashboard([
-			report("anthropic", "a@test", [
-				limit("anthropic", "a", "5\th", label, 0.4, "ok"),
-				limit("anthropic", "a", "7\nd", label, 0.2, "ok"),
-			]),
-		]);
-		try {
-			const lines = component.render(100);
-			for (const line of lines) {
-				expect(line).not.toMatch(/[\t\r\n\x07]/);
-				expect(line).not.toContain("\x1b[2J");
-				expect(visibleWidth(line)).toBeLessThanOrEqual(100);
-			}
-			const output = Bun.stripANSI(lines.join("\n"));
-			expect(output).toMatch(/Claude +7 Day +\(Fable\)/);
-			expect(output).toMatch(/5 +h/);
-			expect(output).toMatch(/7 +d/);
-		} finally {
-			component.dispose();
-		}
-	});
-
-	it("bounds long quota labels while retaining suffixes and sibling bar alignment", () => {
-		const prefix = `Weekly ${"extended thinking ".repeat(1000)}`;
-		const component = dashboard([
-			report("anthropic", "a@test", [
-				limit("anthropic", "a", "fable", `${prefix}(Fable)`, 0.9, "warning"),
-				limit("anthropic", "a", "mythos", `${prefix}(Mythos)`, 0.16, "ok"),
-			]),
-			report("openai", "a@test", [
-				limit("openai", "a", "5h", "Codex 5h", 0.4, "ok"),
-				limit("openai", "a", "7d", "Codex Weekly", 0.2, "ok"),
-			]),
-		]);
-		try {
-			const lines = component.render(72).map(line => Bun.stripANSI(line));
-			for (const suffix of ["(Fable)", "(Mythos)"]) expect(lines.join("\n")).toContain(suffix);
-			const starts = lines.flatMap((line, index) => (line.includes("Weekly extended") ? [index] : []));
-			const bars = lines.flatMap((line, index) => (/[█░]/.test(line) ? [index] : []));
-			expect(starts).toHaveLength(2);
-			expect(bars).toHaveLength(2);
-			for (let index = 0; index < bars.length; index++) {
-				expect(bars[index] - starts[index]).toBeLessThanOrEqual(2);
-				expect([...lines[bars[index]].matchAll(/[█░]+/g)]).toHaveLength(2);
-			}
-			expect(lines.join("\n")).toContain("…");
-			for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(72);
-		} finally {
-			component.dispose();
-		}
-	});
-
-	it("keeps all label characters when they fit the two-line cell budget", () => {
-		const label = "Claude 7 Day (Extended Thinking)";
-		const component = dashboard([report("anthropic", "a@test", [limit("anthropic", "a", "7d", label, 0.4, "ok")])]);
-		try {
-			const lines = component.render(24).map(line => Bun.stripANSI(line));
-			const first = lines.findIndex(line => line.includes("Claude"));
-			const bar = lines.findIndex(line => /[█░]/.test(line));
-			expect(bar - first).toBeLessThanOrEqual(2);
-			expect(
-				lines
-					.slice(first, bar)
-					.join("")
-					.replace(/[│▎\s]/g, ""),
-			).toBe(label.replace(/\s/g, ""));
-		} finally {
-			component.dispose();
-		}
-	});
-
-	it("keeps quota names distinguishable beside or above their bars", async () => {
-		const now = Date.now();
-		const { promise: rendered, resolve: markRendered } = Promise.withResolvers<void>();
-		const component = new UsageDashboardComponent({
-			reports: [
-				report("anthropic", "user@example.test", [
-					limit("anthropic", "account", "7d", "Claude 7 Day", 1, "exhausted", now + 3_600_000),
-					limit("anthropic", "account", "fable", "Claude 7 Day (Fable)", 0.16, "ok", now + 3_600_000),
-					limit("anthropic", "account", "extra", "Claude Extra Usage", 0.05, "ok"),
-				]),
-			],
-			renderDetail: () => "",
-			loadActivity: async push => {
-				push([]);
-			},
-			requestRender: () => markRendered(),
-			onClose: () => {},
-		});
-		try {
-			await rendered;
-			for (const width of [36, 60]) {
-				const lines = component.render(width);
-				const output = Bun.stripANSI(lines.join("\n"));
-				expect(output).toContain("Claude 7 Day (Fable)");
-				expect(output).toContain("Claude Extra Usage");
-				expect(output).toContain("84%");
-				expect(output).toContain("95%");
-				for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-			}
-		} finally {
-			component.dispose();
-		}
-	});
-
-	it("keeps the error icon on an exhausted card when another account's lookup fails", () => {
-		const component = dashboard(
-			[report("anthropic", "a@test", [limit("anthropic", "a", "7d", "Claude 7 Day", 1, "exhausted")])],
-			[{ provider: "anthropic", label: "b@test" }],
-		);
-		try {
-			const output = Bun.stripANSI(component.render(100).join("\n"));
-			const title = output.split("\n").find(line => line.includes("2 accts"));
-			expect(title?.replace(/^[│▎\s]+/, "")).toStartWith(`${theme.status.error} Anthropic`);
-		} finally {
-			component.dispose();
-		}
-	});
 
 	it("keeps distinct buckets that share a label and window separate in the detail view", () => {
 		// Same payload as the cards regression (issue #16790): two weekly
@@ -529,13 +367,18 @@ describe("UsageDashboardComponent", () => {
 		const { promise: rendered, resolve: markRendered } = Promise.withResolvers<void>();
 		const component = new UsageDashboardComponent({
 			reports: [],
-			renderDetail: () => "",
 			loadActivity: () => Promise.reject(new Error("worker spawn failed")),
+			loadTokens: async () => ({
+				session: { totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, models: [] },
+				periods: [],
+			}),
 			requestRender: () => markRendered(),
 			onClose: () => {},
 		});
 
 		await rendered;
+		// The activity heatmap lives on the Tokens tab.
+		component.handleInput("3");
 		const lines = component.render(80).join("\n");
 		expect(lines).toContain("Usage history unavailable (worker spawn failed).");
 		expect(lines).not.toContain("stats database could not be read");
@@ -546,13 +389,17 @@ describe("UsageDashboardComponent", () => {
 		const { promise: rendered, resolve: markRendered } = Promise.withResolvers<void>();
 		const component = new UsageDashboardComponent({
 			reports: [],
-			renderDetail: () => "",
 			loadActivity: () => Promise.reject(new Error(rawError)),
+			loadTokens: async () => ({
+				session: { totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 }, models: [] },
+				periods: [],
+			}),
 			requestRender: () => markRendered(),
 			onClose: () => {},
 		});
 
 		await rendered;
+		component.handleInput("3");
 		const renderedLines = component.render(140);
 		const contentLine = renderedLines.find(l => l.includes("Usage history unavailable"));
 		expect(contentLine).toBeDefined();
@@ -564,6 +411,66 @@ describe("UsageDashboardComponent", () => {
 		expect(contentLine).toContain(
 			"Usage history unavailable (subprocess crashed at ~/.omp/stats.db: failed to open line 2).",
 		);
+	});
+	it("switches tabs with arrows, Tab, Shift+Tab and number keys, wrapping at the ends", () => {
+		const component = dashboard([
+			report("anthropic", "a@test", [
+				limit("anthropic", "account", "5h", "Claude 5h", 0.25, "ok", Date.now() + 3_600_000),
+			]),
+		]);
+		const active = (): string => {
+			// Each tab has its own footer hints and body.
+			const screen = Bun.stripANSI(component.render(100).join("\n"));
+			if (screen.includes("⏎ details")) return "overview";
+			if (screen.includes("↑/↓ provider")) return "detail";
+			if (screen.includes("Activity")) return "tokens";
+			return "unknown";
+		};
+		try {
+			expect(active()).toBe("overview");
+			component.handleInput("\x1b[C");
+			expect(active()).toBe("detail");
+			component.handleInput("\t");
+			expect(active()).toBe("tokens");
+			component.handleInput("\x1b[C");
+			expect(active()).toBe("overview");
+			component.handleInput("\x1b[D");
+			expect(active()).toBe("tokens");
+			component.handleInput("\x1b[Z");
+			expect(active()).toBe("detail");
+			component.handleInput("1");
+			expect(active()).toBe("overview");
+			component.handleInput("3");
+			expect(active()).toBe("tokens");
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("moves the selection with arrows and opens the selected credential with Enter", () => {
+		const now = Date.now();
+		const component = dashboard([
+			report("anthropic", "first@test", [
+				limit("anthropic", "account", "5h", "Claude 5h", 0.25, "ok", now + 3_600_000),
+			]),
+			report("openai", "second@test", [limit("openai", "account", "5h", "Codex 5h", 0.5, "ok", now + 3_600_000)]),
+		]);
+		try {
+			component.render(100);
+			component.handleInput("\x1b[B");
+			component.handleInput("\r");
+			const detail = Bun.stripANSI(component.render(100).join("\n"));
+			expect(detail).toContain("second@test");
+			expect(detail).not.toContain("first@test");
+			component.handleInput("1");
+			component.handleInput("\x1b[A");
+			component.handleInput("\r");
+			const back = Bun.stripANSI(component.render(100).join("\n"));
+			expect(back).toContain("first@test");
+			expect(back).not.toContain("second@test");
+		} finally {
+			component.dispose();
+		}
 	});
 });
 

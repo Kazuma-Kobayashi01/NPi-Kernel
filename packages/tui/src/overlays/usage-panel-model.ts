@@ -11,6 +11,8 @@ export type UsageTab = (typeof USAGE_TABS)[number];
 export interface UnavailableUsageAccount {
 	provider: string;
 	label: string;
+	/** Who the credential belongs to, so the one this session uses can be marked. */
+	identity?: { accountId?: string; email?: string; orgId?: string; projectId?: string };
 }
 
 /**
@@ -68,14 +70,24 @@ export interface BuildUsageEntriesOptions {
 	activeAccount?: ActiveUsageAccount;
 }
 
-/** Whether a report was fetched for the credential in use: account id first, then email, then project. */
+/** Whether a credential is the one this session uses: account id first, then email, then project. */
+function identityMatchesActive(
+	provider: string,
+	identity: { accountId?: string; email?: string; orgId?: string; projectId?: string } | undefined,
+	active: ActiveUsageAccount | undefined,
+): boolean {
+	if (!active || !identity || active.provider !== provider) return false;
+	const orgMatches = !active.orgId || !identity.orgId || identity.orgId === active.orgId;
+	if (active.accountId) return identity.accountId === active.accountId && orgMatches;
+	if (active.email) return identity.email === active.email && orgMatches;
+	return !!active.projectId && identity.projectId === active.projectId;
+}
+
 function reportMatchesActive(report: UsageReport, active: ActiveUsageAccount | undefined): boolean {
-	if (!active || active.provider !== report.provider) return false;
-	const metadata = report.metadata;
-	const orgMatches = !active.orgId || !metadata?.orgId || metadata.orgId === active.orgId;
-	if (active.accountId) return metadata?.accountId === active.accountId && orgMatches;
-	if (active.email) return metadata?.email === active.email && orgMatches;
-	return !!active.projectId && metadata?.projectId === active.projectId;
+	const metadata = report.metadata as
+		| { accountId?: string; email?: string; orgId?: string; projectId?: string }
+		| undefined;
+	return identityMatchesActive(report.provider, metadata, active);
 }
 
 /**
@@ -115,6 +127,7 @@ export function buildUsageEntries(
 		add(account.provider, {
 			account: sanitizeDisplayLine(account.label),
 			state: missing,
+			...(identityMatchesActive(account.provider, account.identity, options.activeAccount) ? { active: true } : {}),
 			...(missing === "error" ? { error: options.error ?? undefined } : {}),
 		});
 	}
@@ -193,7 +206,14 @@ export function usageStatusColor(status: UsageLimit["status"]): "success" | "war
 
 export function usageStatusIcon(status: UsageLimit["status"]): string {
 	const color = usageStatusColor(status);
-	const icon = status === "exhausted" ? theme.status.error : status === "warning" ? theme.status.warning : status === "ok" ? theme.status.success : theme.status.info;
+	const icon =
+		status === "exhausted"
+			? theme.status.error
+			: status === "warning"
+				? theme.status.warning
+				: status === "ok"
+					? theme.status.success
+					: theme.status.info;
 	return theme.fg(color, icon);
 }
 

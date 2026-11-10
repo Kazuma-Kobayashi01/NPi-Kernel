@@ -118,23 +118,30 @@ function buildEntryHeaderLine(entry: UsageEntry, isSelected: boolean, width: num
 	}
 
 	const prefixWidth = 4;
+	// The credential this session uses carries an `in use` tag; at narrow widths the label is cut
+	// before the tag is dropped.
+	const tagText = "in use";
+	const tagWidth = entry.active ? tagText.length + 1 : 0;
+	const tagStyled = entry.active ? ` ${theme.fg("accent", tagText)}` : "";
+	const styled = (label: string) => (isSelected ? theme.bold(theme.fg("accent", label)) : label);
 	const accountWidth = visibleWidth(accountLabel);
 
-	if (summaryStyled && prefixWidth + accountWidth + 1 + summaryWidth <= width) {
-		const padWidth = width - (prefixWidth + accountWidth + summaryWidth);
-		const styledAccount = isSelected ? theme.bold(theme.fg("accent", accountLabel)) : accountLabel;
-		return truncateToWidth(`${marker} ${statusIcon} ${styledAccount}${" ".repeat(padWidth)}${summaryStyled}`, width);
+	if (summaryStyled && prefixWidth + accountWidth + tagWidth + 1 + summaryWidth <= width) {
+		const padWidth = width - (prefixWidth + accountWidth + tagWidth + summaryWidth);
+		return truncateToWidth(
+			`${marker} ${statusIcon} ${styled(accountLabel)}${tagStyled}${" ".repeat(padWidth)}${summaryStyled}`,
+			width,
+		);
 	}
 
-	if (prefixWidth + accountWidth <= width) {
-		const styledAccount = isSelected ? theme.bold(theme.fg("accent", accountLabel)) : accountLabel;
-		return truncateToWidth(`${marker} ${statusIcon} ${styledAccount}`, width);
+	if (prefixWidth + accountWidth + tagWidth <= width) {
+		return truncateToWidth(`${marker} ${statusIcon} ${styled(accountLabel)}${tagStyled}`, width);
 	}
 
-	const budget = Math.max(1, width - prefixWidth);
+	const keepTag = entry.active && width - prefixWidth - tagWidth >= 1;
+	const budget = Math.max(1, width - prefixWidth - (keepTag ? tagWidth : 0));
 	const truncated = truncateToWidth(accountLabel, budget);
-	const styledAccount = isSelected ? theme.bold(theme.fg("accent", truncated)) : truncated;
-	return truncateToWidth(`${marker} ${statusIcon} ${styledAccount}`, width);
+	return truncateToWidth(`${marker} ${statusIcon} ${styled(truncated)}${keepTag ? tagStyled : ""}`, width);
 }
 
 function buildLimitLine(limit: UsageLimit, nowMs: number, contentWidth: number): string {

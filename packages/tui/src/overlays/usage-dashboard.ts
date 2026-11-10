@@ -13,10 +13,8 @@ import {
 	matchesKey,
 	replaceTabs,
 	routeSgrMouseInput,
-	sliceWithWidth,
 	truncateToWidth,
 	visibleWidth,
-	wrapTextWithAnsi,
 } from "../index";
 import { colorLuma, formatDuration, hexToRgb, rgbToHex, sanitizeText } from "@oh-my-pi/pi-utils";
 import { formatProviderName } from "../chrome/format";
@@ -792,7 +790,6 @@ export class UsageDashboardComponent implements Component {
 		this.#closeController.abort();
 	}
 
-
 	// ---------------------------------------------------------------------------
 	// Heatmap rendering
 	// ---------------------------------------------------------------------------
@@ -956,7 +953,6 @@ export class UsageDashboardComponent implements Component {
 		for (let i = 0; i < contentRows; i++) out.push(row(visible[i] ?? "", width));
 		return frame.finish(truncateToWidth(this.#hint(), innerWidth));
 	}
-
 
 	// ---------------------------------------------------------------------------
 	// Native description
