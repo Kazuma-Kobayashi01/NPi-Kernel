@@ -1,18 +1,11 @@
 /**
  * The owner's command line for the Virtual Office, shared by `/office` in a session and
- * `npi office` in a shell: switch it on, size the company, edit the roster, and merge or send
- * back the pull requests the general manager approved.
+ * `npi office` in a shell: switch it on, size the company, edit the roster, and read the reports
+ * the offices handed in.
  */
 import type { Settings } from "../config/settings";
 import { SUBAGENT_THINKING_LEVELS } from "../task/settings";
-import {
-	cleanDesks,
-	ownerMerge,
-	ownerRequestChanges,
-	readOfficeState,
-	retireMemberDesk,
-	staffedOffices,
-} from "./company";
+import { readOfficeState, staffedOffices } from "./company";
 import {
 	addMember,
 	OFFICE_CAPABILITIES,
@@ -26,14 +19,15 @@ import {
 	resizeOffice,
 	updateMember,
 } from "./model";
-import { OWNER, type Pull, PullError } from "./pulls";
+import { readReport } from "./reports";
+import { readRuns } from "./usage";
 import { forgetOffice, OfficeMemoryError, readOfficeMemory, rememberNote } from "./memory";
 import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "./settings";
 import { OfficeWorkspaceError, openCompany } from "./workspace";
 
 export const OFFICE_COMMAND_USAGE = [
 	"/office                                   open the Virtual Office panel (in the terminal UI)",
-	"/office status                            show the company and its pull requests",
+	"/office status                            show the company and its recent reports",
 	"/office on | off                          turn Virtual Office on or off",
 	"/office scale team|studio|enterprise      1, 3 or 6 offices",
 	"/office size <office> <3-6>               set an office's member count",
@@ -43,9 +37,7 @@ export const OFFICE_COMMAND_USAGE = [
 	'/office set <name> thinking <level>       the thinking effort a member runs at ("default" to clear)',
 	"/office set <name> capability common|professional|expert",
 	"/office set <name> role leader            make a member the office's leader",
-	"/office merge <pr>                        merge an approved office pull request into your branch",
-	"/office clean                             remove desks nobody is working at, to free disk space",
-	"/office reject <pr> <reason>              send an office pull request back",
+	"/office report [run]                      list recent reports, or print one",
 	"/office memory <office>                   what an office remembers about this project",
 	"/office remember <office> <lesson>        give an office a lesson to keep",
 	"/office forget <office>                   clear what an office remembers about this project",
@@ -72,23 +64,28 @@ function officeNumber(value: string | undefined): number {
 	return number;
 }
 
-function pullNumber(value: string | undefined): number {
-	const number = Number(value?.replace(/^#/, ""));
-	if (!Number.isInteger(number) || number < 1) throw new OfficeUsageError("Expected a pull request number.");
-	return number;
-}
+/** Who wrote a lesson the owner gave an office from the command line. */
+const OWNER = "owner";
+/** Reports `/office report` lists. */
+const LISTED_REPORTS = 12;
 
-function describePullLine(pull: Pull): string {
-	const from = pull.kind === "office" ? `office ${pull.office}` : `${pull.author} (office ${pull.office})`;
-	const waiting = pull.kind === "office" && pull.status === "approved" ? `  ← /office merge ${pull.number}` : "";
-	return `  #${pull.number} [${pull.status.replace("_", " ")}] ${pull.title} — ${from} → ${pull.target}${waiting}`;
+function describeRunLine(run: {
+	id: string;
+	office: number;
+	member: string;
+	endedAt?: string;
+	failed?: boolean;
+	report?: string;
+}): string {
+	const state = !run.endedAt ? "running" : run.failed ? "did not finish" : (run.report ?? "no report");
+	return `  ${run.id}  office ${run.office}  ${run.member}  ${state}`;
 }
 
 async function renderState(settings: Settings, cwd: string): Promise<string> {
 	const state = await readOfficeState(settings, cwd);
 	const lines = [
 		`Virtual Office: ${state.enabled ? "on" : "off"} · ${state.scale} (${OFFICE_COUNT[state.scale]} office${OFFICE_COUNT[state.scale] === 1 ? "" : "s"})`,
-		state.company ? `Base branch: ${state.company.baseBranch}` : `No company here: ${state.reason}`,
+		state.company ? `Project: ${state.company.checkout}` : `No company here: ${state.reason}`,
 	];
 	for (const office of state.offices) {
 		lines.push(`Office ${office.number}`);
@@ -98,10 +95,10 @@ async function renderState(settings: Settings, cwd: string): Promise<string> {
 			);
 		}
 	}
-	const unfinished = state.pulls.filter(pull => pull.status !== "merged" && pull.status !== "closed");
-	if (unfinished.length > 0) {
-		lines.push("Pull requests:");
-		for (const pull of unfinished) lines.push(describePullLine(pull));
+	const recent = state.runs.slice(-LISTED_REPORTS).reverse();
+	if (recent.length > 0) {
+		lines.push("Recent reports (/office report <run>):");
+		for (const run of recent) lines.push(describeRunLine(run));
 	}
 	return lines.join("\n");
 }
@@ -117,7 +114,6 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 	switch (verb?.toLowerCase()) {
 		case undefined:
 		case "status":
-		case "prs":
 			return renderState(settings, cwd);
 		case "on":
 		case "off": {
@@ -141,10 +137,7 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 		case "remove": {
 			if (!rest[0]) throw new OfficeUsageError("Expected a member name.");
 			const offices = roster(settings);
-			const leaving = offices.findIndex(office => office.members.some(member => member.id === rest[0]));
 			cfgOfficeOffices.set(settings, removeMember(offices, rest[0]));
-			// Their desk and, when nothing unmerged is on it, their branch go too.
-			if (leaving >= 0) await retireMemberDesk(cwd, leaving + 1, rest[0]).catch(() => {});
 			return `${rest[0]} left the company.\n${await renderState(settings, cwd)}`;
 		}
 		case "set": {
@@ -173,37 +166,27 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 			cfgOfficeOffices.set(settings, updateMember(roster(settings), name, patch));
 			return renderState(settings, cwd);
 		}
-		case "clean": {
-			const { removed, kept } = await cleanDesks(settings, cwd);
-			return `Removed ${removed} idle desk${removed === 1 ? "" : "s"}${kept > 0 ? `; ${kept} kept (someone is working there, or they hold uncommitted changes)` : ""}. Branches and pull requests are untouched; a desk comes back when its member next works.`;
-		}
-		case "merge": {
-			const pull = await ownerMerge(settings, cwd, pullNumber(rest[0]));
-			return `Merged #${pull.number} "${pull.title}" into ${pull.target} as ${pull.mergeCommit?.slice(0, 12)}.`;
-		}
-		case "reject": {
-			const pull = await ownerRequestChanges(cwd, pullNumber(rest[0]), rest.slice(1).join(" "));
-			return `Sent #${pull.number} back to office ${pull.office}. Tell the general manager to have it fixed.`;
+		case "report": {
+			const company = await openCompany(cwd);
+			if (!rest[0]) {
+				const runs = (await readRuns(company)).slice(-LISTED_REPORTS).reverse();
+				if (runs.length === 0) return "No office has handed in a report yet.";
+				return ["Recent reports (/office report <run>):", ...runs.map(describeRunLine)].join("\n");
+			}
+			const text = await readReport(company, rest[0]);
+			if (text === undefined) throw new OfficeUsageError(`No report is kept for run ${rest[0]}.`);
+			return text.trimEnd();
 		}
 		case "memory": {
 			const office = officeNumber(rest[0]);
 			const memory = await readOfficeMemory(await openCompany(cwd), office);
-			if (memory.notes.length + memory.log.length === 0) {
+			if (memory.notes.length === 0) {
 				return `Office ${office} remembers nothing about this project yet.`;
 			}
-			const lines = [`Office ${office} remembers about this project:`];
-			if (memory.notes.length > 0)
-				lines.push("Lessons:", ...memory.notes.map(note => `  - ${note.text} (${note.by})`));
-			if (memory.log.length > 0) {
-				lines.push(
-					"Merged work:",
-					...memory.log.map(
-						entry =>
-							`  #${entry.pr} ${entry.title} — ${entry.author} → ${entry.target}${entry.files.length ? ` (${entry.files.length} file(s))` : ""}`,
-					),
-				);
-			}
-			return lines.join("\n");
+			return [
+				`Office ${office} remembers about this project:`,
+				...memory.notes.map(note => `  - ${note.text} (${note.by})`),
+			].join("\n");
 		}
 		case "remember": {
 			const office = officeNumber(rest[0]);
@@ -231,7 +214,6 @@ export async function runOfficeCommand(args: string[], settings: Settings, cwd: 
 			return { text: `${error.message}\n\n${OFFICE_COMMAND_USAGE}`, failed: true };
 		if (
 			error instanceof OfficeRosterError ||
-			error instanceof PullError ||
 			error instanceof OfficeWorkspaceError ||
 			error instanceof OfficeMemoryError
 		) {

@@ -1,16 +1,17 @@
 # Virtual Office
 
-Virtual Office runs a session as a small company. The main chat is the **general manager**: it plans and reviews, and hands anything that changes files to an **office**. Each office has one **leader**, who splits the work and reviews it, and two to five **workers**, who do it. Every member works on their own git branch, and a change reaches your branch only through reviewed pull requests. The last merge is always yours.
+Virtual Office gives a session a research department. The main chat is the **general manager**: it decides and makes the changes itself, and it can hand **questions** to an **office** — understand unfamiliar code, trace a bug, compare approaches, check how something is used across the project, look things up on the web. Each office has one **leader**, who owns the answer, and two to five **workers**, who investigate the parts the leader gives them. Members only read: they cannot run commands or change any file. Every assignment ends with a **report**, and the general manager acts on it.
 
-Turn it on with `/office on` (or `npi office on`, or Settings → Tasks → Virtual Office). It needs a git repository with a branch checked out; elsewhere the session works as usual.
+Turn it on with `/office on` (or `npi office on`, or Settings → Tasks → Virtual Office). It needs a git repository; elsewhere the session works as usual.
 
 ## The company
 
 | Setting | Values | Meaning |
 | --- | --- | --- |
-| `office.enabled` | `true` / `false` | Run the main chat as general manager. |
+| `office.enabled` | `true` / `false` | Give the main chat offices to hand questions to. |
 | `office.scale` | `team`, `studio`, `enterprise` | 1, 3 or 6 offices. |
 | `office.offices` | list | The roster. Edit it with the commands below, not by hand. |
+| `office.assignmentTimeoutMs` | ms, default `900000` | Longest one worker investigation may run before it is stopped and reported as not finished. A leader, whose assignment includes its workers' runs, gets four times as long. `0` uses the subagent limit (`task.maxRuntimeMs`). |
 
 Each member has:
 
@@ -18,19 +19,30 @@ Each member has:
 - a **role**: one `leader` per office, the rest `worker`;
 - a **model**: any model selector, or empty for the session's configured subagent model;
 - a **thinking** effort — `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` — or empty to follow the same setting the model comes from. An effort the model does not support is clamped to the closest one it does;
-- a **capability**: `common`, `professional` or `expert`. The leader gives hard, open-ended work to experts and mechanical, well-specified work to common members.
+- a **capability**: `common`, `professional` or `expert`. The leader gives the hard, open-ended parts to experts and narrow lookups to common members.
 
 An office has three to six members. A new office starts with a leader and two workers.
 
+## How a question is answered
+
+1. The general manager assigns a question to an office with the `office` tool (`assign`). Independent questions can go to several offices in one call; they run at the same time, and the call returns when all have reported.
+2. The office's leader answers a small question itself. A large one it splits into parts that do not overlap and assigns them to its workers in one call, so they run at the same time; then it checks their findings and combines them.
+3. The leader's final message is the office's report: the answer first, the evidence (`path:line` references, quotes, links), what could not be confirmed, and suggested next steps. It is the result of the general manager's `assign` call.
+4. The general manager reads the report, checks what it will act on, and makes the change itself.
+
+Members run in your checkout with reading tools only — `read`, `grep`, `glob`, `find`, `ast_grep`, `web_search` — plus the `office` tool for their own seat. They have no shell, no write or edit tool and cannot start other subagents, so an office never changes anything. There are no office branches, worktrees, commits or pull requests.
+
+Every report is kept as `npi-office/reports/<run id>.md` in the repository's git directory; the newest 120 are kept. The general manager can read one again with `office` `report`, and you with `/office report <run>`. A member takes one assignment at a time across every process working on the repository (`npi-office/working/`); a claim left by a process that died is dropped.
+
 ## Commands
 
-In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a full screen like `/settings`: a tab for the company, one per office and one for pull requests. Move with ↑/↓, switch tabs with ←/→, press Enter to open or change the selected row, and Esc to go back. From it you can turn Virtual Office on or off, set the company size and each office's member count, add or remove workers, change a member's model, thinking effort (the levels their model takes) or capability or make them leader, merge or send back the office pull requests waiting for you, and add to or clear an office's memory. It also shows what each office is doing (phase, who is at a desk, the leader's task), the pull-request funnel, spend today and in total (company, general manager, each office and member, estimated at catalog prices) and recent assignments per office and member. The panel follows the company live while open: a change re-reads it, and booked usage is added up in the panel without re-reading. It runs the same commands as below, so the two never disagree.
+In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a full screen like `/settings`: a tab for the company, one per office and one for reports. Move with ↑/↓, switch tabs with ←/→, press Enter to open or change the selected row, and Esc to go back. From it you can turn Virtual Office on or off, set the company size and each office's member count, add or remove workers, change a member's model, thinking effort (the levels their model takes) or capability or make them leader, read reports, and add to or clear an office's memory. It also shows what each office is doing (who is investigating, the leader's question), spend today and in total (company, general manager, each office and member, estimated at catalog prices) and recent assignments per office and member. The panel follows the company live while open: a change re-reads it, and booked usage is added up in the panel without re-reading. It runs the same commands as below, so the two never disagree.
 
 `/office <subcommand>` in a session and `npi office` in a shell take the same subcommands.
 
 | Command | Effect |
 | --- | --- |
-| `/office status` | Show the roster and the pull requests that are not finished. Outside the terminal UI, `/office` alone does the same. |
+| `/office status` | Show the roster and recent reports. Outside the terminal UI, `/office` alone does the same. |
 | `/office on` · `/office off` | Turn Virtual Office on or off. |
 | `/office scale team\|studio\|enterprise` | Set the number of offices. |
 | `/office size <office> <3-6>` | Set an office's member count. Added members are workers; removed ones are the newest workers. |
@@ -40,53 +52,20 @@ In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a f
 | `/office set <name> thinking <level>` | Set a member's thinking effort (`default` clears it). |
 | `/office set <name> capability <level>` | Set a member's capability. |
 | `/office set <name> role leader` | Make a member the leader; the previous leader becomes a worker. |
-| `/office merge <pr>` | Merge an approved office pull request into your branch. |
-| `/office reject <pr> <reason>` | Send an office pull request back. |
-| `/office clean` | Remove the desks nobody is working at, to free disk space. |
+| `/office report [run]` | List recent reports, or print one. |
 | `/office memory <office>` | Show what an office remembers about this project. |
 | `/office remember <office> <lesson>` | Give an office a lesson to keep. |
 | `/office forget <office>` | Clear what an office remembers about this project. |
 
 `npi office --json` prints the same state the RPC command returns.
 
-## Branches and pull requests
-
-With `main` checked out, office 1 and its worker `Worker-1a2b3c` work on:
-
-```
-main                              your checkout; the general manager sits here
-└─ office/main/o1/main            office 1; its leader's worktree
-   └─ office/main/o1/Worker-1a2b3c   one worker's worktree
-```
-
-The worktrees live under the worktree base directory (`worktree.base`, default `~/.omp/wt`) in `office/<repository>/<branch>/`. They are created the first time work is assigned, as plain checkouts of the tracked files. Ignored build output is not copied, and a project's installed dependencies exist once: a desk's `node_modules`, `.venv`, `venv`, `vendor` and `bower_components` folders (also in monorepo packages, up to three levels down) are links to the ones in your checkout, so run the install there. A member who changes dependencies changes them for every desk. `office.shareDependencies` (on by default) turns the links off. A desk with no unmerged work is moved up to the branch above it before each assignment.
-
-Desks nobody is working at are not kept: when an assignment ends, and after a merge restarts a desk, every desk with all its work committed is removed to free its disk space. The branches, with everything committed on them, stay, and sitting down at a desk again (an assignment, a merge) puts it back at its branch. A desk with uncommitted changes, or one someone is working at, is left alone. `/office clean` (also *Free disk space* on the panel's company tab) does the same sweep on demand, and removing a worker also removes their desk and, when it holds nothing unmerged, their branch. The pull request ledger keeps the newest 200 finished pull requests, and only the newest 40 of them keep their description and review comments.
-
-Work moves up one level at a time:
-
-1. A worker commits on their branch and submits a pull request to the office branch.
-2. The office's leader reviews it, then merges it or requests changes.
-3. When the assignment is done, the leader submits the office branch as a pull request to your branch.
-4. The general manager reviews it and approves or requests changes.
-5. You merge it with `/office merge <pr>`, or send it back with `/office reject <pr> <reason>`.
-
-The rules are enforced by the tool, not only by the prompts: a pull request is reviewed only by the level directly above its author, nothing merges without an approval, and only you can merge into your branch.
-
-Pull requests are local records kept in the repository's git directory (`npi-office/pulls.json`). Nothing is pushed and no GitHub pull request is created.
-
-A merge adds one commit, `Merge PR #<n>: <title>`, holding the whole change. It is refused, with nothing changed, when the target branch has staged changes or has changed the same lines since the work started; the author then rebases onto the target and submits again.
+Earlier versions had offices change code on their own branches and move it up through local pull requests. That is gone: existing `office/*` branches, the old desk worktrees under the worktree base directory (`office/<repository>/…`) and `npi-office/pulls.json` are no longer read or written, and you can delete them.
 
 ## Office memory
 
-Each office remembers the project it works on, the way a department builds up experience with a client. Memory is kept per repository, so it survives branch switches and new sessions, and two projects never share it.
+Each office remembers the project it works on: **lessons** its members write with `office` `remember` (or you with `/office remember`) — where things live, traps, conventions. Memory is kept per repository, so it survives branch switches and new sessions, and two projects never share it. Up to 40 lessons are kept per office, each at most 600 characters; a lesson already kept word for word is not added again.
 
-- **Merged work** is logged automatically: every pull request the office gets merged, with its author, target branch and changed files. The last 30 are kept.
-- **Lessons** are written by the office's members with `office` `remember` (or by you with `/office remember`): conventions, traps, how to check a change. Up to 40 are kept, each at most 600 characters; a lesson already kept word for word is not added again.
-
-The leader and workers see their office's memory with every assignment, next to their role brief. The general manager's brief lists each office's latest merged work and how many lessons it keeps, so follow-up work can go to the office that did the earlier part. The general manager has no memory of its own here; it tells an office what to remember.
-
-Memory lives next to the pull requests in the repository's git directory (`npi-office/memory.json`). It is never committed or pushed.
+The leader and workers see their office's lessons with every assignment, next to their role brief. The general manager's brief lists each office's latest report titles and how many lessons it keeps, so a follow-up question can go to the office that answered the earlier part. Memory lives in the repository's git directory (`npi-office/memory.json`) and is never committed or pushed.
 
 ## For GUI hosts
 
@@ -96,19 +75,19 @@ An RPC session starts with Virtual Office **off**, whatever `office.enabled` say
 | --- | --- |
 | `set_office_enabled` with `enabled: boolean` | Turns Virtual Office on or off for this session only; nothing is saved. The `office` tool and the general manager's brief appear or disappear at once. Returns the new `OfficeState`. |
 | `get_office_state` | `OfficeState`, described below. |
-| `office_command` with `args: string[]` | Runs one subcommand from the table above, e.g. `["set", "Worker-1a2b3c", "capability", "expert"]` or `["merge", "4"]`. Returns `text` (what the CLI prints), `failed` when the command was refused, and the new `state`. `["on"]` and `["off"]` act like `set_office_enabled`. |
+| `get_office_report` with `runId: string` | The report that run handed in, as Markdown, or `null` when none is kept. |
+| `office_command` with `args: string[]` | Runs one subcommand from the table above, e.g. `["set", "Worker-1a2b3c", "capability", "expert"]`. Returns `text` (what the CLI prints), `failed` when the command was refused, and the new `state`. `["on"]` and `["off"]` act like `set_office_enabled`. |
 
-While Virtual Office is on, the session also sends an `office_state` frame (`{ type: "office_state", state }`) whenever the company changes, so a host never needs to poll. Usage a member books is not a change: it arrives as `office_usage` frames (`{ type: "office_usage", checkout, member, day, amount }`), the spend since the previous frame for that member and local day, coalesced every 250 ms. Add them to `usage` yourself (a later `day` starts `today` over; an earlier one counts only toward `total`); queued deltas are sent before each `office_state`, whose `usage` then replaces your totals. Changes made by another process (a second general manager, `npi office merge` in a shell) are not pushed; fetch the state again when that matters.
+While Virtual Office is on, the session also sends an `office_state` frame (`{ type: "office_state", state }`) whenever the company changes, so a host never needs to poll. Usage a member books is not a change: it arrives as `office_usage` frames (`{ type: "office_usage", checkout, member, day, amount }`), the spend since the previous frame for that member and local day, coalesced every 250 ms. Add them to `usage` yourself (a later `day` starts `today` over; an earlier one counts only toward `total`); queued deltas are sent before each `office_state`, whose `usage` then replaces your totals. Changes made by another process (a second general manager, `npi office` in a shell) are not pushed; fetch the state again when that matters.
 
 `OfficeState` holds:
 
-- `enabled`, `scale`, `offices` (numbered, with members), and `company` (`checkout`, `baseBranch`, or `null` with a `reason`);
-- `pulls`: every pull request with its reviews;
-- `memory`: each office's lessons and merged-work log;
-- `activity`: per office, a `phase`, the members `working` at their desks right now, and the leader's current `task`. Phases, most pressing first: `working`, `reviewing` (the leader alone is at a desk with worker pull requests open), `awaiting_owner` (an approved office pull request waits for your merge), `awaiting_manager`, `idle`;
+- `enabled`, `scale`, `offices` (numbered, with members), and `company` (`checkout`, or `null` with a `reason`);
+- `memory`: each office's lessons;
+- `activity`: per office, a `phase` (`working` or `idle`), the members `working` right now, and the leader's current `task`;
 - `usage`: tokens (input + output + cache writes), estimated USD cost and request count, `today` and in `total`, for the company and per member. The general manager is listed as `general-manager`. `today` is the local calendar day named in `day` and starts at 00:00; an assignment that runs across midnight is split between the two days;
-- `runs`: the most recent assignments: who got them, from whom, the task, the member's `sessionFile` (read it with `get_subagent_messages`), when it started and ended, and the pull request it left waiting.
+- `runs`: the most recent assignments: who got them, from whom, the question, the member's `sessionFile` (read it with `get_subagent_messages`), when it started and ended, whether it failed, and the `report` title (read the report with `get_office_report`).
 
-Usage and runs are kept in `npi-office/usage.json`, next to the pull requests. A desk takes one assignment at a time across every process working on the repository (`npi-office/desks/`); a claim left by a process that died is dropped.
+Usage and runs are kept in `npi-office/usage.json` in the repository's git directory.
 
-Members run as ordinary subagents named after the member, so `get_subagents`, subagent events and transcripts show who is working. Each assignment is dispatched on that member's configured model and thinking effort, and nobody is asked to pick one: the roster is your confirmation. A member with neither set follows the session's subagent configuration — the Custom model and effort when the host runs Custom subagents, the tier its capability maps to (`expert` → flagship, `professional` → high, `common` → standard) when the host runs Auto, and the session's own active model and effort otherwise. The `office` tool is not approval-gated either; members still work under the session's tool approvals. The session's `office` tool calls carry `details.pulls`, the pull requests the call opened or changed.
+Members run as ordinary subagents named after the member, so `get_subagents`, subagent events and transcripts show who is working. Each assignment is dispatched on that member's configured model and thinking effort, and nobody is asked to pick one: the roster is your confirmation. A member with neither set follows the session's subagent configuration — the Custom model and effort when the host runs Custom subagents, the tier its capability maps to (`expert` → flagship, `professional` → high, `common` → standard) when the host runs Auto, and the session's own active model and effort otherwise. The `office` tool is not approval-gated: it only hands out questions to read-only members.

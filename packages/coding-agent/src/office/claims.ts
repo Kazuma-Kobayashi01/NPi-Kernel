@@ -1,6 +1,6 @@
 /**
- * Who is at which desk right now. One assignment per desk at a time, across every process working
- * on the repository: two sessions at the same worktree would overwrite each other.
+ * Who is working right now. One assignment per member at a time, across every process working on
+ * the repository: a member busy with one investigation cannot take a second.
  *
  * A claim is a file created exclusively in the repository's git directory. It names the process
  * holding it, so a claim left behind by a process that died is recognised and dropped.
@@ -11,11 +11,9 @@ import { isEnoent } from "@oh-my-pi/pi-utils";
 import { notifyOfficeChange, storePath } from "./store";
 import type { Company } from "./workspace";
 
-export interface DeskClaim {
-	/** The desk's worktree. */
-	desk: string;
+export interface MemberClaim {
 	office: number;
-	/** Member working at the desk. */
+	/** Member who is working. */
 	member: string;
 	role: "leader" | "worker";
 	task: string;
@@ -25,11 +23,11 @@ export interface DeskClaim {
 }
 
 function claimsDir(company: Company): string {
-	return storePath(company, "desks");
+	return storePath(company, "working");
 }
 
-function claimPath(company: Company, desk: string): string {
-	return path.join(claimsDir(company), `${Bun.hash(desk).toString(36)}.json`);
+function claimPath(company: Company, member: string): string {
+	return path.join(claimsDir(company), `${Bun.hash(member).toString(36)}.json`);
 }
 
 function isAlive(pid: number): boolean {
@@ -42,9 +40,9 @@ function isAlive(pid: number): boolean {
 	}
 }
 
-async function readClaim(file: string): Promise<DeskClaim | null> {
+async function readClaim(file: string): Promise<MemberClaim | null> {
 	try {
-		const claim: DeskClaim = await Bun.file(file).json();
+		const claim: MemberClaim = await Bun.file(file).json();
 		return typeof claim.pid === "number" && isAlive(claim.pid) ? claim : null;
 	} catch {
 		// Missing, half-written by a process that died, or not ours to parse: no live claim.
@@ -53,16 +51,16 @@ async function readClaim(file: string): Promise<DeskClaim | null> {
 }
 
 /**
- * Take the desk for one assignment. Returns the function that gives it back, or `null` when a
- * live process (this one included) already holds it.
+ * Take the member for one assignment. Returns the function that frees them, or `null` when a live
+ * process (this one included) already has them working.
  */
-export async function claimDesk(
+export async function claimMember(
 	company: Company,
-	claim: Omit<DeskClaim, "pid" | "startedAt">,
+	claim: Omit<MemberClaim, "pid" | "startedAt">,
 ): Promise<(() => Promise<void>) | null> {
-	const file = claimPath(company, claim.desk);
+	const file = claimPath(company, claim.member);
 	await fs.mkdir(path.dirname(file), { recursive: true });
-	const body = JSON.stringify({ ...claim, pid: process.pid, startedAt: new Date().toISOString() } satisfies DeskClaim);
+	const body = JSON.stringify({ ...claim, pid: process.pid, startedAt: new Date().toISOString() } satisfies MemberClaim);
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
 			await fs.writeFile(file, body, { flag: "wx" });
@@ -81,8 +79,8 @@ export async function claimDesk(
 	return null;
 }
 
-/** Every desk a live process is working at. */
-export async function readClaims(company: Company): Promise<DeskClaim[]> {
+/** Every member a live process has working. */
+export async function readClaims(company: Company): Promise<MemberClaim[]> {
 	let names: string[];
 	try {
 		names = await fs.readdir(claimsDir(company));

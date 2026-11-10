@@ -4,7 +4,7 @@
 
 ### Added
 
-- `OfficePanelComponent` takes `thinkingLevels` and `watch`, and draws office activity, spend and recent assignments when the state carries them.
+- `OfficePanelComponent` takes `thinkingLevels`, `watch` and `loadReport`, draws office activity, spend and recent assignments when the state carries them, and has a Reports tab instead of pull requests.
 
 ### Fixed
 

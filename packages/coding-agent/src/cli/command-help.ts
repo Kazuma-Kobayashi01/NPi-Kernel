@@ -178,7 +178,7 @@ export const usageHelp = {
 } satisfies CommandMetadata;
 
 export const officeHelp = {
-	description: "Manage the Virtual Office: roster, company size, and approved pull requests",
+	description: "Manage the Virtual Office: roster, company size, and the reports offices hand in",
 } satisfies CommandMetadata;
 
 export const worktreeHelp = {

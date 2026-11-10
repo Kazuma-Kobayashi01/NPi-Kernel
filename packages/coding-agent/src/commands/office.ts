@@ -23,7 +23,7 @@ export default class Office extends Command {
 		"npi office size 1 5",
 		"npi office set Worker-1a2b3c model anthropic/claude-sonnet-5-5",
 		"npi office set Worker-1a2b3c capability expert",
-		"npi office merge 4",
+		"npi office report",
 		"npi office --json",
 	];
 

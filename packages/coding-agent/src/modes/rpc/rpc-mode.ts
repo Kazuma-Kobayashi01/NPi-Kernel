@@ -51,6 +51,8 @@ import {
 import { requestTextPrediction, textPredictionBackend } from "../../predict/client";
 import { runOfficeCommand } from "../../office/commands";
 import { readOfficeState } from "../../office/company";
+import { readReport } from "../../office/reports";
+import { openCompany } from "../../office/workspace";
 import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "../../office/settings";
 import { onOfficeChange } from "../../office/store";
 import { officeRunSessionFile, onOfficeUsage, type UsageAmount } from "../../office/usage";
@@ -2874,6 +2876,11 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					"get_office_state",
 					await readOfficeState(session.settings, session.sessionManager.getCwd()),
 				);
+			}
+
+			case "get_office_report": {
+				const company = await openCompany(session.sessionManager.getCwd());
+				return success(id, "get_office_report", { report: (await readReport(company, command.runId)) ?? null });
 			}
 
 			case "office_command": {

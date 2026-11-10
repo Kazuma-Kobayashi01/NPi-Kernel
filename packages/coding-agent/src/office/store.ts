@@ -24,8 +24,8 @@ export async function readStore<T>(file: string, empty: () => T): Promise<T> {
 const listeners = new Set<() => void>();
 
 /**
- * Call `listener` whenever this process changes something a client draws: a pull request, an
- * office's memory, the usage ledger, or who is at a desk. Returns the unsubscribe function.
+ * Call `listener` whenever this process changes something a client draws: an office's memory,
+ * the run ledger, or who is working. Returns the unsubscribe function.
  */
 export function onOfficeChange(listener: () => void): () => void {
 	listeners.add(listener);

@@ -332,13 +332,20 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 
 	{
 		name: "get_office_state",
-		doc: "Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.",
+		doc: "Virtual Office settings, roster, activity, usage and recent runs for the session's checkout. Changes arrive as `office_state` frames.",
 		result: "OfficeState",
 	},
 	{
+		name: "get_office_report",
+		doc: "The report an office assignment run handed in, as Markdown; null when none is kept (still running, failed without output, or dropped as old).",
+		params: { runId: doc("string", "`OfficeRun.id`.") },
+		result: { report: "string | null" },
+		unwrap: "report",
+	},
+	{
 		name: "office_command",
-		doc: "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
-		params: { args: doc("string[]", 'The command words, e.g. `["merge", "4"]`.') },
+		doc: "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `report`, `memory`, `remember`, `forget`) and return the resulting state.",
+		params: { args: doc("string[]", 'The command words, e.g. `["size", "1", "4"]`.') },
 		result: "OfficeCommandResult",
 	},
 	{

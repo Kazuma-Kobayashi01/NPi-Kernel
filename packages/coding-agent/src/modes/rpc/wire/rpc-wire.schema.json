@@ -684,7 +684,7 @@
 			},
 			{
 				"name": "get_office_state",
-				"doc": "Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.",
+				"doc": "Virtual Office settings, roster, activity, usage and recent runs for the session's checkout. Changes arrive as `office_state` frames.",
 				"params": null,
 				"result": "OfficeState",
 				"nullable": false,
@@ -694,8 +694,19 @@
 				"clientOmit": []
 			},
 			{
+				"name": "get_office_report",
+				"doc": "The report an office assignment run handed in, as Markdown; null when none is kept (still running, failed without output, or dropped as old).",
+				"params": "GetOfficeReportParams",
+				"result": "GetOfficeReportResult",
+				"nullable": false,
+				"unwrap": "report",
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "office_command",
-				"doc": "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.",
+				"doc": "Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `report`, `memory`, `remember`, `forget`) and return the resulting state.",
 				"params": "OfficeCommandParams",
 				"result": "OfficeCommandResult",
 				"nullable": false,
@@ -3651,107 +3662,6 @@
 				"members"
 			]
 		},
-		"OfficePullReview": {
-			"type": "object",
-			"properties": {
-				"by": {
-					"type": "string",
-					"description": "Member name, `general-manager`, or `owner`."
-				},
-				"verdict": {
-					"enum": [
-						"approve",
-						"request_changes"
-					],
-					"type": "string"
-				},
-				"comment": {
-					"type": "string"
-				},
-				"at": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"by",
-				"verdict",
-				"comment",
-				"at"
-			]
-		},
-		"OfficePull": {
-			"type": "object",
-			"properties": {
-				"number": {
-					"type": "integer"
-				},
-				"kind": {
-					"enum": [
-						"worker",
-						"office"
-					],
-					"type": "string"
-				},
-				"office": {
-					"type": "integer"
-				},
-				"author": {
-					"type": "string"
-				},
-				"title": {
-					"type": "string"
-				},
-				"body": {
-					"type": "string"
-				},
-				"source": {
-					"type": "string"
-				},
-				"target": {
-					"type": "string"
-				},
-				"status": {
-					"enum": [
-						"open",
-						"changes_requested",
-						"approved",
-						"merged",
-						"closed"
-					],
-					"type": "string"
-				},
-				"reviews": {
-					"type": "array",
-					"items": {
-						"$ref": "#/$defs/OfficePullReview"
-					}
-				},
-				"createdAt": {
-					"type": "string"
-				},
-				"updatedAt": {
-					"type": "string"
-				},
-				"mergeCommit": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"number",
-				"kind",
-				"office",
-				"author",
-				"title",
-				"body",
-				"source",
-				"target",
-				"status",
-				"reviews",
-				"createdAt",
-				"updatedAt"
-			],
-			"description": "A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch."
-		},
 		"OfficeNote": {
 			"type": "object",
 			"properties": {
@@ -3771,49 +3681,6 @@
 				"at"
 			]
 		},
-		"OfficeLogEntry": {
-			"type": "object",
-			"properties": {
-				"pr": {
-					"type": "integer"
-				},
-				"kind": {
-					"enum": [
-						"worker",
-						"office"
-					],
-					"type": "string"
-				},
-				"title": {
-					"type": "string"
-				},
-				"author": {
-					"type": "string"
-				},
-				"target": {
-					"type": "string",
-					"description": "Branch the pull request merged into."
-				},
-				"files": {
-					"type": "array",
-					"items": {
-						"type": "string"
-					}
-				},
-				"at": {
-					"type": "string"
-				}
-			},
-			"required": [
-				"pr",
-				"kind",
-				"title",
-				"author",
-				"target",
-				"files",
-				"at"
-			]
-		},
 		"OfficeMemory": {
 			"type": "object",
 			"properties": {
@@ -3825,20 +3692,13 @@
 					"items": {
 						"$ref": "#/$defs/OfficeNote"
 					}
-				},
-				"log": {
-					"type": "array",
-					"items": {
-						"$ref": "#/$defs/OfficeLogEntry"
-					}
 				}
 			},
 			"required": [
 				"office",
-				"notes",
-				"log"
+				"notes"
 			],
-			"description": "What one office remembers about the project: kept lessons and merged pull requests, oldest first."
+			"description": "What one office remembers about the project: the lessons its members kept, oldest first."
 		},
 		"OfficeState": {
 			"type": "object",
@@ -3864,13 +3724,7 @@
 							"type": "null"
 						}
 					],
-					"description": "The checkout and branch the offices work for; null outside a git repository or on a detached HEAD."
-				},
-				"pulls": {
-					"type": "array",
-					"items": {
-						"$ref": "#/$defs/OfficePull"
-					}
+					"description": "The checkout the offices read; null outside a git repository."
 				},
 				"memory": {
 					"type": "array",
@@ -3914,7 +3768,6 @@
 				"scale",
 				"offices",
 				"company",
-				"pulls",
 				"memory",
 				"activity",
 				"usage",
@@ -3930,20 +3783,17 @@
 				"phase": {
 					"enum": [
 						"working",
-						"reviewing",
-						"awaiting_owner",
-						"awaiting_manager",
 						"idle"
 					],
 					"type": "string",
-					"description": "`reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge."
+					"description": "`working`: at least one member of the office is investigating."
 				},
 				"working": {
 					"type": "array",
 					"items": {
 						"type": "string"
 					},
-					"description": "Members at their desks right now."
+					"description": "Members working right now."
 				},
 				"task": {
 					"type": "string",
@@ -4053,9 +3903,9 @@
 				"failed": {
 					"type": "boolean"
 				},
-				"pr": {
-					"type": "integer",
-					"description": "Pull request the member left waiting when the run ended."
+				"report": {
+					"type": "string",
+					"description": "Title of the report the run handed in; read it with `get_office_report`."
 				}
 			},
 			"required": [
@@ -4066,21 +3916,17 @@
 				"task",
 				"startedAt"
 			],
-			"description": "One assignment handed to a member."
+			"description": "One investigation handed to a member."
 		},
 		"OfficeCompany": {
 			"type": "object",
 			"properties": {
 				"checkout": {
 					"type": "string"
-				},
-				"baseBranch": {
-					"type": "string"
 				}
 			},
 			"required": [
-				"checkout",
-				"baseBranch"
+				"checkout"
 			]
 		},
 		"OfficeCommandResult": {
@@ -8042,6 +7888,36 @@
 				"command"
 			]
 		},
+		"GetOfficeReportParams": {
+			"type": "object",
+			"properties": {
+				"runId": {
+					"type": "string",
+					"description": "`OfficeRun.id`."
+				}
+			},
+			"required": [
+				"runId"
+			]
+		},
+		"GetOfficeReportResult": {
+			"type": "object",
+			"properties": {
+				"report": {
+					"anyOf": [
+						{
+							"type": "string"
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"required": [
+				"report"
+			]
+		},
 		"OfficeCommandParams": {
 			"type": "object",
 			"properties": {
@@ -8050,7 +7926,7 @@
 					"items": {
 						"type": "string"
 					},
-					"description": "The command words, e.g. `[\"merge\", \"4\"]`."
+					"description": "The command words, e.g. `[\"size\", \"1\", \"4\"]`."
 				}
 			},
 			"required": [

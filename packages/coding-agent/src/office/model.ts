@@ -1,8 +1,8 @@
 /**
  * Virtual Office roster: the configured offices and their members.
  *
- * An office is a small team — one Leader who assigns and reviews, the rest Workers who do the
- * work. Members keep the name they were given when they joined (`Worker-xxxxxx`) until they are
+ * An office is a small research team — one Leader who owns the report and splits large questions,
+ * the rest Workers who investigate the parts they are given. Members keep the name they were given when they joined (`Worker-xxxxxx`) until they are
  * removed, so a roster reads the same from one session to the next.
  *
  * Everything here is pure: the functions take a roster and return a new one. Persisting it is the
@@ -18,6 +18,23 @@ export type OfficeScale = (typeof OFFICE_SCALES)[number];
 
 /** Offices each scale runs. */
 export const OFFICE_COUNT: Record<OfficeScale, number> = { team: 1, studio: 3, enterprise: 6 };
+
+/** Name the general manager (the main session) is booked and shown under. */
+export const MANAGER = "general-manager";
+
+/**
+ * What a member may use: reading, searching and the web, the same set as the bundled `scout`
+ * agent, plus `office` for their own seat. No shell, no writes, no edits: an office investigates.
+ */
+export const OFFICE_MEMBER_TOOLS: readonly string[] = [
+	"read",
+	"grep",
+	"glob",
+	"find",
+	"ast_grep",
+	"web_search",
+	"office",
+];
 
 export const OFFICE_ROLES = ["leader", "worker"] as const;
 export type OfficeRole = (typeof OFFICE_ROLES)[number];

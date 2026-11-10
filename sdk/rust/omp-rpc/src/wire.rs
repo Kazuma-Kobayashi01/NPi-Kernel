@@ -3433,60 +3433,17 @@ pub struct Office {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OfficePullReview {
-	/// Member name, `general-manager`, or `owner`.
-	pub by: String,
-	pub verdict: OfficePullReviewVerdict,
-	pub comment: String,
-	pub at: String,
-}
-
-/// A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OfficePull {
-	pub number: i64,
-	pub kind: OfficePullKind,
-	pub office: i64,
-	pub author: String,
-	pub title: String,
-	pub body: String,
-	pub source: String,
-	pub target: String,
-	pub status: OfficePullStatus,
-	pub reviews: Vec<OfficePullReview>,
-	#[serde(rename = "createdAt")]
-	pub created_at: String,
-	#[serde(rename = "updatedAt")]
-	pub updated_at: String,
-	#[serde(rename = "mergeCommit", default, skip_serializing_if = "Option::is_none")]
-	pub merge_commit: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeNote {
 	pub by: String,
 	pub text: String,
 	pub at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OfficeLogEntry {
-	pub pr: i64,
-	pub kind: OfficeLogEntryKind,
-	pub title: String,
-	pub author: String,
-	/// Branch the pull request merged into.
-	pub target: String,
-	pub files: Vec<String>,
-	pub at: String,
-}
-
-/// What one office remembers about the project: kept lessons and merged pull requests, oldest first.
+/// What one office remembers about the project: the lessons its members kept, oldest first.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeMemory {
 	pub office: i64,
 	pub notes: Vec<OfficeNote>,
-	pub log: Vec<OfficeLogEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -3494,10 +3451,9 @@ pub struct OfficeState {
 	pub enabled: bool,
 	pub scale: OfficeScale,
 	pub offices: Vec<Office>,
-	/// The checkout and branch the offices work for; null outside a git repository or on a detached HEAD.
+	/// The checkout the offices read; null outside a git repository.
 	#[serde(deserialize_with = "Deserialize::deserialize")]
 	pub company: Option<OfficeCompany>,
-	pub pulls: Vec<OfficePull>,
 	/// One entry per running office, in office order; empty when `company` is null.
 	pub memory: Vec<OfficeMemory>,
 	/// One entry per running office, in office order; empty when `company` is null.
@@ -3515,9 +3471,9 @@ pub struct OfficeState {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeActivity {
 	pub office: i64,
-	/// `reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge.
+	/// `working`: at least one member of the office is investigating.
 	pub phase: OfficeActivityPhase,
-	/// Members at their desks right now.
+	/// Members working right now.
 	pub working: Vec<String>,
 	/// The assignment the office's leader is on.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3549,7 +3505,7 @@ pub struct OfficeUsage {
 	pub total: OfficeUsageAmount,
 }
 
-/// One assignment handed to a member.
+/// One investigation handed to a member.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeRun {
 	pub id: String,
@@ -3567,16 +3523,14 @@ pub struct OfficeRun {
 	pub ended_at: Option<String>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub failed: Option<bool>,
-	/// Pull request the member left waiting when the run ended.
+	/// Title of the report the run handed in; read it with `get_office_report`.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub pr: Option<i64>,
+	pub report: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeCompany {
 	pub checkout: String,
-	#[serde(rename = "baseBranch")]
-	pub base_branch: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5879,8 +5833,21 @@ pub struct BashParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetOfficeReportParams {
+	/// `OfficeRun.id`.
+	#[serde(rename = "runId")]
+	pub run_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetOfficeReportResult {
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub report: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeCommandParams {
-	/// The command words, e.g. `["merge", "4"]`.
+	/// The command words, e.g. `["size", "1", "4"]`.
 	pub args: Vec<String>,
 }
 
@@ -6478,96 +6445,9 @@ impl OfficeMemberCapability {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum OfficePullReviewVerdict {
-	#[serde(rename = "approve")]
-	Approve,
-	#[serde(rename = "request_changes")]
-	RequestChanges,
-}
-
-impl OfficePullReviewVerdict {
-	/// Wire value.
-	pub fn as_str(self) -> &'static str {
-		match self {
-			Self::Approve => "approve",
-			Self::RequestChanges => "request_changes",
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum OfficePullKind {
-	#[serde(rename = "worker")]
-	Worker,
-	#[serde(rename = "office")]
-	Office,
-}
-
-impl OfficePullKind {
-	/// Wire value.
-	pub fn as_str(self) -> &'static str {
-		match self {
-			Self::Worker => "worker",
-			Self::Office => "office",
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum OfficePullStatus {
-	#[serde(rename = "open")]
-	Open,
-	#[serde(rename = "changes_requested")]
-	ChangesRequested,
-	#[serde(rename = "approved")]
-	Approved,
-	#[serde(rename = "merged")]
-	Merged,
-	#[serde(rename = "closed")]
-	Closed,
-}
-
-impl OfficePullStatus {
-	/// Wire value.
-	pub fn as_str(self) -> &'static str {
-		match self {
-			Self::Open => "open",
-			Self::ChangesRequested => "changes_requested",
-			Self::Approved => "approved",
-			Self::Merged => "merged",
-			Self::Closed => "closed",
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum OfficeLogEntryKind {
-	#[serde(rename = "worker")]
-	Worker,
-	#[serde(rename = "office")]
-	Office,
-}
-
-impl OfficeLogEntryKind {
-	/// Wire value.
-	pub fn as_str(self) -> &'static str {
-		match self {
-			Self::Worker => "worker",
-			Self::Office => "office",
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OfficeActivityPhase {
 	#[serde(rename = "working")]
 	Working,
-	#[serde(rename = "reviewing")]
-	Reviewing,
-	#[serde(rename = "awaiting_owner")]
-	AwaitingOwner,
-	#[serde(rename = "awaiting_manager")]
-	AwaitingManager,
 	#[serde(rename = "idle")]
 	Idle,
 }
@@ -6577,9 +6457,6 @@ impl OfficeActivityPhase {
 	pub fn as_str(self) -> &'static str {
 		match self {
 			Self::Working => "working",
-			Self::Reviewing => "reviewing",
-			Self::AwaitingOwner => "awaiting_owner",
-			Self::AwaitingManager => "awaiting_manager",
 			Self::Idle => "idle",
 		}
 	}
@@ -7960,7 +7837,7 @@ impl Command for AbortBashCommand {
 	}
 }
 
-/// Virtual Office settings, roster, pull requests, activity and usage for the session's checkout. Changes arrive as `office_state` frames.
+/// Virtual Office settings, roster, activity, usage and recent runs for the session's checkout. Changes arrive as `office_state` frames.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct GetOfficeStateCommand {}
 
@@ -7974,10 +7851,28 @@ impl Command for GetOfficeStateCommand {
 	}
 }
 
-/// Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `merge`, `reject`, `memory`, `remember`, `forget`) and return the resulting state.
+/// The report an office assignment run handed in, as Markdown; null when none is kept (still running, failed without output, or dropped as old).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GetOfficeReportCommand {
+	/// `OfficeRun.id`.
+	#[serde(rename = "runId")]
+	pub run_id: String,
+}
+
+impl Command for GetOfficeReportCommand {
+	const NAME: &'static str = "get_office_report";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = Option<String>;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<GetOfficeReportResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.report)
+	}
+}
+
+/// Run an owner `/office` command (`on`, `scale`, `size`, `add`, `remove`, `set`, `report`, `memory`, `remember`, `forget`) and return the resulting state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OfficeCommandCommand {
-	/// The command words, e.g. `["merge", "4"]`.
+	/// The command words, e.g. `["size", "1", "4"]`.
 	pub args: Vec<String>,
 }
 

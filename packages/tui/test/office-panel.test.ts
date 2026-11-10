@@ -27,26 +27,26 @@ function company(): OfficePanelState {
 				],
 			},
 		],
-		company: { baseBranch: "main" },
-		pulls: [
+		company: { checkout: "/repo" },
+		runs: [
 			{
-				number: 4,
-				kind: "office",
+				id: "42",
 				office: 1,
-				author: "Worker-aaaaaa",
-				title: "Add greeting",
-				body: "",
-				target: "main",
-				status: "approved",
-				reviews: [],
+				member: "Worker-aaaaaa",
+				by: "general-manager",
+				task: "Where does greeting live?",
+				startedAt: new Date().toISOString(),
+				endedAt: new Date().toISOString(),
+				report: "Greeting lives in app.txt",
 			},
 		],
-		memory: [{ office: 1, notes: [], log: [] }],
+		memory: [{ office: 1, notes: [] }],
 	};
 }
 
 async function open(state: OfficePanelState) {
 	const ran: string[][] = [];
+	const asked: string[] = [];
 	let closed = false;
 	let loads = 0;
 	let watching: { change: () => void; usage: (booking: OfficePanelBooking) => void } | undefined;
@@ -65,6 +65,10 @@ async function open(state: OfficePanelState) {
 		run: async args => {
 			ran.push(args);
 			return { text: "ok" };
+		},
+		loadReport: async runId => {
+			asked.push(runId);
+			return runId === "42" ? "# Greeting lives in app.txt\n\nEvidence: app.txt:1\n" : undefined;
 		},
 		models: ["anthropic/claude-opus-5-5"],
 		scales: [
@@ -88,7 +92,14 @@ async function open(state: OfficePanelState) {
 		}
 		return Bun.stripANSI(panel.render(100).join("\n"));
 	};
-	return { ran, press, isClosed: () => closed, loads: () => loads, watching: () => watching };
+	return {
+		ran,
+		press,
+		isClosed: () => closed,
+		loads: () => loads,
+		watching: () => watching,
+		reportsAsked: () => asked,
+	};
 }
 
 describe("office panel", () => {
@@ -108,19 +119,14 @@ describe("office panel", () => {
 		expect(screen).toContain("Worker-bbbbbb");
 	});
 
-	it("merges an approved office pull request only after confirming", async () => {
-		const { ran, press } = await open(company());
-		// Pull requests tab → #4 → Merge → confirmation opens on Cancel.
-		await press(RIGHT, RIGHT, ENTER, DOWN, DOWN, DOWN, ENTER);
-		expect(ran).toEqual([]);
-		await press(DOWN, ENTER);
-		expect(ran).toEqual([["merge", "4"]]);
-	});
-
-	it("sends a pull request back with the typed reason", async () => {
-		const { ran, press } = await open(company());
-		await press(RIGHT, RIGHT, ENTER, DOWN, DOWN, DOWN, DOWN, ENTER, ..."no tests", ENTER);
-		expect(ran).toEqual([["reject", "4", "no tests"]]);
+	it("opens a report from the Reports tab", async () => {
+		const { press, reportsAsked } = await open(company());
+		// Reports tab → Office 1 heading → the only report.
+		const list = await press(RIGHT, RIGHT);
+		expect(list).toContain("Greeting lives in app.txt");
+		const page = await press(ENTER);
+		expect(reportsAsked()).toEqual(["42"]);
+		expect(page).toContain("Evidence: app.txt:1");
 	});
 
 	it("sets a member's thinking effort from the levels of their model", async () => {
@@ -136,7 +142,7 @@ describe("office panel", () => {
 
 	it("adds booked usage locally and re-reads the company only on a change", async () => {
 		const state = company();
-		state.company = { baseBranch: "main", checkout: "/repo" };
+		state.company = { checkout: "/repo" };
 		const today = new Date();
 		const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 		const amount = { tokens: 0, cost: 0, requests: 0 };
@@ -164,13 +170,6 @@ describe("office panel", () => {
 		await press(ESC);
 		expect(isClosed()).toBe(true);
 		expect(watching()).toBeUndefined();
-	});
-
-	it("frees disk space from the company tab", async () => {
-		const { ran, press } = await open(company());
-		// Virtual Office → Company size → Base branch (information) → Free disk space.
-		await press(DOWN, DOWN, DOWN, ENTER);
-		expect(ran).toEqual([["clean"]]);
 	});
 
 	it("goes back one page per Esc and closes from the tabs", async () => {

@@ -1,6 +1,8 @@
 import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
 import { runOfficeCommand } from "../office/commands";
 import { readOfficeState } from "../office/company";
+import { readReport } from "../office/reports";
+import { openCompany } from "../office/workspace";
 import {
 	MAX_OFFICE_MEMBERS,
 	MIN_OFFICE_MEMBERS,
@@ -29,9 +31,7 @@ export const BUILTIN_OFFICE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			{ name: "add", description: "Add a worker", usage: "<office> [model] [capability]" },
 			{ name: "remove", description: "Remove a worker", usage: "<name>" },
 			{ name: "set", description: "Change a member", usage: "<name> model|thinking|capability|role <value>" },
-			{ name: "merge", description: "Merge an approved office pull request", usage: "<pr>" },
-			{ name: "reject", description: "Send an office pull request back", usage: "<pr> <reason>" },
-			{ name: "clean", description: "Remove desks nobody is working at, to free disk space" },
+			{ name: "report", description: "List recent reports, or print one", usage: "[run]" },
 			{ name: "memory", description: "What an office remembers about this project", usage: "<office>" },
 			{ name: "remember", description: "Give an office a lesson to keep", usage: "<office> <lesson>" },
 			{ name: "forget", description: "Clear an office's memory of this project", usage: "<office>" },
@@ -50,6 +50,7 @@ export const BUILTIN_OFFICE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			ctx.showOfficePanel({
 				load: () => readOfficeState(ctx.settings, cwd),
 				run: words => runOfficeCommand(words, ctx.settings, cwd),
+				loadReport: async runId => readReport(await openCompany(cwd), runId),
 				models: available.map(model => `${model.provider}/${model.id}`).sort((a, b) => a.localeCompare(b)),
 				// The levels the member's model takes; omp clamps anything else, and the default model is not known here.
 				thinkingLevels: selector => {

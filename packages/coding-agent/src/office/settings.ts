@@ -15,7 +15,7 @@ export const cfgOfficeEnabled = register({
 		group: "Virtual Office",
 		label: "Virtual Office",
 		description:
-			"Run the session as a company: the main chat is the general manager and hands work to offices, each with a leader and workers on their own git branches. Changes reach your branch only through reviewed pull requests, and the last merge waits for you. Manage the roster with `/office`.",
+			"Give the session a research department: the main chat is the general manager and can hand questions to offices, each a leader and workers who investigate read-only (no shell, no edits) and report back. The general manager decides and makes the changes itself. Manage the roster with `/office`.",
 	},
 });
 
@@ -37,16 +37,22 @@ export const cfgOfficeScale = register({
 	},
 });
 
-export const cfgOfficeShareDependencies = register({
-	id: "office.shareDependencies",
-	type: "boolean",
-	default: true,
+export const cfgOfficeAssignmentTimeoutMs = register({
+	id: "office.assignmentTimeoutMs",
+	type: "number",
+	default: 900_000,
 	ui: {
 		tab: "tasks",
 		group: "Virtual Office",
-		label: "Share Dependencies Between Desks",
+		label: "Assignment Time Limit",
 		description:
-			"Desks hold tracked files only; their dependency folders (node_modules, .venv, vendor) are links to the ones in your checkout, so one project's dependencies exist once on disk instead of once per member. A member who changes dependencies changes them for everyone. Desks nobody is working at are removed (see `/office clean`).",
+			"Longest one worker investigation may run (ms) before it is stopped and reported as not finished, so one stuck member cannot hold up the whole company. A leader, whose assignment includes its workers' runs, gets four times as long. 0 falls back to the subagent limit (`task.maxRuntimeMs`).",
+		options: [
+			{ value: "900000", label: "15 minutes", description: "Default" },
+			{ value: "1800000", label: "30 minutes" },
+			{ value: "3600000", label: "1 hour" },
+			{ value: "0", label: "Subagent limit" },
+		],
 	},
 });
 

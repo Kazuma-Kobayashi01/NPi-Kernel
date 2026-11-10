@@ -150,6 +150,7 @@ export type RpcCommand =
 
 	// Session
 	| { id?: string; type: "get_office_state" }
+	| { id?: string; type: "get_office_report"; runId: string }
 	| { id?: string; type: "office_command"; args: string[] }
 	| { id?: string; type: "set_office_enabled"; enabled: boolean }
 	| { id?: string; type: "get_session_stats" }
@@ -640,6 +641,7 @@ export type RpcResponse =
 
 	// Session
 	| { id?: string; type: "response"; command: "get_office_state"; success: true; data: OfficeState }
+	| { id?: string; type: "response"; command: "get_office_report"; success: true; data: { report: string | null } }
 	| { id?: string; type: "response"; command: "set_office_enabled"; success: true; data: OfficeState }
 	| {
 			id?: string;

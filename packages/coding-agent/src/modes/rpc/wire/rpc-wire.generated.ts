@@ -737,62 +737,24 @@ export interface Office {
 	members: OfficeMember[];
 }
 
-export interface OfficePullReview {
-	/** Member name, `general-manager`, or `owner`. */
-	by: string;
-	verdict: "approve" | "request_changes";
-	comment: string;
-	at: string;
-}
-
-/** A local pull request: `worker` ones merge into an office branch, `office` ones into the base branch. */
-export interface OfficePull {
-	number: number;
-	kind: "worker" | "office";
-	office: number;
-	author: string;
-	title: string;
-	body: string;
-	source: string;
-	target: string;
-	status: "open" | "changes_requested" | "approved" | "merged" | "closed";
-	reviews: OfficePullReview[];
-	createdAt: string;
-	updatedAt: string;
-	mergeCommit?: string;
-}
-
 export interface OfficeNote {
 	by: string;
 	text: string;
 	at: string;
 }
 
-export interface OfficeLogEntry {
-	pr: number;
-	kind: "worker" | "office";
-	title: string;
-	author: string;
-	/** Branch the pull request merged into. */
-	target: string;
-	files: string[];
-	at: string;
-}
-
-/** What one office remembers about the project: kept lessons and merged pull requests, oldest first. */
+/** What one office remembers about the project: the lessons its members kept, oldest first. */
 export interface OfficeMemory {
 	office: number;
 	notes: OfficeNote[];
-	log: OfficeLogEntry[];
 }
 
 export interface OfficeState {
 	enabled: boolean;
 	scale: OfficeScale;
 	offices: Office[];
-	/** The checkout and branch the offices work for; null outside a git repository or on a detached HEAD. */
+	/** The checkout the offices read; null outside a git repository. */
 	company: OfficeCompany | null;
-	pulls: OfficePull[];
 	/** One entry per running office, in office order; empty when `company` is null. */
 	memory: OfficeMemory[];
 	/** One entry per running office, in office order; empty when `company` is null. */
@@ -807,9 +769,9 @@ export interface OfficeState {
 
 export interface OfficeActivity {
 	office: number;
-	/** `reviewing`: the leader alone is at a desk with worker pull requests open. `awaiting_owner`: an approved office pull request waits for the user's merge. */
-	phase: "working" | "reviewing" | "awaiting_owner" | "awaiting_manager" | "idle";
-	/** Members at their desks right now. */
+	/** `working`: at least one member of the office is investigating. */
+	phase: "working" | "idle";
+	/** Members working right now. */
 	working: string[];
 	/** The assignment the office's leader is on. */
 	task?: string;
@@ -837,7 +799,7 @@ export interface OfficeUsage {
 	total: OfficeUsageAmount;
 }
 
-/** One assignment handed to a member. */
+/** One investigation handed to a member. */
 export interface OfficeRun {
 	id: string;
 	office: number;
@@ -850,13 +812,12 @@ export interface OfficeRun {
 	sessionFile?: string;
 	endedAt?: string;
 	failed?: boolean;
-	/** Pull request the member left waiting when the run ended. */
-	pr?: number;
+	/** Title of the report the run handed in; read it with `get_office_report`. */
+	report?: string;
 }
 
 export interface OfficeCompany {
 	checkout: string;
-	baseBranch: string;
 }
 
 export interface OfficeCommandResult {
@@ -2066,8 +2027,17 @@ export interface BashParams {
 	command: string;
 }
 
+export interface GetOfficeReportParams {
+	/** `OfficeRun.id`. */
+	runId: string;
+}
+
+export interface GetOfficeReportResult {
+	report: string | null;
+}
+
 export interface OfficeCommandParams {
-	/** The command words, e.g. `["merge", "4"]`. */
+	/** The command words, e.g. `["size", "1", "4"]`. */
 	args: string[];
 }
 
@@ -2294,6 +2264,7 @@ export interface RpcWireCommands {
 	bash: { params: BashParams; result: BashResult };
 	abort_bash: { params: undefined; result: undefined };
 	get_office_state: { params: undefined; result: OfficeState };
+	get_office_report: { params: GetOfficeReportParams; result: GetOfficeReportResult };
 	office_command: { params: OfficeCommandParams; result: OfficeCommandResult };
 	set_office_enabled: { params: SetOfficeEnabledParams; result: OfficeState };
 	get_session_stats: { params: undefined; result: SessionStats };

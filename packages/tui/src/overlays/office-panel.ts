@@ -1,6 +1,6 @@
 /**
  * Fullscreen `/office` panel (the /settings idiom): a tab for the company, one per office and one
- * for pull requests. ↑/↓ move, Enter opens or changes the selected row, Esc goes back.
+ * for the reports they handed in. ↑/↓ move, Enter opens or changes the selected row, Esc goes back.
  *
  * The panel owns no rules. Every change is an `/office …` command handed to `run`, and the state
  * is re-read afterwards, so it can never disagree with the command line. With `watch` it also
@@ -24,7 +24,7 @@ import {
 } from "../keybinding-matchers";
 import { theme } from "../theme/theme";
 import { padToWidth } from "../render/utils";
-import { truncateToWidth, visibleWidth } from "../utils";
+import { replaceTabs, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
 
 export interface OfficePanelMember {
 	id: string;
@@ -41,22 +41,9 @@ export interface OfficePanelOffice {
 	members: OfficePanelMember[];
 }
 
-export interface OfficePanelPull {
-	number: number;
-	kind: "worker" | "office";
-	office: number;
-	author: string;
-	title: string;
-	body: string;
-	target: string;
-	status: string;
-	reviews: { by: string; verdict: string; comment: string }[];
-}
-
 export interface OfficePanelMemory {
 	office: number;
 	notes: { by: string; text: string }[];
-	log: { pr: number; title: string; author: string; target: string }[];
 }
 
 export interface OfficePanelAmount {
@@ -77,7 +64,7 @@ export interface OfficePanelUsage {
 
 export interface OfficePanelActivity {
 	office: number;
-	/** `working`, `reviewing`, `awaiting_manager`, `awaiting_owner` or `idle`. */
+	/** `working` or `idle`. */
 	phase: string;
 	working: string[];
 	task?: string;
@@ -92,17 +79,17 @@ export interface OfficePanelRun {
 	startedAt: string;
 	endedAt?: string;
 	failed?: boolean;
-	pr?: number;
+	/** Title of the report the run handed in. */
+	report?: string;
 }
 
 export interface OfficePanelState {
 	enabled: boolean;
 	scale: string;
 	offices: OfficePanelOffice[];
-	company: { baseBranch: string; checkout?: string } | null;
+	company: { checkout?: string } | null;
 	/** Why there is no company here. */
 	reason?: string;
-	pulls: OfficePanelPull[];
 	memory: OfficePanelMemory[];
 	activity?: OfficePanelActivity[];
 	usage?: OfficePanelUsage | null;
@@ -131,6 +118,8 @@ export interface OfficePanelOptions {
 	thinkingLevels?: (model: string) => readonly string[];
 	minMembers: number;
 	maxMembers: number;
+	/** The report run `runId` handed in; `undefined` when none is kept. */
+	loadReport?: (runId: string) => Promise<string | undefined>;
 	/** Follow the company live; returns the function that stops. */
 	watch?: (listeners: { change: () => void; usage: (booking: OfficePanelBooking) => void }) => () => void;
 	requestRender: () => void;
@@ -148,35 +137,24 @@ interface Row {
 /** A page stacked on top of the tabs; Esc pops it. */
 type Page =
 	| { kind: "member"; id: string }
-	| { kind: "pull"; number: number }
+	| { kind: "report"; runId: string; title: string; text?: string; error?: string }
 	| { kind: "pick"; title: string; choices: { label: string; value: string }[]; onPick: (value: string) => void }
 	| { kind: "confirm"; title: string; yes: string; onYes: () => void }
 	| { kind: "input"; title: string; onSubmit: (value: string) => void };
 
 const COMPANY_TAB = "company";
-const PULLS_TAB = "pulls";
+const REPORTS_TAB = "reports";
 const officeTab = (number: number): string => `office:${number}`;
 const MANAGER = "general-manager";
-/** Recent assignments listed on an office tab and a member page. */
+/** Recent assignments listed on an office tab and a member page; the Reports tab lists more. */
 const RECENT_RUNS = 8;
-/** A burst of changes (a member claims a desk and opens a pull request) is read once. */
+/** A burst of changes (members starting and finishing in quick succession) is read once. */
 const RELOAD_DELAY_MS = 150;
 
-const PHASE_LABELS: Record<string, string> = {
-	working: "working",
-	reviewing: "reviewing worker pull requests",
-	awaiting_manager: "waiting for the general manager",
-	awaiting_owner: "waiting for you",
-	idle: "idle",
-};
+const PHASE_LABELS: Record<string, string> = { working: "investigating", idle: "idle" };
 
-/** The phase in a few words, for the company tab's office rows. */
-const PHASE_SHORT: Record<string, string> = {
-	working: "working",
-	reviewing: "reviewing",
-	awaiting_manager: "waiting for manager",
-	awaiting_owner: "waiting for you",
-};
+/** Reports the Reports tab lists, newest first. */
+const LISTED_REPORTS = 40;
 
 const zero = (): OfficePanelAmount => ({ tokens: 0, cost: 0, requests: 0 });
 const plus = (a: OfficePanelAmount | undefined, b: OfficePanelAmount | undefined): OfficePanelAmount => ({
@@ -262,6 +240,8 @@ export class OfficePanelComponent implements Component {
 	#tabRowStart = 0;
 	#tabRowCount = 0;
 	#bodyRowStart = 0;
+	/** Width rows are laid out for; a report page wraps to it. */
+	#innerWidth = 80;
 	#unwatch: (() => void) | undefined;
 	#reloadTimer: NodeJS.Timeout | undefined;
 	#closed = false;
@@ -339,25 +319,48 @@ export class OfficePanelComponent implements Component {
 		return this.#state?.activity?.find(candidate => candidate.office === number);
 	}
 
-	#runRows(runs: OfficePanelRun[], withMember: boolean): Row[] {
+	#runRows(runs: OfficePanelRun[], withMember: boolean, limit = RECENT_RUNS): Row[] {
 		const now = new Date();
 		return runs
-			.slice(-RECENT_RUNS)
+			.slice(-limit)
 			.reverse()
 			.map(run => {
-				const outcome = !run.endedAt
-					? "running"
-					: run.failed
-						? "failed"
-						: run.pr !== undefined
-							? `PR #${run.pr}`
-							: "done";
-				const task = run.task.replace(/\s+/g, " ").trim();
+				const outcome = !run.endedAt ? "running" : run.failed ? "did not finish" : "report";
+				const subject = (run.report ?? run.task).replace(/\s+/g, " ").trim();
+				const who = withMember ? `${run.member}: ` : "";
 				return {
-					label: withMember ? `${run.member}: ${task}` : task,
+					label: `${who}${subject}`,
 					value: `${outcome} · ${when(run.startedAt, now)}`,
+					// A finished run opens its report; a running one has none yet.
+					act: run.endedAt ? () => this.#openReport(run) : undefined,
 				};
 			});
+	}
+
+	/** Push the report page for `run` and load its text. */
+	#openReport(run: OfficePanelRun): void {
+		const page: Extract<Page, { kind: "report" }> = {
+			kind: "report",
+			runId: run.id,
+			title: run.report ?? run.task.replace(/\s+/g, " ").trim(),
+		};
+		this.#push(page);
+		const load = this.#options.loadReport;
+		if (!load) {
+			page.error = "This host cannot read reports.";
+			return;
+		}
+		void load(run.id).then(
+			text => {
+				if (text === undefined) page.error = "No report is kept for this run.";
+				else page.text = text;
+				this.#options.requestRender();
+			},
+			(error: unknown) => {
+				page.error = error instanceof Error ? error.message : String(error);
+				this.#options.requestRender();
+			},
+		);
 	}
 
 	invalidate(): void {
@@ -366,17 +369,11 @@ export class OfficePanelComponent implements Component {
 
 	#tabs(): Tab[] {
 		const offices = this.#state?.offices ?? [];
-		const waiting = this.#waiting().length;
 		return [
 			{ id: COMPANY_TAB, label: "Company" },
 			...offices.map(office => ({ id: officeTab(office.number), label: `Office ${office.number}` })),
-			{ id: PULLS_TAB, label: waiting > 0 ? `Pull requests (${waiting})` : "Pull requests" },
+			{ id: REPORTS_TAB, label: "Reports" },
 		];
-	}
-
-	/** Office pull requests the general manager approved: the ones only the owner can settle. */
-	#waiting(): OfficePanelPull[] {
-		return (this.#state?.pulls ?? []).filter(pull => pull.kind === "office" && pull.status === "approved");
 	}
 
 	async #reload(): Promise<void> {
@@ -436,19 +433,6 @@ export class OfficePanelComponent implements Component {
 		return undefined;
 	}
 
-	#pullLabel(pull: OfficePanelPull): string {
-		const from = pull.kind === "office" ? `office ${pull.office}` : `${pull.author} · office ${pull.office}`;
-		return `#${pull.number} ${pull.title} — ${from} → ${pull.target}`;
-	}
-
-	#pullRow(pull: OfficePanelPull): Row {
-		return {
-			label: this.#pullLabel(pull),
-			value: pull.status.replace("_", " "),
-			act: () => this.#push({ kind: "pull", number: pull.number }),
-		};
-	}
-
 	#companyRows(state: OfficePanelState): Row[] {
 		const scale = this.#options.scales.find(candidate => candidate.id === state.scale);
 		const rows: Row[] = [
@@ -471,41 +455,23 @@ export class OfficePanelComponent implements Component {
 						onPick: value => this.#run(["scale", value], () => this.#pop()),
 					}),
 			},
-			{ label: "Base branch", value: state.company?.baseBranch ?? `none — ${state.reason ?? "no repository"}` },
+			{ label: "Project", value: state.company?.checkout ?? `none — ${state.reason ?? "no repository"}` },
 			{ label: "Offices", heading: true },
 		];
-		// Desks nobody is working at hold a checkout each; this hands that disk space back.
-		if (state.company) {
-			rows.splice(3, 0, { label: "Free disk space", value: "remove idle desks", act: () => this.#run(["clean"]) });
-		}
 		for (const office of state.offices) {
 			const leader = office.members.find(member => member.role === "leader");
 			const activity = this.#activity(office.number);
 			const phase =
-				activity && activity.phase !== "idle" ? `${PHASE_SHORT[activity.phase] ?? activity.phase} · ` : "";
+				activity && activity.phase !== "idle" ? `${PHASE_LABELS[activity.phase] ?? activity.phase} · ` : "";
 			rows.push({
 				label: `Office ${office.number}`,
 				value: `${phase}${office.members.length} members · leader ${leader?.id ?? "none"}`,
 				act: () => this.#tabBar.selectTab(officeTab(office.number)),
 			});
 		}
-		const waiting = this.#waiting();
-		if (waiting.length > 0) {
-			rows.push({ label: "Waiting for you", heading: true });
-			for (const pull of waiting) rows.push(this.#pullRow(pull));
-		}
-		if (state.company) {
-			const count = (kind: string, status: string) =>
-				state.pulls.filter(pull => pull.kind === kind && pull.status === status).length;
-			rows.push({ label: "Pull requests", heading: true });
-			const flow: [string, number][] = [
-				["Worker pull requests in review", count("worker", "open")],
-				["Office pull requests in review", count("office", "open")],
-				["Waiting for you", waiting.length],
-				["Merged", state.pulls.filter(pull => pull.status === "merged").length],
-			];
-			for (const [label, n] of flow)
-				rows.push({ label, value: String(n), act: () => this.#tabBar.selectTab(PULLS_TAB) });
+		const reports = (state.runs ?? []).filter(run => run.endedAt);
+		if (reports.length > 0) {
+			rows.push({ label: "Latest reports", heading: true }, ...this.#runRows(reports, true, 3));
 		}
 		const usage = this.#usage();
 		if (usage) {
@@ -560,7 +526,7 @@ export class OfficePanelComponent implements Component {
 		if (activity) {
 			rows.push({ label: "Now", heading: true });
 			rows.push({ label: "Doing", value: PHASE_LABELS[activity.phase] ?? activity.phase });
-			if (activity.working.length > 0) rows.push({ label: "At their desks", value: activity.working.join(", ") });
+			if (activity.working.length > 0) rows.push({ label: "Working", value: activity.working.join(", ") });
 			if (activity.task) rows.push({ label: `Task: ${activity.task.replace(/\s+/g, " ").trim()}` });
 		}
 		if (state.usage) {
@@ -578,9 +544,6 @@ export class OfficePanelComponent implements Component {
 		const memory = state.memory.find(candidate => candidate.office === office.number);
 		rows.push({ label: "Memory of this project", heading: true });
 		for (const note of memory?.notes ?? []) rows.push({ label: `Lesson: ${note.text}`, value: note.by });
-		for (const entry of memory?.log ?? []) {
-			rows.push({ label: `Merged #${entry.pr} ${entry.title}`, value: `${entry.author} → ${entry.target}` });
-		}
 		if (state.company) {
 			rows.push({
 				label: "Add a lesson",
@@ -591,7 +554,7 @@ export class OfficePanelComponent implements Component {
 						onSubmit: value => this.#run(["remember", String(office.number), value], () => this.#pop()),
 					}),
 			});
-			if ((memory?.notes.length ?? 0) + (memory?.log.length ?? 0) > 0) {
+			if ((memory?.notes.length ?? 0) > 0) {
 				rows.push({
 					label: "Forget everything",
 					act: () =>
@@ -607,15 +570,16 @@ export class OfficePanelComponent implements Component {
 		return rows;
 	}
 
-	#pullsRows(state: OfficePanelState): Row[] {
-		if (state.pulls.length === 0) return [{ label: "No pull requests yet." }];
-		const done = (pull: OfficePanelPull) => pull.status === "merged" || pull.status === "closed";
+	#reportsRows(state: OfficePanelState): Row[] {
+		const runs = state.runs ?? [];
+		if (runs.length === 0)
+			return [{ label: "No reports yet. The general manager assigns questions with the `office` tool." }];
 		const rows: Row[] = [];
-		const unfinished = state.pulls.filter(pull => !done(pull));
-		const finished = state.pulls.filter(done).reverse();
-		if (unfinished.length > 0)
-			rows.push({ label: "In progress", heading: true }, ...unfinished.map(p => this.#pullRow(p)));
-		if (finished.length > 0) rows.push({ label: "Finished", heading: true }, ...finished.map(p => this.#pullRow(p)));
+		for (const office of state.offices) {
+			const theirs = runs.filter(run => run.office === office.number);
+			if (theirs.length === 0) continue;
+			rows.push({ label: `Office ${office.number}`, heading: true }, ...this.#runRows(theirs, true, LISTED_REPORTS));
+		}
 		return rows;
 	}
 
@@ -697,51 +661,18 @@ export class OfficePanelComponent implements Component {
 		return rows;
 	}
 
-	#pullPageRows(number: number): Row[] {
-		const pull = this.#state?.pulls.find(candidate => candidate.number === number);
-		if (!pull) return [{ label: `Pull request #${number} is gone.` }];
-		const rows: Row[] = [
-			{ label: "Status", value: pull.status.replace("_", " ") },
-			{
-				label: "From",
-				value: pull.kind === "office" ? `office ${pull.office}` : `${pull.author} · office ${pull.office}`,
-			},
-			{ label: "Into", value: pull.target },
-		];
-		if (pull.kind === "office" && pull.status === "approved") {
-			rows.push(
-				{
-					label: `Merge into ${pull.target}`,
-					act: () =>
-						this.#push({
-							kind: "confirm",
-							title: `Merge #${pull.number} "${pull.title}" into ${pull.target}?`,
-							yes: "Merge",
-							onYes: () => this.#run(["merge", String(pull.number)], () => this.#pop()),
-						}),
-				},
-				{
-					label: "Send back with a reason",
-					act: () =>
-						this.#push({
-							kind: "input",
-							title: `Why does #${pull.number} go back?`,
-							onSubmit: value => this.#run(["reject", String(pull.number), value], () => this.#pop()),
-						}),
-				},
-			);
-		}
-		const body = pull.body.trim();
-		if (body) {
-			rows.push({ label: "Description", heading: true });
-			for (const line of body.split("\n")) rows.push({ label: line });
-		}
-		if (pull.reviews.length > 0) {
-			rows.push({ label: "Reviews", heading: true });
-			for (const review of pull.reviews) {
-				const verdict = review.verdict === "approve" ? "approved" : "requested changes";
-				rows.push({ label: `${review.by} ${verdict}${review.comment ? `: ${review.comment}` : ""}` });
+	/** The report on its own page, wrapped to the panel; ↑/↓ scroll it. */
+	#reportPageRows(page: Extract<Page, { kind: "report" }>): Row[] {
+		if (page.error) return [{ label: page.error }];
+		if (page.text === undefined) return [{ label: "Loading report…" }];
+		const width = Math.max(10, this.#innerWidth - 2);
+		const rows: Row[] = [];
+		for (const line of replaceTabs(page.text.trimEnd()).split("\n")) {
+			if (!line.trim()) {
+				rows.push({ label: "" });
+				continue;
 			}
+			for (const piece of wrapTextWithAnsi(line, width)) rows.push({ label: piece });
 		}
 		return rows;
 	}
@@ -762,7 +693,7 @@ export class OfficePanelComponent implements Component {
 		if (!state) return [{ label: "Loading…" }];
 		const page = this.#pages.at(-1);
 		if (page?.kind === "member") return this.#memberRows(page.id);
-		if (page?.kind === "pull") return this.#pullPageRows(page.number);
+		if (page?.kind === "report") return this.#reportPageRows(page);
 		if (page?.kind === "pick") {
 			const choices = this.#filters(page) ? this.#pickChoices(page) : page.choices;
 			if (choices.length === 0) return [{ label: "Nothing matches." }];
@@ -776,7 +707,7 @@ export class OfficePanelComponent implements Component {
 		}
 		if (page?.kind === "input") return [];
 		const tab = this.#tabBar.getActiveTab().id;
-		if (tab === PULLS_TAB) return this.#pullsRows(state);
+		if (tab === REPORTS_TAB) return this.#reportsRows(state);
 		const office = state.offices.find(candidate => officeTab(candidate.number) === tab);
 		return office ? this.#officeRows(state, office) : this.#companyRows(state);
 	}
@@ -785,10 +716,6 @@ export class OfficePanelComponent implements Component {
 		const page = this.#pages.at(-1);
 		if (!page) return "Virtual Office";
 		if (page.kind === "member") return `Virtual Office · ${page.id}`;
-		if (page.kind === "pull") {
-			const pull = this.#state?.pulls.find(candidate => candidate.number === page.number);
-			return `Virtual Office · #${page.number}${pull ? ` ${pull.title}` : ""}`;
-		}
 		return `Virtual Office · ${page.title}`;
 	}
 
@@ -808,6 +735,7 @@ export class OfficePanelComponent implements Component {
 	render(width: number): readonly string[] {
 		const height = Math.max(14, process.stdout.rows || 40);
 		const innerWidth = Math.max(20, width - 4);
+		this.#innerWidth = innerWidth;
 		const page = this.#pages.at(-1);
 		const tabLines = page ? [] : this.#tabBar.render(innerWidth);
 		const field = page?.kind === "input" || this.#filters(page);

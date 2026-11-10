@@ -1,7 +1,7 @@
 /** Books the general manager's own model usage: the main session's, while Virtual Office is on. */
 import type { ScopeLike } from "../config/registry";
 import type { AgentSessionEvent } from "../session/agent-session";
-import { MANAGER } from "./pulls";
+import { MANAGER } from "./model";
 import { cfgOfficeEnabled } from "./settings";
 import { recordUsage } from "./usage";
 import { openCompany } from "./workspace";

@@ -3,7 +3,7 @@
  *
  * Usage is booked when it happens, into the bucket of the local calendar day, so "today" starts at
  * 00:00 local time and an assignment running across midnight is split between the two days. The
- * general manager is booked under `general-manager` (`MANAGER` in `pulls.ts`).
+ * general manager is booked under `general-manager` (`MANAGER` in `model.ts`).
  *
  * Writes are batched: a busy member reports several times a second. A booking is not an office
  * change: hosts get it as a delta through {@link onOfficeUsage} and keep their own running totals,
@@ -42,8 +42,8 @@ export interface OfficeRun {
 	startedAt: string;
 	endedAt?: string;
 	failed?: boolean;
-	/** Pull request the member left waiting when the run ended. */
-	pr?: number;
+	/** Title of the report the run handed in (see `reports.ts`); absent while running or when there was none. */
+	report?: string;
 }
 
 export interface MemberUsage {
@@ -197,11 +197,11 @@ export async function startRun(company: Company, run: Omit<OfficeRun, "startedAt
 	});
 }
 
-/** Fill in what became known about run `id`: its transcript, its end, the pull request it left. */
+/** Fill in what became known about run `id`: its transcript, its end, its report. */
 export async function updateRun(
 	company: Company,
 	id: string,
-	patch: Partial<Pick<OfficeRun, "sessionFile" | "endedAt" | "failed" | "pr">>,
+	patch: Partial<Pick<OfficeRun, "sessionFile" | "endedAt" | "failed" | "report">>,
 ): Promise<void> {
 	await updateStore(usagePath(company), emptyFile, file => {
 		const run = file.runs.find(candidate => candidate.id === id);
