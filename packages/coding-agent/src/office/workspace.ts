@@ -8,15 +8,17 @@
  * Work only moves up this tree through {@link mergePull}: one squashed commit per pull request,
  * applied to the level above. Nothing here pushes or talks to a remote.
  */
+import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { VcsGitRepo } from "@oh-my-pi/pi-natives";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import { getWorktreesDir, isEnoent } from "@oh-my-pi/pi-utils";
 import type { ScopeLike } from "../config/registry";
-import { cfgIsolationBackend, cfgWorktreeClone } from "../task/settings";
+import { cfgIsolationBackend } from "../task/settings";
 import { parseIsolationBackend } from "../task/worktree";
 import { withRepoLock } from "../utils/repo-lock";
+import { cfgOfficeShareDependencies } from "./settings";
 
 /** The repository and branch a company works for. */
 export interface Company {
@@ -64,6 +66,75 @@ export async function openCompany(cwd: string): Promise<Company> {
 	const company: Company = { checkout, baseBranch, dir: path.join(desksRoot(), repoKey, slug(baseBranch)) };
 	await Bun.write(path.join(company.dir, COMPANY_FILE), JSON.stringify({ checkout, baseBranch }, null, "\t"));
 	return company;
+}
+
+/** Folders whose contents are the project's installed dependencies, not its source. */
+const DEPENDENCY_DIRS = new Set(["node_modules", ".venv", "venv", "vendor", "bower_components"]);
+/** Folders never searched for dependency folders. */
+const NOT_SEARCHED = new Set([".git", "target", "dist", "build", "out"]);
+/** How deep below the root dependency folders are looked for (monorepo packages sit one or two down). */
+const DEPENDENCY_SEARCH_DEPTH = 3;
+
+/**
+ * Relative paths of the dependency folders under `root`: real folders when `links` is false (the
+ * owner's checkout), links to folders when it is true (a desk's shared ones).
+ */
+async function findDependencyDirs(root: string, links: boolean, rel = "", depth = 0): Promise<string[]> {
+	let entries: Dirent[];
+	try {
+		entries = await fs.readdir(path.join(root, rel), { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	const found: string[] = [];
+	for (const entry of entries) {
+		const here = rel ? path.join(rel, entry.name) : entry.name;
+		if (DEPENDENCY_DIRS.has(entry.name)) {
+			if (links ? entry.isSymbolicLink() : entry.isDirectory()) found.push(here);
+		} else if (entry.isDirectory() && depth < DEPENDENCY_SEARCH_DEPTH && !NOT_SEARCHED.has(entry.name)) {
+			found.push(...(await findDependencyDirs(root, links, here, depth + 1)));
+		}
+	}
+	return found;
+}
+
+/**
+ * Make the desk's dependency folders links to the owner's, so a project's dependencies exist once.
+ * Only folders the desk does not have (a tracked `vendor` is already there) and whose parent exists.
+ * The links are listed in the repository's exclude file: a link is not a folder, so `node_modules/`
+ * in a `.gitignore` would not cover it and the desk would look changed.
+ */
+async function shareDependencies(company: Company, deskDir: string): Promise<void> {
+	const wanted = await findDependencyDirs(company.checkout, false);
+	const linked: string[] = [];
+	for (const rel of wanted) {
+		const dest = path.join(deskDir, rel);
+		const present = await fs.lstat(dest).then(
+			() => true,
+			() => false,
+		);
+		const parent = await fs.stat(path.dirname(dest)).then(
+			() => true,
+			() => false,
+		);
+		if (present || !parent) continue;
+		await fs.symlink(path.join(company.checkout, rel), dest, "dir");
+		linked.push(rel);
+	}
+	if (linked.length === 0) return;
+	const exclude = path.join(vcs.requireGit(company.checkout).info().commonDir, "info", "exclude");
+	const text = await Bun.file(exclude)
+		.text()
+		.catch(() => "");
+	const have = new Set(text.split("\n"));
+	const lines = linked.map(rel => `/${rel.split(path.sep).join("/")}`).filter(line => !have.has(line));
+	if (lines.length > 0)
+		await Bun.write(exclude, `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${lines.join("\n")}\n`);
+}
+
+/** Take the links {@link shareDependencies} made out of the desk (the owner's folders are not touched). */
+async function unshareDependencies(deskDir: string): Promise<void> {
+	for (const rel of await findDependencyDirs(deskDir, true)) await fs.unlink(path.join(deskDir, rel)).catch(() => {});
 }
 
 /** A desk's place in its company, read back from the desk's own path. */
@@ -147,13 +218,73 @@ export async function prepareDesk(
 			await fs.mkdir(path.dirname(desk.dir), { recursive: true });
 			await repo.worktreeAdd(desk.dir, desk.branch, {
 				detach: false,
-				clone: cfgWorktreeClone.get(settings),
+				clone: false,
 				backend: parseIsolationBackend(cfgIsolationBackend.get(settings)),
 			});
 		}
 		const here = vcs.requireGit(desk.dir);
 		if (!(await here.isDirty()) && (await ownChanges(here, desk.upstream, desk.branch)).length === 0) {
 			await here.reset("hard", desk.upstream);
+		}
+		if (cfgOfficeShareDependencies.get(settings)) await shareDependencies(company, desk.dir);
+	});
+}
+
+/**
+ * Take the desk at `desk.dir` away to free its disk space, keeping its branch and everything
+ * committed on it: {@link prepareDesk} puts the desk back the next time anyone sits at it.
+ *
+ * A desk with uncommitted changes is kept as it is. The caller makes sure nobody is working there.
+ *
+ * @returns whether the worktree was removed.
+ */
+export async function reclaimDesk(company: Company, desk: { dir: string; branch: string }): Promise<boolean> {
+	return withRepoLock(company.checkout, async () => {
+		const repo = vcs.requireGit(company.checkout);
+		let registered = false;
+		for (const entry of await repo.worktrees()) {
+			if (await samePath(entry.path, desk.dir)) registered = true;
+		}
+		if (!registered) {
+			// Left over without git knowing it (an interrupted removal): nothing to protect.
+			if (
+				await fs.stat(desk.dir).then(
+					() => true,
+					() => false,
+				)
+			)
+				await fs.rm(desk.dir, { recursive: true, force: true });
+			return false;
+		}
+		if (await vcs.requireGit(desk.dir).isDirty()) return false;
+		await unshareDependencies(desk.dir);
+		try {
+			await repo.worktreeRemove(desk.dir, false);
+		} catch {
+			return false;
+		}
+		await fs.rm(desk.dir, { recursive: true, force: true });
+		return true;
+	});
+}
+
+/**
+ * A member left: reclaim their desk and, when the branch holds nothing `upstream` lacks, delete
+ * it too. A branch with unmerged work stays, because a pull request may still point at it.
+ */
+export async function retireDesk(
+	company: Company,
+	desk: { dir: string; branch: string; upstream: string },
+): Promise<void> {
+	await reclaimDesk(company, desk);
+	await withRepoLock(company.checkout, async () => {
+		const repo = vcs.requireGit(company.checkout);
+		if (!(await repo.refExists(`refs/heads/${desk.branch}`))) return;
+		if ((await ownChanges(repo, desk.upstream, desk.branch)).length > 0) return;
+		try {
+			await repo.deleteBranch(desk.branch, true);
+		} catch {
+			// Still checked out somewhere (the desk was dirty): leave it.
 		}
 	});
 }

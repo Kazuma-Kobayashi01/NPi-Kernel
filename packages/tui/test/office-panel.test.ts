@@ -166,6 +166,13 @@ describe("office panel", () => {
 		expect(watching()).toBeUndefined();
 	});
 
+	it("frees disk space from the company tab", async () => {
+		const { ran, press } = await open(company());
+		// Virtual Office → Company size → Base branch (information) → Free disk space.
+		await press(DOWN, DOWN, DOWN, ENTER);
+		expect(ran).toEqual([["clean"]]);
+	});
+
 	it("goes back one page per Esc and closes from the tabs", async () => {
 		const { press, isClosed } = await open(company());
 		await press(RIGHT, DOWN, ENTER, ESC);

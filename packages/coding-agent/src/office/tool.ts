@@ -28,6 +28,7 @@ import {
 	deskOfOffice,
 	deskOfWorker,
 	mergeApprovedPull,
+	reclaimIdleDesks,
 	resolveSeat,
 	type Seat,
 	staffedOffices,
@@ -420,6 +421,11 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 			return this.#result("assign", sections.join("\n\n"), pulls);
 		} finally {
 			await Promise.all(releases.map(release => release()));
+			// The assignment is over: desks with everything committed go, their branches stay.
+			await reclaimIdleDesks(
+				company,
+				assignments.map(assignment => assignment.desk),
+			).catch(() => 0);
 		}
 	}
 
@@ -505,7 +511,12 @@ export class OfficeTool implements AgentTool<typeof officeSchema, OfficeToolDeta
 	}
 
 	async #merge(params: OfficeParams): Promise<AgentToolResult<OfficeToolDetails>> {
-		const pull = await mergeApprovedPull(this.seat.company, this.#pr(params), actorOf(this.seat));
+		const pull = await mergeApprovedPull(
+			this.seat.company,
+			this.#pr(params),
+			actorOf(this.seat),
+			this.session.settings,
+		);
 		return this.#result(
 			"merge",
 			`Merged #${pull.number} into ${pull.target} as ${pull.mergeCommit?.slice(0, 12)}. ${pull.author}'s desk restarts from there.`,

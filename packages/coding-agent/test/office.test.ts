@@ -10,6 +10,7 @@ import {
 	deskOfOffice,
 	deskOfWorker,
 	mergeApprovedPull,
+	reclaimIdleDesks,
 	readOfficeState,
 	resolveSeat,
 	staffedOffices,
@@ -40,7 +41,16 @@ import {
 	validateOffices,
 	workersOf,
 } from "@oh-my-pi/pi-coding-agent/office/model";
-import { getPull, type PullActor, reviewPull, submitPull } from "@oh-my-pi/pi-coding-agent/office/pulls";
+import {
+	compactLedger,
+	DETAILED_FINISHED_PULLS,
+	getPull,
+	MAX_FINISHED_PULLS,
+	type Pull,
+	type PullActor,
+	reviewPull,
+	submitPull,
+} from "@oh-my-pi/pi-coding-agent/office/pulls";
 import {
 	type Company,
 	commitDesk,
@@ -118,6 +128,12 @@ describe("office roster", () => {
 	});
 });
 
+const dirExists = (dir: string): Promise<boolean> =>
+	fs.stat(dir).then(
+		() => true,
+		() => false,
+	);
+
 describe("office pull requests", () => {
 	let tmp: TempDir;
 	let repoDir: string;
@@ -142,7 +158,7 @@ describe("office pull requests", () => {
 		await $`git add -A`.cwd(repoDir);
 		await $`git commit -q -m init`.cwd(repoDir);
 
-		settings = Settings.isolated({ "office.enabled": true, "worktree.clone": false });
+		settings = Settings.isolated({ "office.enabled": true });
 		const seat = await resolveSeat(settings, repoDir, 0);
 		if (seat?.kind !== "manager") throw new Error("expected the main session to be the general manager");
 		company = seat.company;
@@ -190,10 +206,10 @@ describe("office pull requests", () => {
 		await expect(reviewPull(company, workerPull.number, { kind: "manager" }, "approve", "")).rejects.toThrow(
 			/reviewed by the leader of office 1/,
 		);
-		await expect(mergeApprovedPull(company, workerPull.number, leader)).rejects.toThrow(/only after/);
+		await expect(mergeApprovedPull(company, workerPull.number, leader, settings)).rejects.toThrow(/only after/);
 
 		await reviewPull(company, workerPull.number, leader, "approve", "");
-		await mergeApprovedPull(company, workerPull.number, leader);
+		await mergeApprovedPull(company, workerPull.number, leader, settings);
 		const officeDesk = deskOfOffice(company, 1);
 		expect(await Bun.file(path.join(officeDesk.dir, "app.txt")).text()).toBe("one\nTWO\nthree\n");
 		// The base branch is untouched until the owner merges.
@@ -212,7 +228,7 @@ describe("office pull requests", () => {
 		await reviewPull(company, officePull.number, { kind: "manager" }, "approve", "");
 
 		// The general manager approves but cannot merge into the owner's branch.
-		await expect(mergeApprovedPull(company, officePull.number, { kind: "manager" })).rejects.toThrow(
+		await expect(mergeApprovedPull(company, officePull.number, { kind: "manager" }, settings)).rejects.toThrow(
 			/Only they can merge it/,
 		);
 		const merged = await runOfficeCommand(["merge", String(officePull.number)], settings, repoDir);
@@ -225,7 +241,7 @@ describe("office pull requests", () => {
 	it("restarts a worker desk whose work reached the base branch, though no commit of it did", async () => {
 		const workerPull = await workerSubmits("one\nTWO\nthree\n", "Shout two");
 		await reviewPull(company, workerPull.number, leader, "approve", "");
-		await mergeApprovedPull(company, workerPull.number, leader);
+		await mergeApprovedPull(company, workerPull.number, leader, settings);
 		const officeDesk = deskOfOffice(company, 1);
 		const officePull = await submitPull(company, {
 			kind: "office",
@@ -237,7 +253,7 @@ describe("office pull requests", () => {
 			target: officeDesk.upstream,
 		});
 		await reviewPull(company, officePull.number, { kind: "manager" }, "approve", "");
-		await mergeApprovedPull(company, officePull.number, { kind: "owner" });
+		await mergeApprovedPull(company, officePull.number, { kind: "owner" }, settings);
 
 		// The worker's branch still holds the office-level squash commit, which main never got.
 		const workerDesk = deskOfWorker(company, 1, workerName);
@@ -248,7 +264,7 @@ describe("office pull requests", () => {
 		// The next round's change applies cleanly instead of colliding with the merged one.
 		const next = await workerSubmits("one\nTWO\nTHREE\n", "Shout three");
 		await reviewPull(company, next.number, leader, "approve", "");
-		await mergeApprovedPull(company, next.number, leader);
+		await mergeApprovedPull(company, next.number, leader, settings);
 		expect(await Bun.file(path.join(officeDesk.dir, "app.txt")).text()).toBe("one\nTWO\nTHREE\n");
 	});
 
@@ -260,7 +276,9 @@ describe("office pull requests", () => {
 		await Bun.write(path.join(officeDesk.dir, "app.txt"), "one\nzwei\nthree\n");
 		await commitDesk(company, officeDesk, "Translate two");
 
-		await expect(mergeApprovedPull(company, pull.number, leader)).rejects.toBeInstanceOf(OfficeWorkspaceError);
+		await expect(mergeApprovedPull(company, pull.number, leader, settings)).rejects.toBeInstanceOf(
+			OfficeWorkspaceError,
+		);
 		expect(await Bun.file(path.join(officeDesk.dir, "app.txt")).text()).toBe("one\nzwei\nthree\n");
 		expect(await vcs.requireGit(officeDesk.dir).isDirty()).toBe(false);
 		expect((await getPull(company, pull.number)).status).toBe("approved");
@@ -278,7 +296,7 @@ describe("office pull requests", () => {
 	it("remembers each merged pull request in its office's log, across both levels", async () => {
 		const workerPull = await workerSubmits("one\nTWO\nthree\n", "Shout two");
 		await reviewPull(company, workerPull.number, leader, "approve", "");
-		await mergeApprovedPull(company, workerPull.number, leader);
+		await mergeApprovedPull(company, workerPull.number, leader, settings);
 		const officeDesk = deskOfOffice(company, 1);
 		const officePull = await submitPull(company, {
 			kind: "office",
@@ -290,7 +308,7 @@ describe("office pull requests", () => {
 			target: officeDesk.upstream,
 		});
 		await reviewPull(company, officePull.number, { kind: "manager" }, "approve", "");
-		await mergeApprovedPull(company, officePull.number, { kind: "owner" });
+		await mergeApprovedPull(company, officePull.number, { kind: "owner" }, settings);
 
 		const state = await readOfficeState(settings, repoDir);
 		const log = state.memory[0].log;
@@ -351,7 +369,7 @@ describe("office pull requests", () => {
 		expect((await readOfficeState(settings, repoDir)).activity[0].phase).toBe("idle");
 		const workerPull = await workerSubmits("one\ntwo\nthree\nfour\n", "Add four");
 		await reviewPull(company, workerPull.number, leader, "approve", "");
-		await mergeApprovedPull(company, workerPull.number, leader);
+		await mergeApprovedPull(company, workerPull.number, leader, settings);
 		const desk = deskOfOffice(company, 1);
 		await commitDesk(company, desk, "Add four");
 		const officePull = await submitPull(company, {
@@ -400,6 +418,125 @@ describe("office pull requests", () => {
 		const nextDay = await readUsage(company, new Date(2026, 10, 11, 8));
 		expect(nextDay.today.tokens).toBe(0);
 		expect(nextDay.total.tokens).toBe(150);
+	});
+
+	it("takes idle desks away to save disk space, and brings them back for a merge", async () => {
+		const workerDesk = deskOfWorker(company, 1, workerName);
+		const officeDesk = deskOfOffice(company, 1);
+		const pull = await workerSubmits("one\nTWO\nthree\n", "Shout two");
+		await reviewPull(company, pull.number, leader, "approve", "");
+
+		// Everything is committed: both desks go, the branches (and the work on them) stay.
+		expect(await reclaimIdleDesks(company, [workerDesk, officeDesk])).toBe(2);
+		expect(await dirExists(workerDesk.dir)).toBe(false);
+		expect(await dirExists(officeDesk.dir)).toBe(false);
+		expect(await vcs.requireGit(repoDir).refExists(`refs/heads/${workerDesk.branch}`)).toBe(true);
+
+		// Merging sits both desks back down; the worker's desk restarts from the merge and goes again.
+		await mergeApprovedPull(company, pull.number, leader, settings);
+		expect(await Bun.file(path.join(officeDesk.dir, "app.txt")).text()).toBe("one\nTWO\nthree\n");
+		expect(await dirExists(workerDesk.dir)).toBe(false);
+
+		// Sitting down again restores the desk at the latest merged state.
+		await prepareDesk(company, workerDesk, settings);
+		expect(await Bun.file(path.join(workerDesk.dir, "app.txt")).text()).toBe("one\nTWO\nthree\n");
+	});
+
+	it("links a desk's dependency folders to the owner's, so they exist once and never count as changes", async () => {
+		const workerDesk = deskOfWorker(company, 1, workerName);
+		await Bun.write(path.join(repoDir, "node_modules", "dep", "index.js"), "module.exports = 1;\n");
+		await reclaimIdleDesks(company, [workerDesk]);
+		await prepareDesk(company, workerDesk, settings);
+
+		const link = path.join(workerDesk.dir, "node_modules");
+		expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+		expect(await Bun.file(path.join(link, "dep", "index.js")).text()).toBe("module.exports = 1;\n");
+		// A link is not a folder: without the exclude entry it would be an untracked file, and the
+		// desk would look changed and be staged by the next commit.
+		expect(await vcs.requireGit(workerDesk.dir).isDirty()).toBe(false);
+		const committed = await commitDesk(company, workerDesk, "nothing");
+		expect(committed.files).toEqual([]);
+
+		// Taking the desk away removes the link, never the owner's folder.
+		expect(await reclaimIdleDesks(company, [workerDesk])).toBe(1);
+		expect(await dirExists(workerDesk.dir)).toBe(false);
+		expect(await Bun.file(path.join(repoDir, "node_modules", "dep", "index.js")).exists()).toBe(true);
+
+		// Turned off, a desk gets no link.
+		const alone = Settings.isolated({ "office.enabled": true, "office.shareDependencies": false });
+		await prepareDesk(company, workerDesk, alone);
+		expect(
+			await fs.lstat(link).then(
+				() => true,
+				() => false,
+			),
+		).toBe(false);
+	});
+
+	it("keeps a desk that has uncommitted changes or someone working at it", async () => {
+		const workerDesk = deskOfWorker(company, 1, workerName);
+		const officeDesk = deskOfOffice(company, 1);
+		await Bun.write(path.join(workerDesk.dir, "app.txt"), "unsaved\n");
+		const release = await claimDesk(company, {
+			desk: officeDesk.dir,
+			office: 1,
+			member: leader.kind === "leader" ? leader.member : "",
+			role: "leader",
+			task: "busy",
+		});
+		expect(await reclaimIdleDesks(company, [workerDesk, officeDesk])).toBe(0);
+		expect(await Bun.file(path.join(workerDesk.dir, "app.txt")).text()).toBe("unsaved\n");
+		await release?.();
+		expect(await reclaimIdleDesks(company, [officeDesk])).toBe(1);
+	});
+
+	it("/office clean removes idle desks and reports what it kept", async () => {
+		const workerDesk = deskOfWorker(company, 1, workerName);
+		await Bun.write(path.join(workerDesk.dir, "app.txt"), "unsaved\n");
+		const result = await runOfficeCommand(["clean"], settings, repoDir);
+		expect(result.failed).toBeFalsy();
+		expect(result.text).toMatch(/Removed 1 idle desk; 1 kept/);
+		expect(await dirExists(deskOfOffice(company, 1).dir)).toBe(false);
+		expect(await dirExists(workerDesk.dir)).toBe(true);
+	});
+
+	it("drops the oldest finished pull requests and the text of older ones, never an open one", () => {
+		const pull = (number: number, status: Pull["status"]): Pull => ({
+			number,
+			kind: "worker",
+			office: 1,
+			author: "w",
+			title: `t${number}`,
+			body: "body",
+			source: "s",
+			target: "t",
+			status,
+			reviews: [{ by: "l", verdict: "approve", comment: "ok", at: "" }],
+			createdAt: "",
+			updatedAt: "",
+		});
+		const finished = MAX_FINISHED_PULLS + 5;
+		const ledger = {
+			next: finished + 2,
+			pulls: [
+				pull(0, "open"),
+				...Array.from({ length: finished }, (_, i) => pull(i + 1, "merged")),
+				pull(finished + 1, "open"),
+			],
+		};
+		compactLedger(ledger);
+		expect(ledger.pulls.filter(entry => entry.status === "merged")).toHaveLength(MAX_FINISHED_PULLS);
+		expect(ledger.pulls.filter(entry => entry.status === "open").map(entry => entry.number)).toEqual([
+			0,
+			finished + 1,
+		]);
+		const merged = ledger.pulls.filter(entry => entry.status === "merged");
+		expect(merged[0].number).toBe(6);
+		expect(merged[0].body).toBe("");
+		expect(merged[0].reviews[0].comment).toBe("");
+		expect(merged.at(-1)?.body).toBe("body");
+		expect(merged.filter(entry => entry.body === "body")).toHaveLength(DETAILED_FINISHED_PULLS);
+		expect(ledger.pulls.find(entry => entry.number === 0)?.body).toBe("body");
 	});
 
 	it("has no company on a detached HEAD", async () => {

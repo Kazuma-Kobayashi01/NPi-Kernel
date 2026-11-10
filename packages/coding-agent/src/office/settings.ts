@@ -37,6 +37,19 @@ export const cfgOfficeScale = register({
 	},
 });
 
+export const cfgOfficeShareDependencies = register({
+	id: "office.shareDependencies",
+	type: "boolean",
+	default: true,
+	ui: {
+		tab: "tasks",
+		group: "Virtual Office",
+		label: "Share Dependencies Between Desks",
+		description:
+			"Desks hold tracked files only; their dependency folders (node_modules, .venv, vendor) are links to the ones in your checkout, so one project's dependencies exist once on disk instead of once per member. A member who changes dependencies changes them for everyone. Desks nobody is working at are removed (see `/office clean`).",
+	},
+});
+
 /**
  * The roster: one entry per office, each with 3 to 6 members. Edited through `/office`,
  * `npi office` and the RPC `office_*` commands rather than by hand; the names in it are permanent.

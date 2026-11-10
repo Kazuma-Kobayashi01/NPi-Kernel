@@ -42,6 +42,7 @@ In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a f
 | `/office set <name> role leader` | Make a member the leader; the previous leader becomes a worker. |
 | `/office merge <pr>` | Merge an approved office pull request into your branch. |
 | `/office reject <pr> <reason>` | Send an office pull request back. |
+| `/office clean` | Remove the desks nobody is working at, to free disk space. |
 | `/office memory <office>` | Show what an office remembers about this project. |
 | `/office remember <office> <lesson>` | Give an office a lesson to keep. |
 | `/office forget <office>` | Clear what an office remembers about this project. |
@@ -58,7 +59,9 @@ main                              your checkout; the general manager sits here
    └─ office/main/o1/Worker-1a2b3c   one worker's worktree
 ```
 
-The worktrees live under the worktree base directory (`worktree.base`, default `~/.omp/wt`) in `office/<repository>/<branch>/`. They are created the first time work is assigned and reused afterwards. A desk with no unmerged work is moved up to the branch above it before each assignment.
+The worktrees live under the worktree base directory (`worktree.base`, default `~/.omp/wt`) in `office/<repository>/<branch>/`. They are created the first time work is assigned, as plain checkouts of the tracked files. Ignored build output is not copied, and a project's installed dependencies exist once: a desk's `node_modules`, `.venv`, `venv`, `vendor` and `bower_components` folders (also in monorepo packages, up to three levels down) are links to the ones in your checkout, so run the install there. A member who changes dependencies changes them for every desk. `office.shareDependencies` (on by default) turns the links off. A desk with no unmerged work is moved up to the branch above it before each assignment.
+
+Desks nobody is working at are not kept: when an assignment ends, and after a merge restarts a desk, every desk with all its work committed is removed to free its disk space. The branches, with everything committed on them, stay, and sitting down at a desk again (an assignment, a merge) puts it back at its branch. A desk with uncommitted changes, or one someone is working at, is left alone. `/office clean` (also *Free disk space* on the panel's company tab) does the same sweep on demand, and removing a worker also removes their desk and, when it holds nothing unmerged, their branch. The pull request ledger keeps the newest 200 finished pull requests, and only the newest 40 of them keep their description and review comments.
 
 Work moves up one level at a time:
 

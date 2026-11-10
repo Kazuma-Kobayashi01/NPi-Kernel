@@ -474,6 +474,10 @@ export class OfficePanelComponent implements Component {
 			{ label: "Base branch", value: state.company?.baseBranch ?? `none — ${state.reason ?? "no repository"}` },
 			{ label: "Offices", heading: true },
 		];
+		// Desks nobody is working at hold a checkout each; this hands that disk space back.
+		if (state.company) {
+			rows.splice(3, 0, { label: "Free disk space", value: "remove idle desks", act: () => this.#run(["clean"]) });
+		}
 		for (const office of state.offices) {
 			const leader = office.members.find(member => member.role === "leader");
 			const activity = this.#activity(office.number);

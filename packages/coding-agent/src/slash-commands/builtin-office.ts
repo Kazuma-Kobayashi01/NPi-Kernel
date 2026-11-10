@@ -31,6 +31,7 @@ export const BUILTIN_OFFICE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			{ name: "set", description: "Change a member", usage: "<name> model|thinking|capability|role <value>" },
 			{ name: "merge", description: "Merge an approved office pull request", usage: "<pr>" },
 			{ name: "reject", description: "Send an office pull request back", usage: "<pr> <reason>" },
+			{ name: "clean", description: "Remove desks nobody is working at, to free disk space" },
 			{ name: "memory", description: "What an office remembers about this project", usage: "<office>" },
 			{ name: "remember", description: "Give an office a lesson to keep", usage: "<office> <lesson>" },
 			{ name: "forget", description: "Clear an office's memory of this project", usage: "<office>" },

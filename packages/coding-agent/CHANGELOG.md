@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Virtual Office keeps far less on disk: a desk is a plain checkout whose dependency folders are shared with your checkout, idle desks are removed once their work is committed (the branches stay), and the pull request ledger keeps only the newest finished pull requests.
+
 ### Added
 
+- `/office clean` (and *Free disk space* on the `/office` panel) removes the desks nobody is working at; `office.shareDependencies` (on by default) links each desk's `node_modules`, `.venv` and similar folders to the ones in your checkout.
 - The `/office` panel now sets a member's thinking effort, shows what each office is doing, the pull-request funnel, spend today and in total per office and member, and recent assignments, and updates live while open.
 - RPC `office_usage` frames carry Virtual Office spend as per-member deltas for hosts to add up; booking usage no longer makes the session re-read and push the whole `office_state` several times a second while members work.
 - Virtual Office members take a thinking effort: `/office set <name> thinking <level>` sets it (`default` clears it), `/office status` and the RPC roster show it, and an effort the member's model does not support is clamped to the closest one it does.

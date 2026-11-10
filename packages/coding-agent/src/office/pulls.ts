@@ -66,7 +66,7 @@ export class PullError extends Error {
 	}
 }
 
-interface Ledger {
+export interface Ledger {
 	next: number;
 	pulls: Pull[];
 }
@@ -81,8 +81,30 @@ function readLedger(file: string): Promise<Ledger> {
 	return readStore(file, emptyLedger);
 }
 
+/** Finished pull requests kept in the ledger, newest last; older ones are dropped. */
+export const MAX_FINISHED_PULLS = 200;
+/** Of those, how many keep their description and review comments; the rest keep only the facts. */
+export const DETAILED_FINISHED_PULLS = 40;
+
+const isFinished = (pull: Pull): boolean => pull.status === "merged" || pull.status === "closed";
+
+/** Keeps the ledger from growing without bound: old finished pull requests lose their text, then their record. */
+export function compactLedger(ledger: Ledger): void {
+	const finished = ledger.pulls.filter(isFinished);
+	const dropped = new Set(finished.slice(0, Math.max(0, finished.length - MAX_FINISHED_PULLS)));
+	if (dropped.size > 0) ledger.pulls = ledger.pulls.filter(pull => !dropped.has(pull));
+	for (const pull of finished.slice(0, Math.max(0, finished.length - DETAILED_FINISHED_PULLS))) {
+		pull.body = "";
+		for (const review of pull.reviews) review.comment = "";
+	}
+}
+
 function update<T>(company: Company, change: (ledger: Ledger) => T): Promise<T> {
-	return updateStore(ledgerPath(company), emptyLedger, change);
+	return updateStore(ledgerPath(company), emptyLedger, ledger => {
+		const result = change(ledger);
+		compactLedger(ledger);
+		return result;
+	});
 }
 
 function actorName(actor: PullActor): string {

@@ -5,7 +5,14 @@
  */
 import type { Settings } from "../config/settings";
 import { SUBAGENT_THINKING_LEVELS } from "../task/settings";
-import { ownerMerge, ownerRequestChanges, readOfficeState, staffedOffices } from "./company";
+import {
+	cleanDesks,
+	ownerMerge,
+	ownerRequestChanges,
+	readOfficeState,
+	retireMemberDesk,
+	staffedOffices,
+} from "./company";
 import {
 	addMember,
 	OFFICE_CAPABILITIES,
@@ -37,6 +44,7 @@ export const OFFICE_COMMAND_USAGE = [
 	"/office set <name> capability common|professional|expert",
 	"/office set <name> role leader            make a member the office's leader",
 	"/office merge <pr>                        merge an approved office pull request into your branch",
+	"/office clean                             remove desks nobody is working at, to free disk space",
 	"/office reject <pr> <reason>              send an office pull request back",
 	"/office memory <office>                   what an office remembers about this project",
 	"/office remember <office> <lesson>        give an office a lesson to keep",
@@ -132,7 +140,11 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 		}
 		case "remove": {
 			if (!rest[0]) throw new OfficeUsageError("Expected a member name.");
-			cfgOfficeOffices.set(settings, removeMember(roster(settings), rest[0]));
+			const offices = roster(settings);
+			const leaving = offices.findIndex(office => office.members.some(member => member.id === rest[0]));
+			cfgOfficeOffices.set(settings, removeMember(offices, rest[0]));
+			// Their desk and, when nothing unmerged is on it, their branch go too.
+			if (leaving >= 0) await retireMemberDesk(cwd, leaving + 1, rest[0]).catch(() => {});
 			return `${rest[0]} left the company.\n${await renderState(settings, cwd)}`;
 		}
 		case "set": {
@@ -161,8 +173,12 @@ async function run(args: string[], settings: Settings, cwd: string): Promise<str
 			cfgOfficeOffices.set(settings, updateMember(roster(settings), name, patch));
 			return renderState(settings, cwd);
 		}
+		case "clean": {
+			const { removed, kept } = await cleanDesks(settings, cwd);
+			return `Removed ${removed} idle desk${removed === 1 ? "" : "s"}${kept > 0 ? `; ${kept} kept (someone is working there, or they hold uncommitted changes)` : ""}. Branches and pull requests are untouched; a desk comes back when its member next works.`;
+		}
 		case "merge": {
-			const pull = await ownerMerge(cwd, pullNumber(rest[0]));
+			const pull = await ownerMerge(settings, cwd, pullNumber(rest[0]));
 			return `Merged #${pull.number} "${pull.title}" into ${pull.target} as ${pull.mergeCommit?.slice(0, 12)}.`;
 		}
 		case "reject": {
