@@ -103,3 +103,49 @@ export function stepUsageTab(tab: UsageTab, delta: number): UsageTab {
 	const index = USAGE_TABS.indexOf(tab);
 	return USAGE_TABS[(index + delta + USAGE_TABS.length) % USAGE_TABS.length]!;
 }
+
+// =============================================================================
+// Tokens / cost tab data
+// =============================================================================
+
+/** Token and cost figures of one model (or one total). */
+export interface UsageTokenFigures {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	/** Cost in dollars as recorded by the kernel. */
+	cost: number;
+	/** Request count; undefined when the source does not record it. */
+	requests?: number;
+}
+
+/** Figures of one `provider/model`. */
+export interface UsageTokenModel extends UsageTokenFigures {
+	name: string;
+}
+
+/** The running session: totals plus the per-model split of its assistant messages. */
+export interface UsageSessionTokens {
+	totals: UsageTokenFigures;
+	/** Reasoning tokens, when the session recorded any. */
+	reasoning?: number;
+	/** Most tokens first. */
+	models: UsageTokenModel[];
+}
+
+export type UsageStatsPeriodId = "day" | "week" | "month" | "year";
+
+/** Local stats-DB figures (every session on this machine) since a period start. */
+export interface UsageStatsPeriod {
+	id: UsageStatsPeriodId;
+	label: string;
+	/** Most tokens first. */
+	models: UsageTokenModel[];
+}
+
+export interface UsageTokensData {
+	session: UsageSessionTokens;
+	/** One per period, in tab order. */
+	periods: UsageStatsPeriod[];
+}
