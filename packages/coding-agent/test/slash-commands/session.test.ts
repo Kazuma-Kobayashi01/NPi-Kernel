@@ -133,4 +133,41 @@ describe("/session slash command", () => {
 		expect(handleSessionDeleteCommand).toHaveBeenCalledTimes(1);
 		expect(harness.setText).toHaveBeenCalledWith("");
 	});
+
+	it("names a stored account by number, and says why when the name is taken", async () => {
+		const setLabel = vi.fn((_provider: string, credentialId: number, label: string | undefined) => {
+			if (label === "Taken") throw new Error('Another openai-codex account is already named "Taken".');
+			return { position: 0, credentialId, label, active: false };
+		});
+		const statuses: string[] = [];
+		const session = {
+			isStreaming: false,
+			listCurrentProviderOAuthAccounts: async () => ({
+				provider: "openai-codex",
+				accounts: [
+					{ position: 0, credentialId: 11, email: "kazuma@example.com", active: true },
+					{ position: 1, credentialId: 12, email: "hanyu@example.com", active: false },
+				],
+			}),
+			modelRegistry: { authStorage: { oauth: { setLabel } } },
+		};
+		const harness = createRuntimeHarness();
+		const runtime = {
+			ctx: {
+				...harness.runtime.ctx,
+				session,
+				showStatus: (text: string) => statuses.push(text),
+				statusLine: { invalidate: () => {} },
+				ui: { requestRender: () => {} },
+			} as unknown as InteractiveModeContext,
+		};
+		await executeBuiltinSlashCommand("/session rename 2 GPT-Plus-Hanyu", runtime);
+		expect(setLabel).toHaveBeenCalledWith("openai-codex", 12, "GPT-Plus-Hanyu");
+		expect(statuses.at(-1)).toContain("now named GPT-Plus-Hanyu");
+		await executeBuiltinSlashCommand("/session rename kazuma@example.com Taken", runtime);
+		expect(statuses.at(-1)).toContain("already named");
+		await executeBuiltinSlashCommand("/session rename 1 -", runtime);
+		expect(setLabel).toHaveBeenLastCalledWith("openai-codex", 11, undefined);
+		expect(statuses.at(-1)).toContain("no longer has a name");
+	});
 });

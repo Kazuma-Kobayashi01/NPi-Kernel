@@ -1406,7 +1406,16 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 				if (!matchesReplacementCredential(providerName, row.credential, row.identityKey, item)) continue;
 				if (targetId === null) {
 					targetId = row.id;
-					this.#updateStmt.run(serialized.credentialType, serialized.data, serialized.identityKey, row.id);
+					// A re-login replaces the tokens, never the name the user gave the account.
+					const keptLabel =
+						item.type === "oauth" && !item.label && row.credential?.type === "oauth"
+							? row.credential.label
+							: undefined;
+					const replacement =
+						keptLabel && item.type === "oauth"
+							? (serializeCredential(providerName, { ...item, label: keptLabel }) ?? serialized)
+							: serialized;
+					this.#updateStmt.run(replacement.credentialType, replacement.data, replacement.identityKey, row.id);
 					continue;
 				}
 				this.#deleteStmt.run("replaced by newer credential", row.id);

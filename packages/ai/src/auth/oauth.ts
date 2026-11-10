@@ -3,6 +3,9 @@ import * as AIError from "../error";
 import { getProviderDefinition, PASTE_CODE_LOGIN_PROVIDERS } from "../registry";
 import { getOAuthProvider } from "../registry/oauth";
 import type { OAuthProviderId } from "../registry/oauth/types";
+
+/** Longest account name accepted, in characters. */
+export const MAX_ACCOUNT_LABEL_LENGTH = 64;
 import { providerTypeKey } from "./blocks";
 import type { SessionAffinity } from "./affinity";
 import type { KeyOverrides } from "./cascade";
@@ -106,9 +109,17 @@ export class OAuthAccounts implements OAuthApi {
 		// Use pool.upsertOAuth to upsert the new credential.
 		// Any legacy api_key rows from older versions will be cleaned up so they do not
 		// shadow the new OAuth row, while preserving other active OAuth credentials.
-		await this.#deps.pool.upsertOAuth(def.storeCredentialsAs ?? provider, newCredential);
+		const storedAs = def.storeCredentialsAs ?? provider;
+		await this.#deps.pool.upsertOAuth(storedAs, newCredential);
+		// The row the login landed in (it now holds the fresh token): a re-login of a known account
+		// updates that account's row and keeps its name.
+		const stored = this.#getStoredOAuthSelections(storedAs).find(
+			selection => selection.credential.access === newCredential.access,
+		);
 		return {
 			type: "oauth",
+			...(stored ? { credentialId: stored.credentialId } : {}),
+			...(stored?.credential.label ? { label: stored.credential.label } : {}),
 			email: newCredential.email,
 			accountId: newCredential.accountId,
 			orgId: newCredential.orgId,
@@ -265,6 +276,7 @@ export class OAuthAccounts implements OAuthApi {
 			return {
 				position,
 				credentialId: selection.credentialId,
+				...(selection.credential.label ? { label: selection.credential.label } : {}),
 				accountId: selection.credential.accountId,
 				email: selection.credential.email,
 				projectId: selection.credential.projectId,
@@ -349,8 +361,41 @@ export class OAuthAccounts implements OAuthApi {
 		if (typeof preferred.orgName === "string" && preferred.orgName.length > 0) {
 			identity.orgName = preferred.orgName;
 		}
+		if (typeof preferred.label === "string" && preferred.label.length > 0) {
+			identity.label = preferred.label;
+		}
 		if (!identity.accountId && !identity.email && !identity.projectId && !identity.orgId) return undefined;
 		return identity;
+	}
+
+	setLabel(provider: string, credentialId: number, label: string | undefined): OAuthAccountSummary {
+		const name = label?.trim() || undefined;
+		if (name && name.length > MAX_ACCOUNT_LABEL_LENGTH) {
+			throw new AIError.ConfigurationError(`An account name holds at most ${MAX_ACCOUNT_LABEL_LENGTH} characters.`);
+		}
+		const selections = this.#getStoredOAuthSelections(provider);
+		const target = selections.find(selection => selection.credentialId === credentialId);
+		if (!target) throw new AIError.ConfigurationError(`No stored ${provider} account #${credentialId}.`);
+		const taken = name
+			? selections.find(
+					selection =>
+						selection.credentialId !== credentialId &&
+						selection.credential.label?.toLowerCase() === name.toLowerCase(),
+				)
+			: undefined;
+		if (taken)
+			throw new AIError.ConfigurationError(
+				`Another ${provider} account is already named "${taken.credential.label}".`,
+			);
+		const { label: _previous, ...rest } = target.credential;
+		const credential: OAuthCredential = name ? { ...rest, label: name } : rest;
+		if (!this.#deps.pool.writeById(provider, credentialId, credential)) {
+			throw new AIError.ConfigurationError(`The ${provider} account #${credentialId} is no longer stored.`);
+		}
+		const summary = this.accounts(provider).find(account => account.credentialId === credentialId);
+		if (!summary)
+			throw new AIError.ConfigurationError(`The ${provider} account #${credentialId} is no longer stored.`);
+		return summary;
 	}
 
 	/**

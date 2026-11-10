@@ -1,6 +1,6 @@
 import { type AgentMessage, type AgentToolResult, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
-import type { Model, UsageReport } from "@oh-my-pi/pi-ai";
+import type { Model, OAuthLoginIdentity, UsageReport } from "@oh-my-pi/pi-ai";
 import type { OAuthProvider } from "@oh-my-pi/pi-ai/oauth/types";
 import * as vcs from "@oh-my-pi/pi-natives/vcs";
 import type { Component, OverlayHandle } from "@oh-my-pi/pi-tui";
@@ -2254,11 +2254,14 @@ export class SelectorController {
 			} catch (error) {
 				logger.warn("Scoped model refresh after login failed", { error: String(error) });
 			}
+			// Offer to name a new account (re-logins keep their name), so two accounts of one provider
+			// read as e.g. GPT-Plus-Kazuma and GPT-Plus-Hanyu.
+			const named = await this.#nameLoggedInAccount(dialog, getOAuthCredentialProvider(providerId), identity);
 			const block = new TranscriptBlock();
 			// Name the account (and Anthropic organization) that was stored so a
 			// login that lands on an unintended account/subscription is visible
 			// immediately instead of silently replacing an existing registration.
-			const who = formatLoginIdentity(identity);
+			const who = named ?? formatLoginIdentity(identity);
 			block.addChild(
 				new Text(
 					theme.fg(
@@ -2282,6 +2285,36 @@ export class SelectorController {
 			return false;
 		} finally {
 			restoreEditor();
+		}
+	}
+
+	/** Ask for an optional name for the account a login just stored; returns the name it got. */
+	async #nameLoggedInAccount(
+		dialog: { showPrompt(prompt: { message: string; placeholder?: string; allowEmpty?: boolean }): Promise<string> },
+		provider: string,
+		identity: OAuthLoginIdentity | undefined,
+	): Promise<string | undefined> {
+		if (identity?.type !== "oauth" || identity.credentialId === undefined) return undefined;
+		if (identity.label) return identity.label;
+		let answer: string;
+		try {
+			answer = (
+				await dialog.showPrompt({
+					message: "Name this account (optional, e.g. GPT-Plus-Kazuma); Enter skips:",
+					placeholder: "",
+					allowEmpty: true,
+				})
+			).trim();
+		} catch {
+			return undefined;
+		}
+		if (!answer) return undefined;
+		try {
+			return this.ctx.session.modelRegistry.authStorage.oauth.setLabel(provider, identity.credentialId, answer)
+				.label;
+		} catch (error) {
+			this.ctx.showWarning(`Account not named: ${error instanceof Error ? error.message : String(error)}`);
+			return undefined;
 		}
 	}
 

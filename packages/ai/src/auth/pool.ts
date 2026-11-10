@@ -62,7 +62,8 @@ export function authCredentialEquals(left: AuthCredential, right: AuthCredential
 		left.accountId === right.accountId &&
 		left.email === right.email &&
 		left.projectId === right.projectId &&
-		left.enterpriseUrl === right.enterpriseUrl
+		left.enterpriseUrl === right.enterpriseUrl &&
+		left.label === right.label
 	);
 }
 
@@ -499,6 +500,22 @@ export class CredentialPool implements CredentialsApi {
 		updated[index] = { id, credential };
 		this.replace(provider, updated);
 		return index;
+	}
+
+	/**
+	 * Overwrite the row with `id` with `credential` unconditionally, for user edits that do not touch
+	 * the tokens (an account's name). A refresh racing it sees the changed row and re-reads it.
+	 * Returns false when the row is not an active credential of `provider`.
+	 */
+	writeById(provider: string, id: number, credential: AuthCredential): boolean {
+		const entries = this.entries(provider);
+		const index = entries.findIndex(entry => entry.id === id);
+		if (index === -1) return false;
+		this.#store.updateAuthCredential(id, credential);
+		const updated = [...entries];
+		updated[index] = { id, credential };
+		this.replace(provider, updated);
+		return true;
 	}
 
 	/**

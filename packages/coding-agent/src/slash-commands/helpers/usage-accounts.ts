@@ -4,6 +4,8 @@ import type { AuthStorage, UsageReport } from "@oh-my-pi/pi-ai";
 export interface UsageAccountIdentity {
 	provider: string;
 	type: "api_key" | "oauth";
+	/** The name the user gave the account. */
+	label?: string;
 	email?: string;
 	accountId?: string;
 	projectId?: string;
@@ -27,6 +29,7 @@ export function collectStoredAccounts(authStorage: AuthStorage): UsageAccountIde
 				accounts.push({
 					provider,
 					type: "oauth",
+					label: credential.label,
 					email: credential.email,
 					accountId: credential.accountId,
 					projectId: credential.projectId,
@@ -163,6 +166,7 @@ export function collectUnreportedAccounts(
 /** Compose the account label from parts, masking each part individually so `--redact` cannot be bypassed by the composite string. */
 export function accountIdentityLabel(account: UsageAccountIdentity, redaction?: Map<string, string>): string {
 	if (account.type === "api_key") return "API key";
+	if (account.label) return account.label;
 	const base = account.email ?? account.accountId ?? account.projectId ?? account.enterpriseUrl ?? "OAuth account";
 	const masked = redaction?.get(base) ?? base;
 	// orgId fallback: the uuid is the actual scoped identity; a token response

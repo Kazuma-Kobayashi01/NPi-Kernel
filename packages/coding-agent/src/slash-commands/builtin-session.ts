@@ -167,7 +167,10 @@ async function handleSessionPinCommand(
 		for (const account of accounts) {
 			lines.push(`${account.position + 1}. ${account.label}${account.active ? " (active)" : ""}`);
 		}
-		lines.push("", "Pin one with `/session pin <number|email|account id>`.");
+		lines.push(
+			"",
+			"Pin one with `/session pin <number|name|email|account id>`; name one with `/session rename <account> <name>`.",
+		);
 		await output(lines.join("\n"));
 		return;
 	}
@@ -191,6 +194,61 @@ async function handleSessionPinCommand(
 		return;
 	}
 	await output(`Pinned ${account.label} to this session for ${providerName}.`);
+}
+
+/**
+ * `/session rename <account> <name>`: name a stored OAuth account of the current provider, so two
+ * accounts read as e.g. GPT-Plus-Kazuma and GPT-Plus-Hanyu and can be pinned by that name. `-`
+ * clears the name.
+ */
+async function handleSessionRenameCommand(
+	arg: string,
+	session: AgentSession,
+	output: SlashCommandRuntime["output"],
+): Promise<void> {
+	const [selector = "", ...words] = arg.trim().split(/\s+/);
+	const name = words.join(" ").trim();
+	if (!selector || !name) {
+		await output("Usage: /session rename <number|name|email|account id> <new name>  (`-` clears the name)");
+		return;
+	}
+	let accountList: SessionOAuthAccountList | undefined;
+	try {
+		accountList = await session.listCurrentProviderOAuthAccounts();
+	} catch (error) {
+		await output(`Could not load provider accounts: ${errorMessage(error)}`);
+		return;
+	}
+	if (!accountList) {
+		await output("Select a model before naming a provider account.");
+		return;
+	}
+	const providerName =
+		getOAuthProviders().find(candidate => candidate.id === accountList.provider)?.name ?? accountList.provider;
+	const matches = matchSessionPinAccounts(toSessionPinAccounts(accountList.accounts), selector);
+	if (matches.length !== 1) {
+		await output(
+			matches.length === 0
+				? `No ${providerName} account matches "${selector}".`
+				: `"${selector}" matches several ${providerName} accounts; use the account number.`,
+		);
+		return;
+	}
+	const account = matches[0]!;
+	try {
+		const renamed = session.modelRegistry.authStorage.oauth.setLabel(
+			accountList.provider,
+			account.credentialId,
+			name === "-" ? undefined : name,
+		);
+		await output(
+			renamed.label
+				? `${providerName} account ${account.position + 1} is now named ${renamed.label}.`
+				: `${providerName} account ${account.position + 1} no longer has a name.`,
+		);
+	} catch (error) {
+		await output(errorMessage(error));
+	}
 }
 
 /**
@@ -258,7 +316,7 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		icon: "session",
 		description: "Session management commands",
 		acpDescription: "Show or configure the current session",
-		acpInputHint: "[info|delete|pin [account]]",
+		acpInputHint: "[info|delete|pin [account]|rename <account> <name>]",
 		subcommands: [
 			{ name: "info", description: "Show session info and stats" },
 			{ name: "delete", description: "Delete current session and return to selector" },
@@ -266,6 +324,11 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 				name: "pin",
 				description: "Pin a stored OAuth account to the current provider for this session",
 				usage: "[account]",
+			},
+			{
+				name: "rename",
+				description: "Name a stored OAuth account of the current provider (`-` clears it)",
+				usage: "<account> <name>",
 			},
 		],
 		allowArgs: true,
@@ -304,7 +367,11 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 				await handleSessionPinCommand(rest, runtime.session, runtime.output);
 				return commandConsumed();
 			}
-			return usage("Usage: /session [info|delete|pin [account]]", runtime);
+			if (verb === "rename") {
+				await handleSessionRenameCommand(rest, runtime.session, runtime.output);
+				return commandConsumed();
+			}
+			return usage("Usage: /session [info|delete|pin [account]|rename <account> <name>]", runtime);
 		},
 		handleTui: async (command, runtime) => {
 			const { verb, rest } = parseSubcommand(command.args);
@@ -323,10 +390,16 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 				clearSubmittedText(runtime);
 				return;
 			}
+			if (verb === "rename") {
+				await handleSessionRenameCommand(rest, runtime.ctx.session, text => runtime.ctx.showStatus(text));
+				refreshStatusLine(runtime.ctx);
+				clearSubmittedText(runtime);
+				return;
+			}
 			if (!verb || (verb === "info" && !rest)) {
 				await runtime.ctx.handleSessionCommand();
 			} else {
-				runtime.ctx.showStatus("Usage: /session [info|delete|pin [account]]");
+				runtime.ctx.showStatus("Usage: /session [info|delete|pin [account]|rename <account> <name>]");
 			}
 			clearSubmittedText(runtime);
 		},

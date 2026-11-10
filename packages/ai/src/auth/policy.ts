@@ -13,6 +13,7 @@ import { DEFAULT_USAGE_RESERVE_PCT } from "./types";
 /** Whether every identity field set on `selector` matches `identity`. */
 export function matchesAuthAccountSelector(selector: AuthAccountSelector, identity: OAuthAccountIdentity): boolean {
 	return (
+		(selector.label === undefined || selector.label.toLowerCase() === identity.label?.toLowerCase()) &&
 		(selector.email === undefined || selector.email === identity.email) &&
 		(selector.accountId === undefined || selector.accountId === identity.accountId) &&
 		(selector.projectId === undefined || selector.projectId === identity.projectId) &&
@@ -75,13 +76,18 @@ export class AccountPolicies {
 			if (!policy.account || typeof policy.account !== "object") {
 				throw new AIError.ConfigurationError(`${path}.account must be an object`);
 			}
-			const baseIdentities = [policy.account.email, policy.account.accountId, policy.account.projectId];
+			const baseIdentities = [
+				policy.account.label,
+				policy.account.email,
+				policy.account.accountId,
+				policy.account.projectId,
+			];
 			if (!baseIdentities.some(value => typeof value === "string" && value.length > 0)) {
 				throw new AIError.ConfigurationError(
-					`${path}.account must include at least one of email, accountId, or projectId`,
+					`${path}.account must include at least one of label, email, accountId, or projectId`,
 				);
 			}
-			for (const field of ["email", "accountId", "projectId", "orgId"] as const) {
+			for (const field of ["label", "email", "accountId", "projectId", "orgId"] as const) {
 				const value = policy.account[field];
 				if (value !== undefined && (typeof value !== "string" || value.length === 0)) {
 					throw new AIError.ConfigurationError(`${path}.account.${field} must be a non-empty string`);

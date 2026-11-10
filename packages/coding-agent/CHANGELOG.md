@@ -8,6 +8,7 @@
 
 ### Added
 
+- Name stored OAuth accounts, e.g. `GPT-Plus-Kazuma` and `GPT-Plus-Hanyu` for two accounts of one provider: `/login` offers to name a new account, `/session rename <account> <name>` names or renames one (`-` clears it), `/session pin` and `/usage` show the name and `/session pin <name>` pins by it, and `auth.accountPolicies` can select an account by `label`. Names are kept across token refreshes and re-logins.
 - `/office clean` (and *Free disk space* on the `/office` panel) removes the desks nobody is working at; `office.shareDependencies` (on by default) links each desk's `node_modules`, `.venv` and similar folders to the ones in your checkout.
 - The `/office` panel now sets a member's thinking effort, shows what each office is doing, the pull-request funnel, spend today and in total per office and member, and recent assignments, and updates live while open.
 - RPC `office_usage` frames carry Virtual Office spend as per-member deltas for hosts to add up; booking usage no longer makes the session re-read and push the whole `office_state` several times a second while members work.

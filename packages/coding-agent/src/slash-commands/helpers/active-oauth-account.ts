@@ -74,6 +74,8 @@ function normalizeIdentityValue(value: unknown): string | undefined {
  */
 export function formatActiveAccountLabel(identity: OAuthAccountIdentity | undefined): string | undefined {
 	if (!identity) return undefined;
+	// A name the user gave the account says which one it is better than any identifier.
+	if (identity.label) return identity.label;
 	const base = identity.email || identity.accountId || identity.projectId;
 	if (!base) return undefined;
 	const org = identity.orgName || identity.orgId;

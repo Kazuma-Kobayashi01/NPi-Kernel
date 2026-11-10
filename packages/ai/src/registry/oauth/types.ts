@@ -37,6 +37,11 @@ export type OAuthCredentials = {
 	 * surface re-login deadlines before the grant dies.
 	 */
 	authorizedAt?: number;
+	/**
+	 * Name the user gave this account (e.g. `GPT-Plus-Kazuma`), unique per provider ignoring case.
+	 * Set by the user, never by a provider; kept across token refreshes and re-logins.
+	 */
+	label?: string;
 };
 
 export type OAuthProvider = OAuthProviderUnion;

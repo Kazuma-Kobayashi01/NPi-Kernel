@@ -835,7 +835,7 @@ describe("AuthStorage codex oauth ranking", () => {
 				new AuthStorage(activeStore, {
 					accountPolicies: [{ provider: "openai-codex", account: { orgId: "org-only" }, priority: 1 }],
 				}),
-		).toThrow("must include at least one of email, accountId, or projectId");
+		).toThrow("must include at least one of label, email, accountId, or projectId");
 		expect(
 			() =>
 				new AuthStorage(activeStore, {

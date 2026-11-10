@@ -47,6 +47,8 @@ export type AuthStorageData = Record<string, AuthCredentialEntry>;
 
 /** Identity fields matched by an account routing policy. */
 export interface AuthAccountSelector {
+	/** The name the user gave the account (`OAuthCredentials.label`), matched ignoring case. */
+	readonly label?: string;
 	readonly email?: string;
 	readonly accountId?: string;
 	readonly projectId?: string;
@@ -561,6 +563,10 @@ export interface OAuthAccess {
  */
 export interface OAuthLoginIdentity {
 	type: "oauth" | "api_key";
+	/** Storage row of the OAuth credential the login stored, so a caller can name it. */
+	credentialId?: number;
+	/** The account's name, when it already had one (a re-login keeps it). */
+	label?: string;
 	email?: string;
 	accountId?: string;
 	orgId?: string;
@@ -588,6 +594,8 @@ export interface OAuthAccessFailure {
  * key usage on it (Gemini CLI / Antigravity).
  */
 export interface OAuthAccountIdentity {
+	/** The name the user gave the account. */
+	label?: string;
 	accountId?: string;
 	email?: string;
 	projectId?: string;
@@ -607,6 +615,8 @@ export type OAuthAccessResolution = ({ ok: true } & OAuthAccess) | ({ ok: false 
 export interface OAuthAccountSummary {
 	position: number;
 	credentialId: number;
+	/** The name the user gave the account. */
+	label?: string;
 	accountId?: string;
 	email?: string;
 	projectId?: string;
@@ -1143,6 +1153,13 @@ export interface OAuthApi {
 	 * metadata paths; it does not refresh tokens, rank usage, or advance selection.
 	 */
 	identity(provider: string, sessionId?: string): OAuthAccountIdentity | undefined;
+	/**
+	 * Name stored OAuth account `credentialId` of `provider` (`undefined` or blank clears the name).
+	 * Names are unique per provider, ignoring case; the account's tokens are not touched.
+	 *
+	 * @throws AIError.ConfigurationError when the name is taken, too long, or the account is gone.
+	 */
+	setLabel(provider: string, credentialId: number, label: string | undefined): OAuthAccountSummary;
 	/**
 	 * Return the configured account policy matching an OAuth identity.
 	 *
