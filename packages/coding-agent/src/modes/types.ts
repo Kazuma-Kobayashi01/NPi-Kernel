@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
 import type { AssistantMessage, ImageContent, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
+import type { OfficePanelOptions } from "@oh-my-pi/pi-tui/overlays/office-panel";
 import type { RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import type { Component, Container, EditorTheme, KeyId, Loader, TUI } from "@oh-my-pi/pi-tui";
 import type { TspText } from "@oh-my-pi/pi-wire";
@@ -588,6 +589,8 @@ export interface InteractiveModeContext {
 	/** Open the fullscreen `/usage` dashboard overlay for the given reports. */
 	showUsageDashboard(reports: UsageReport[]): void;
 	showRankDashboard(options: Omit<RankDashboardOptions, "requestRender" | "onClose">): void;
+	/** Open the fullscreen `/office` panel. */
+	showOfficePanel(options: Omit<OfficePanelOptions, "requestRender" | "onClose">): void;
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;

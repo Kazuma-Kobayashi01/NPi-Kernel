@@ -23,7 +23,8 @@ import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "./settings";
 import { OfficeWorkspaceError, openCompany } from "./workspace";
 
 export const OFFICE_COMMAND_USAGE = [
-	"/office                                   show the company and its pull requests",
+	"/office                                   open the Virtual Office panel (in the terminal UI)",
+	"/office status                            show the company and its pull requests",
 	"/office on | off                          turn Virtual Office on or off",
 	"/office scale team|studio|enterprise      1, 3 or 6 offices",
 	"/office size <office> <3-6>               set an office's member count",

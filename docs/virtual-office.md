@@ -23,11 +23,13 @@ An office has three to six members. A new office starts with a leader and two wo
 
 ## Commands
 
-`/office` in a session and `npi office` in a shell take the same subcommands.
+In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a full screen like `/settings`: a tab for the company, one per office and one for pull requests. Move with ↑/↓, switch tabs with ←/→, press Enter to open or change the selected row, and Esc to go back. From it you can turn Virtual Office on or off, set the company size and each office's member count, add or remove workers, change a member's model, capability or make them leader, merge or send back the office pull requests waiting for you, and add to or clear an office's memory. The panel runs the same commands as below, so the two never disagree.
+
+`/office <subcommand>` in a session and `npi office` in a shell take the same subcommands.
 
 | Command | Effect |
 | --- | --- |
-| `/office` | Show the roster and the pull requests that are not finished. |
+| `/office status` | Show the roster and the pull requests that are not finished. Outside the terminal UI, `/office` alone does the same. |
 | `/office on` · `/office off` | Turn Virtual Office on or off. |
 | `/office scale team\|studio\|enterprise` | Set the number of offices. |
 | `/office size <office> <3-6>` | Set an office's member count. Added members are workers; removed ones are the newest workers. |

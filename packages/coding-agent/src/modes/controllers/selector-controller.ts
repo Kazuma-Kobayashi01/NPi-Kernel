@@ -128,6 +128,7 @@ import { TranscriptBlock } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { TreeSelectorComponent } from "@oh-my-pi/pi-tui/overlays/tree-selector";
 import { ThinkingSelectorComponent } from "@oh-my-pi/pi-tui/overlays/thinking-selector";
 import { UsageDashboardComponent } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
+import { OfficePanelComponent, type OfficePanelOptions } from "@oh-my-pi/pi-tui/overlays/office-panel";
 import { RankDashboardComponent, type RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import { renderUsageReports } from "./command-controller";
 import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
@@ -180,7 +181,8 @@ type MenuKind =
 	| "agents-dashboard"
 	| "agent-hub"
 	| "usage-dashboard"
-	| "rank-dashboard";
+	| "rank-dashboard"
+	| "office-panel";
 
 /** An open menu: registered when the request runs, filled once its component mounts. */
 interface OpenMenu {
@@ -508,6 +510,23 @@ export class SelectorController {
 			},
 		});
 		this.#mountMenu(menu, dashboard, () => this.#showFullscreenMenu(dashboard));
+	}
+
+	/** Fullscreen `/office` panel (the /settings idiom): the company, its offices and pull requests. */
+	showOfficePanel(options: Omit<OfficePanelOptions, "requestRender" | "onClose">): void {
+		if (this.#focusOpenMenu("office-panel")) return;
+		const menu = this.#claimMenu("office-panel");
+		const panel = new OfficePanelComponent({
+			...options,
+			requestRender: () => this.ctx.ui.requestRender(),
+			onClose: () => {
+				menu.handle?.hide();
+				this.#releaseMenu("office-panel", menu);
+				this.focusActiveEditorArea();
+				this.ctx.ui.requestRender();
+			},
+		});
+		this.#mountMenu(menu, panel, () => this.#showFullscreenMenu(panel));
 	}
 
 	showAdvisorConfigure(): void {

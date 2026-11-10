@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { type Agent, AgentBusyError, type AgentMessage, agentPauseGate, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
 import type { AssistantMessage, ImageContent, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
+import type { OfficePanelOptions } from "@oh-my-pi/pi-tui/overlays/office-panel";
 import type { RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
 import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { execReplace } from "@oh-my-pi/pi-natives";
@@ -9335,6 +9336,10 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	showRankDashboard(options: Omit<RankDashboardOptions, "requestRender" | "onClose">): void {
 		this.#selectorController.showRankDashboard(options);
+	}
+
+	showOfficePanel(options: Omit<OfficePanelOptions, "requestRender" | "onClose">): void {
+		this.#selectorController.showOfficePanel(options);
 	}
 
 	showAdvisorConfigure(): void {
