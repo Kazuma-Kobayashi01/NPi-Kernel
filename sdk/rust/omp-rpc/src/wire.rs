@@ -3421,6 +3421,8 @@ pub struct OfficeMember {
 	pub role: OfficeMemberRole,
 	/// Model selector; empty uses the default subagent model.
 	pub model: String,
+	/// Thinking effort; empty uses the configured subagent effort.
+	pub thinking: String,
 	pub capability: OfficeMemberCapability,
 }
 

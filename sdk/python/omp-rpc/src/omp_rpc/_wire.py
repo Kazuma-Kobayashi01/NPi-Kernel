@@ -913,6 +913,8 @@ class OfficeMember:
     role: Literal["leader", "worker"]
     model: str
     """Model selector; empty uses the default subagent model."""
+    thinking: str
+    """Thinking effort; empty uses the configured subagent effort."""
     capability: Literal["common", "professional", "expert"]
 
 
@@ -2598,6 +2600,7 @@ def parse_office_member(value: object, path: str = "OfficeMember") -> OfficeMemb
         id=required(payload, "id", decode_str, path),
         role=required(payload, "role", cast('Decoder[Literal["leader", "worker"]]', literal(frozenset({"leader", "worker"}))), path),
         model=required(payload, "model", decode_str, path),
+        thinking=required(payload, "thinking", decode_str, path),
         capability=required(payload, "capability", cast('Decoder[Literal["common", "professional", "expert"]]', literal(frozenset({"common", "professional", "expert"}))), path),
     )
 

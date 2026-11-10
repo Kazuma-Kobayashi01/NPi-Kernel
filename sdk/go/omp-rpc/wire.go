@@ -3359,7 +3359,9 @@ type OfficeMember struct {
 	ID   string           `json:"id"`
 	Role OfficeMemberRole `json:"role"`
 	// Model selector; empty uses the default subagent model.
-	Model      string                 `json:"model"`
+	Model string `json:"model"`
+	// Thinking effort; empty uses the configured subagent effort.
+	Thinking   string                 `json:"thinking"`
 	Capability OfficeMemberCapability `json:"capability"`
 }
 
@@ -3373,6 +3375,7 @@ func (v *OfficeMember) decodeFrom(raw map[string]json.RawMessage) error {
 	d.required("id", &out.ID)
 	d.required("role", &out.Role)
 	d.required("model", &out.Model)
+	d.required("thinking", &out.Thinking)
 	d.required("capability", &out.Capability)
 	if d.err != nil {
 		return d.err
