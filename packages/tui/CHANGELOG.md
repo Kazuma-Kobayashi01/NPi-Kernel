@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `OfficePanelComponent` takes `thinkingLevels` and `watch`, and draws office activity, spend and recent assignments when the state carries them.
+
 ### Fixed
 
 - Welcome/startup logo gradients, wordmark and shine now follow the active theme in truecolor and 256-color terminals instead of a fixed ivory/gold/blue palette. Resting welcome frames also refresh after a theme switch.

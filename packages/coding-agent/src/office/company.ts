@@ -210,6 +210,8 @@ export async function readOfficeState(settings: ScopeLike, cwd: string): Promise
 	try {
 		const company = await openCompany(cwd);
 		state.company = { checkout: company.checkout, baseBranch: company.baseBranch };
+		// First, so bookings the host already got as `office_usage` deltas are the ones it includes.
+		state.usage = await readUsage(company);
 		state.pulls = await listPulls(company);
 		state.memory = await readOfficeMemories(
 			company,
@@ -217,7 +219,6 @@ export async function readOfficeState(settings: ScopeLike, cwd: string): Promise
 		);
 		const claims = await readClaims(company);
 		state.activity = state.offices.map(office => describeActivity(office.number, claims, state.pulls));
-		state.usage = await readUsage(company);
 		state.runs = (await readRuns(company)).slice(-STATE_RUNS);
 	} catch (error) {
 		state.reason = error instanceof Error ? error.message : String(error);

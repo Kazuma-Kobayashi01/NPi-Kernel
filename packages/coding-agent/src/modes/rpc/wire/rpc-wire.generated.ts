@@ -1384,6 +1384,19 @@ export interface OfficeStateEvent {
 	state: OfficeState;
 }
 
+/** Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second. */
+export interface OfficeUsageEvent {
+	type: "office_usage";
+	/** The company's checkout; matches `OfficeState.company.checkout`. */
+	checkout: string;
+	/** Member name; the general manager is `general-manager`. */
+	member: string;
+	/** The local day it was booked on, `YYYY-MM-DD`. */
+	day: string;
+	/** What was spent since the previous frame for this member and day. */
+	amount: OfficeUsageAmount;
+}
+
 export type LivePhase = "connecting" | "listening" | "working" | "speaking" | "muted" | "error";
 
 export type LiveRole = "user" | "assistant";
@@ -1756,7 +1769,7 @@ export interface HostUriSchemeDefinition {
 }
 
 /** Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`. */
-export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
+export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
 
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;

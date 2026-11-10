@@ -5808,6 +5808,38 @@
 			],
 			"description": "The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off."
 		},
+		"OfficeUsageEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "office_usage"
+				},
+				"checkout": {
+					"type": "string",
+					"description": "The company's checkout; matches `OfficeState.company.checkout`."
+				},
+				"member": {
+					"type": "string",
+					"description": "Member name; the general manager is `general-manager`."
+				},
+				"day": {
+					"type": "string",
+					"description": "The local day it was booked on, `YYYY-MM-DD`."
+				},
+				"amount": {
+					"$ref": "#/$defs/OfficeUsageAmount",
+					"description": "What was spent since the previous frame for this member and day."
+				}
+			},
+			"required": [
+				"type",
+				"checkout",
+				"member",
+				"day",
+				"amount"
+			],
+			"description": "Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second."
+		},
 		"LivePhase": {
 			"enum": [
 				"connecting",
@@ -7038,6 +7070,9 @@
 				},
 				{
 					"$ref": "#/$defs/OfficeStateEvent"
+				},
+				{
+					"$ref": "#/$defs/OfficeUsageEvent"
 				},
 				{
 					"$ref": "#/$defs/LivePhaseEvent"

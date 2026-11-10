@@ -24,7 +24,7 @@ An office has three to six members. A new office starts with a leader and two wo
 
 ## Commands
 
-In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a full screen like `/settings`: a tab for the company, one per office and one for pull requests. Move with ↑/↓, switch tabs with ←/→, press Enter to open or change the selected row, and Esc to go back. From it you can turn Virtual Office on or off, set the company size and each office's member count, add or remove workers, change a member's model, capability or make them leader, merge or send back the office pull requests waiting for you, and add to or clear an office's memory. The panel runs the same commands as below, so the two never disagree.
+In the terminal UI, `/office` on its own opens the **Virtual Office panel**, a full screen like `/settings`: a tab for the company, one per office and one for pull requests. Move with ↑/↓, switch tabs with ←/→, press Enter to open or change the selected row, and Esc to go back. From it you can turn Virtual Office on or off, set the company size and each office's member count, add or remove workers, change a member's model, thinking effort (the levels their model takes) or capability or make them leader, merge or send back the office pull requests waiting for you, and add to or clear an office's memory. It also shows what each office is doing (phase, who is at a desk, the leader's task), the pull-request funnel, spend today and in total (company, general manager, each office and member, estimated at catalog prices) and recent assignments per office and member. The panel follows the company live while open: a change re-reads it, and booked usage is added up in the panel without re-reading. It runs the same commands as below, so the two never disagree.
 
 `/office <subcommand>` in a session and `npi office` in a shell take the same subcommands.
 
@@ -95,7 +95,7 @@ An RPC session starts with Virtual Office **off**, whatever `office.enabled` say
 | `get_office_state` | `OfficeState`, described below. |
 | `office_command` with `args: string[]` | Runs one subcommand from the table above, e.g. `["set", "Worker-1a2b3c", "capability", "expert"]` or `["merge", "4"]`. Returns `text` (what the CLI prints), `failed` when the command was refused, and the new `state`. `["on"]` and `["off"]` act like `set_office_enabled`. |
 
-While Virtual Office is on, the session also sends an `office_state` frame (`{ type: "office_state", state }`) whenever the company changes, so a host never needs to poll. Changes made by another process (a second general manager, `npi office merge` in a shell) are not pushed; fetch the state again when that matters.
+While Virtual Office is on, the session also sends an `office_state` frame (`{ type: "office_state", state }`) whenever the company changes, so a host never needs to poll. Usage a member books is not a change: it arrives as `office_usage` frames (`{ type: "office_usage", checkout, member, day, amount }`), the spend since the previous frame for that member and local day, coalesced every 250 ms. Add them to `usage` yourself (a later `day` starts `today` over; an earlier one counts only toward `total`); queued deltas are sent before each `office_state`, whose `usage` then replaces your totals. Changes made by another process (a second general manager, `npi office merge` in a shell) are not pushed; fetch the state again when that matters.
 
 `OfficeState` holds:
 

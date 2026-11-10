@@ -1628,6 +1628,20 @@ class OfficeStateEvent:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class OfficeUsageEvent:
+    """Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second."""
+    type: Literal["office_usage"] = "office_usage"
+    checkout: str
+    """The company's checkout; matches `OfficeState.company.checkout`."""
+    member: str
+    """Member name; the general manager is `general-manager`."""
+    day: str
+    """The local day it was booked on, `YYYY-MM-DD`."""
+    amount: OfficeUsageAmount
+    """What was spent since the previous frame for this member and day."""
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class LivePhaseEvent:
     type: Literal["live_phase"] = "live_phase"
     phase: LivePhase
@@ -1985,7 +1999,7 @@ RpcAgentEvent: TypeAlias = AgentStartEvent | AgentEndEvent | TurnStartEvent | Tu
 """A session event, discriminated by `type`; `set_event_filter` selects which are sent."""
 
 
-RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
+RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
 """Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`."""
 
 
@@ -3389,6 +3403,17 @@ def parse_office_state_event(value: object, path: str = "OfficeStateEvent") -> O
     )
 
 
+def parse_office_usage_event(value: object, path: str = "OfficeUsageEvent") -> OfficeUsageEvent:
+    payload = expect_object(value, path)
+    required(payload, "type", cast('Decoder[Literal["office_usage"]]', literal(frozenset({"office_usage"}))), path)
+    return OfficeUsageEvent(
+        checkout=required(payload, "checkout", decode_str, path),
+        member=required(payload, "member", decode_str, path),
+        day=required(payload, "day", decode_str, path),
+        amount=required(payload, "amount", parse_office_usage_amount, path),
+    )
+
+
 def parse_live_phase_event(value: object, path: str = "LivePhaseEvent") -> LivePhaseEvent:
     payload = expect_object(value, path)
     required(payload, "type", cast('Decoder[Literal["live_phase"]]', literal(frozenset({"live_phase"}))), path)
@@ -3856,6 +3881,7 @@ _RPC_NOTIFICATION_CASES: Final[dict[str, Decoder[RpcNotification]]] = {
         "subagent_progress": parse_subagent_progress_event,
         "subagent_event": parse_subagent_event,
         "office_state": parse_office_state_event,
+        "office_usage": parse_office_usage_event,
         "live_phase": parse_live_phase_event,
         "live_levels": parse_live_levels_event,
         "live_transcript": parse_live_transcript_event,
@@ -4506,6 +4532,10 @@ class WireClient:
         """Subscribe to `office_state`: The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off."""
         return self._listen("office_state", listener)
 
+    def on_office_usage(self, listener: Callable[[OfficeUsageEvent], None]) -> Callable[[], None]:
+        """Subscribe to `office_usage`: Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second."""
+        return self._listen("office_usage", listener)
+
     def on_live_phase(self, listener: Callable[[LivePhaseEvent], None]) -> Callable[[], None]:
         """Subscribe to `live_phase` frames."""
         return self._listen("live_phase", listener)
@@ -4836,6 +4866,7 @@ __all__ = [
     "OfficeStateEvent",
     "OfficeUsage",
     "OfficeUsageAmount",
+    "OfficeUsageEvent",
     "OpenSessionResult",
     "OpenUrlUiRequest",
     "PendingUi",
@@ -5049,6 +5080,7 @@ __all__ = [
     "parse_office_state_event",
     "parse_office_usage",
     "parse_office_usage_amount",
+    "parse_office_usage_event",
     "parse_open_session_result",
     "parse_open_url_ui_request",
     "parse_pending_ui",

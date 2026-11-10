@@ -98,6 +98,16 @@ export const frameDefs = {
 		{ type: "'office_state'", state: "OfficeState" },
 		"The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.",
 	),
+	OfficeUsageEvent: doc(
+		{
+			type: "'office_usage'",
+			checkout: doc("string", "The company's checkout; matches `OfficeState.company.checkout`."),
+			member: doc("string", "Member name; the general manager is `general-manager`."),
+			day: doc("string", "The local day it was booked on, `YYYY-MM-DD`."),
+			amount: doc("OfficeUsageAmount", "What was spent since the previous frame for this member and day."),
+		},
+		"Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second.",
+	),
 	LivePhase: "'connecting' | 'listening' | 'working' | 'speaking' | 'muted' | 'error'",
 	LiveRole: "'user' | 'assistant'",
 	LivePhaseEvent: { type: "'live_phase'", phase: "LivePhase" },

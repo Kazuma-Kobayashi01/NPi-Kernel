@@ -4,6 +4,8 @@
 
 ### Added
 
+- The `/office` panel now sets a member's thinking effort, shows what each office is doing, the pull-request funnel, spend today and in total per office and member, and recent assignments, and updates live while open.
+- RPC `office_usage` frames carry Virtual Office spend as per-member deltas for hosts to add up; booking usage no longer makes the session re-read and push the whole `office_state` several times a second while members work.
 - Virtual Office members take a thinking effort: `/office set <name> thinking <level>` sets it (`default` clears it), `/office status` and the RPC roster show it, and an effort the member's model does not support is clamped to the closest one it does.
 - Virtual Office: `/office on` turns the main chat into a general manager that hands work to offices (1, 3 or 6 with `office.scale`), each with a leader and two to five workers who keep a fixed `Worker-xxxxxx` name, a model and a capability level. Every member works on their own branch and worktree, changes move up only through reviewed local pull requests, and the merge into your branch waits for `/office merge <pr>`. `npi office` and the RPC commands `get_office_state` / `office_command` manage the same roster. See `docs/virtual-office.md`.
 - Office memory: each Virtual Office remembers the project it works on, logging every pull request it gets merged and keeping lessons its members save with `office` `remember`; members see it with each assignment and the general manager sees each office's recent work. `/office memory|remember|forget <office>` manages it.

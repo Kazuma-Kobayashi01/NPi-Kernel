@@ -5,7 +5,9 @@
  * 00:00 local time and an assignment running across midnight is split between the two days. The
  * general manager is booked under `general-manager` (`MANAGER` in `pulls.ts`).
  *
- * Writes are batched: a busy member reports several times a second.
+ * Writes are batched: a busy member reports several times a second. A booking is not an office
+ * change: hosts get it as a delta through {@link onOfficeUsage} and keep their own running totals,
+ * so a working member does not make every client re-read the whole company.
  */
 import { readStore, storePath, updateStore } from "./store";
 import { type Company, openCompany } from "./workspace";
@@ -94,11 +96,32 @@ function usagePath(company: Company): string {
 const pending = new Map<string, Map<string, Map<string, UsageAmount>>>();
 let timer: NodeJS.Timeout | undefined;
 
+/** One booking, as {@link onOfficeUsage} listeners see it. */
+export interface UsageBooking {
+	/** The company's checkout. */
+	checkout: string;
+	member: string;
+	/** The local day it was booked on, `YYYY-MM-DD`. */
+	day: string;
+	amount: UsageAmount;
+}
+
+const usageListeners = new Set<(booking: UsageBooking) => void>();
+
+/** Call `listener` with every booking as it happens. Returns the unsubscribe function. */
+export function onOfficeUsage(listener: (booking: UsageBooking) => void): () => void {
+	usageListeners.add(listener);
+	return () => usageListeners.delete(listener);
+}
+
 /** Book `amount` to `member` on the local day of `now`. Returns at once; the write is batched. */
 export function recordUsage(company: Company, member: string, amount: Partial<UsageAmount>, now = new Date()): void {
 	if (!amount.tokens && !amount.cost && !amount.requests) return;
 	const file = usagePath(company);
 	const day = localDay(now);
+	const booking: UsageBooking = { checkout: company.checkout, member, day, amount: zero() };
+	add(booking.amount, amount);
+	for (const listener of usageListeners) listener(booking);
 	let days = pending.get(file);
 	if (!days) pending.set(file, (days = new Map()));
 	let members = days.get(day);
@@ -120,19 +143,24 @@ export async function flushUsage(): Promise<void> {
 	pending.clear();
 	await Promise.all(
 		batch.map(([file, days]) =>
-			updateStore(file, emptyFile, value => {
-				for (const [day, members] of days) {
-					const bucket = (value.days[day] ??= {});
-					for (const [member, amount] of members) add((bucket[member] ??= zero()), amount);
-				}
-				const kept = Object.keys(value.days).sort();
-				for (const day of kept.slice(0, Math.max(0, kept.length - MAX_USAGE_DAYS))) {
-					for (const [member, amount] of Object.entries(value.days[day])) {
-						add((value.earlier[member] ??= zero()), amount);
+			updateStore(
+				file,
+				emptyFile,
+				value => {
+					for (const [day, members] of days) {
+						const bucket = (value.days[day] ??= {});
+						for (const [member, amount] of members) add((bucket[member] ??= zero()), amount);
 					}
-					delete value.days[day];
-				}
-			}),
+					const kept = Object.keys(value.days).sort();
+					for (const day of kept.slice(0, Math.max(0, kept.length - MAX_USAGE_DAYS))) {
+						for (const [member, amount] of Object.entries(value.days[day])) {
+							add((value.earlier[member] ??= zero()), amount);
+						}
+						delete value.days[day];
+					}
+				},
+				{ notify: false },
+			),
 		),
 	);
 }

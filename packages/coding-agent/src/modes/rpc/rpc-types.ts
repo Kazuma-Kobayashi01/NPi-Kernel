@@ -19,6 +19,7 @@ import type {
 import type { BashResult } from "../../exec/bash-executor";
 import type { OfficeCommandResult } from "../../office/commands";
 import type { OfficeState } from "../../office/company";
+import type { UsageAmount as OfficeUsageAmount } from "../../office/usage";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
 import type { SessionLeaseReport } from "../../session/session-storage";
@@ -781,6 +782,15 @@ export interface RpcSubagentEventFrame {
 export interface RpcOfficeStateFrame {
 	type: "office_state";
 	state: OfficeState;
+}
+
+/** Usage a Virtual Office member booked since the previous frame; hosts add it to their totals. */
+export interface RpcOfficeUsageFrame {
+	type: "office_usage";
+	checkout: string;
+	member: string;
+	day: string;
+	amount: OfficeUsageAmount;
 }
 
 export type RpcSubagentFrame = RpcSubagentLifecycleFrame | RpcSubagentProgressFrame | RpcSubagentEventFrame;

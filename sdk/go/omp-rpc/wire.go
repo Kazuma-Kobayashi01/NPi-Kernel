@@ -6088,6 +6088,42 @@ func (v OfficeStateEvent) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), `"type":"office_state"`, nil)
 }
 
+// Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second.
+type OfficeUsageEvent struct {
+	// The company's checkout; matches `OfficeState.company.checkout`.
+	Checkout string `json:"checkout"`
+	// Member name; the general manager is `general-manager`.
+	Member string `json:"member"`
+	// The local day it was booked on, `YYYY-MM-DD`.
+	Day string `json:"day"`
+	// What was spent since the previous frame for this member and day.
+	Amount OfficeUsageAmount `json:"amount"`
+}
+
+func (v *OfficeUsageEvent) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "OfficeUsageEvent", v.decodeFrom)
+}
+
+func (v *OfficeUsageEvent) decodeFrom(raw map[string]json.RawMessage) error {
+	var out OfficeUsageEvent
+	d := fieldDecoder{raw: raw, owner: "OfficeUsageEvent"}
+	d.constant("type", "office_usage")
+	d.required("checkout", &out.Checkout)
+	d.required("member", &out.Member)
+	d.required("day", &out.Day)
+	d.required("amount", &out.Amount)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v OfficeUsageEvent) MarshalJSON() ([]byte, error) {
+	type plain OfficeUsageEvent
+	return encodeObject(plain(v), `"type":"office_usage"`, nil)
+}
+
 type LivePhase string
 
 const (
@@ -7714,6 +7750,7 @@ func (SubagentLifecycleEvent) isRpcNotification()       {}
 func (SubagentProgressEvent) isRpcNotification()        {}
 func (SubagentEvent) isRpcNotification()                {}
 func (OfficeStateEvent) isRpcNotification()             {}
+func (OfficeUsageEvent) isRpcNotification()             {}
 func (LivePhaseEvent) isRpcNotification()               {}
 func (LiveLevelsEvent) isRpcNotification()              {}
 func (LiveTranscriptEvent) isRpcNotification()          {}
@@ -7798,6 +7835,8 @@ func (v *RpcNotification) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SubagentEvent](raw)
 	case "office_state":
 		value, err = decodeVariant[OfficeStateEvent](raw)
+	case "office_usage":
+		value, err = decodeVariant[OfficeUsageEvent](raw)
 	case "live_phase":
 		value, err = decodeVariant[LivePhaseEvent](raw)
 	case "live_levels":
@@ -7928,6 +7967,7 @@ func (SubagentLifecycleEvent) isRpcServerFrame()       {}
 func (SubagentProgressEvent) isRpcServerFrame()        {}
 func (SubagentEvent) isRpcServerFrame()                {}
 func (OfficeStateEvent) isRpcServerFrame()             {}
+func (OfficeUsageEvent) isRpcServerFrame()             {}
 func (LivePhaseEvent) isRpcServerFrame()               {}
 func (LiveLevelsEvent) isRpcServerFrame()              {}
 func (LiveTranscriptEvent) isRpcServerFrame()          {}
@@ -8022,6 +8062,8 @@ func (v *RpcServerFrame) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SubagentEvent](raw)
 	case "office_state":
 		value, err = decodeVariant[OfficeStateEvent](raw)
+	case "office_usage":
+		value, err = decodeVariant[OfficeUsageEvent](raw)
 	case "live_phase":
 		value, err = decodeVariant[LivePhaseEvent](raw)
 	case "live_levels":

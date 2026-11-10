@@ -1,3 +1,4 @@
+import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
 import { runOfficeCommand } from "../office/commands";
 import { readOfficeState } from "../office/company";
 import {
@@ -7,6 +8,9 @@ import {
 	OFFICE_COUNT,
 	OFFICE_SCALES,
 } from "../office/model";
+import { onOfficeChange } from "../office/store";
+import { onOfficeUsage } from "../office/usage";
+import { SUBAGENT_THINKING_LEVELS } from "../task/settings";
 import { clearSubmittedText } from "./helpers/draft";
 import { commandConsumed } from "./helpers/parse";
 import type { SlashCommandSpec } from "./types";
@@ -41,13 +45,24 @@ export const BUILTIN_OFFICE_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 				ctx.showStatus((await runOfficeCommand(args, ctx.settings, cwd)).text);
 				return;
 			}
+			const available = ctx.session.getAvailableModels();
 			ctx.showOfficePanel({
 				load: () => readOfficeState(ctx.settings, cwd),
 				run: words => runOfficeCommand(words, ctx.settings, cwd),
-				models: ctx.session
-					.getAvailableModels()
-					.map(model => `${model.provider}/${model.id}`)
-					.sort((a, b) => a.localeCompare(b)),
+				models: available.map(model => `${model.provider}/${model.id}`).sort((a, b) => a.localeCompare(b)),
+				// The levels the member's model takes; omp clamps anything else, and the default model is not known here.
+				thinkingLevels: selector => {
+					const model = selector ? available.find(m => `${m.provider}/${m.id}` === selector) : undefined;
+					return model ? ["off", ...getSupportedEfforts(model)] : SUBAGENT_THINKING_LEVELS;
+				},
+				watch: ({ change, usage }) => {
+					const stopChange = onOfficeChange(change);
+					const stopUsage = onOfficeUsage(usage);
+					return () => {
+						stopChange();
+						stopUsage();
+					};
+				},
 				scales: OFFICE_SCALES.map(id => ({ id, offices: OFFICE_COUNT[id] })),
 				capabilities: OFFICE_CAPABILITIES,
 				minMembers: MIN_OFFICE_MEMBERS,

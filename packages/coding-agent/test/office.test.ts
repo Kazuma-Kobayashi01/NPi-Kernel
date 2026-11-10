@@ -17,7 +17,13 @@ import {
 import { cfgOfficeOffices } from "@oh-my-pi/pi-coding-agent/office/settings";
 import { claimDesk, readClaims } from "@oh-my-pi/pi-coding-agent/office/desks";
 import { onOfficeChange, storePath } from "@oh-my-pi/pi-coding-agent/office/store";
-import { flushUsage, readUsage, recordUsage } from "@oh-my-pi/pi-coding-agent/office/usage";
+import {
+	flushUsage,
+	onOfficeUsage,
+	readUsage,
+	recordUsage,
+	type UsageBooking,
+} from "@oh-my-pi/pi-coding-agent/office/usage";
 import {
 	MAX_NOTE_LENGTH,
 	MAX_OFFICE_NOTES,
@@ -366,13 +372,23 @@ describe("office pull requests", () => {
 		const before = new Date(2026, 10, 9, 23, 59, 30);
 		const after = new Date(2026, 10, 10, 0, 0, 30);
 		let changes = 0;
+		const bookings: UsageBooking[] = [];
 		const stop = onOfficeChange(() => changes++);
+		const stopUsage = onOfficeUsage(booking => bookings.push(booking));
 		recordUsage(company, workerName, { tokens: 100, cost: 0.5, requests: 1 }, before);
 		recordUsage(company, workerName, { tokens: 40, cost: 0.2, requests: 1 }, after);
 		recordUsage(company, "general-manager", { tokens: 10, cost: 0.1, requests: 1 }, after);
 		await flushUsage();
 		stop();
-		expect(changes).toBe(1);
+		stopUsage();
+		// Bookings reach hosts as deltas; writing the ledger is not an office change.
+		expect(changes).toBe(0);
+		expect(bookings.map(b => [b.member, b.day, b.amount.tokens])).toEqual([
+			[workerName, "2026-11-09", 100],
+			[workerName, "2026-11-10", 40],
+			["general-manager", "2026-11-10", 10],
+		]);
+		expect(bookings[0].checkout).toBe(company.checkout);
 
 		const usage = await readUsage(company, after);
 		expect(usage.day).toBe("2026-11-10");

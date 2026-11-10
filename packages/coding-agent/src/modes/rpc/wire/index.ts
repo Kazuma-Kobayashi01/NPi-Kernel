@@ -74,6 +74,7 @@ const notificationDefs = {
 			"SubagentProgressEvent",
 			"SubagentEvent",
 			"OfficeStateEvent",
+			"OfficeUsageEvent",
 			"LivePhaseEvent",
 			"LiveLevelsEvent",
 			"LiveTranscriptEvent",

@@ -4545,6 +4545,19 @@ pub struct OfficeStateEvent {
 	pub state: OfficeState,
 }
 
+/// Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OfficeUsageEvent {
+	/// The company's checkout; matches `OfficeState.company.checkout`.
+	pub checkout: String,
+	/// Member name; the general manager is `general-manager`.
+	pub member: String,
+	/// The local day it was booked on, `YYYY-MM-DD`.
+	pub day: String,
+	/// What was spent since the previous frame for this member and day.
+	pub amount: OfficeUsageAmount,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LivePhase {
 	#[serde(rename = "connecting")]
@@ -5317,6 +5330,8 @@ pub enum RpcNotification {
 	SubagentEvent(SubagentEvent),
 	/// The Virtual Office changed: roster, a pull request, memory, usage, or who is at a desk. Sent while Virtual Office is on for the session, and once when it turns off.
 	OfficeState(OfficeStateEvent),
+	/// Usage booked by a Virtual Office member, as a delta to add to `OfficeState.usage`. Bookings are not `office_state` changes: hosts keep their own running totals. Coalesced to at most a few frames a second.
+	OfficeUsage(OfficeUsageEvent),
 	LivePhase(LivePhaseEvent),
 	/// Microphone (`input`) and speaker (`output`) RMS in [0, 1], at most every 100 ms.
 	LiveLevels(LiveLevelsEvent),
@@ -5364,6 +5379,7 @@ impl RpcNotification {
 			Some("subagent_progress") => |value| serde_json::from_value(value).map(Self::SubagentProgress),
 			Some("subagent_event") => |value| serde_json::from_value(value).map(Self::SubagentEvent),
 			Some("office_state") => |value| serde_json::from_value(value).map(Self::OfficeState),
+			Some("office_usage") => |value| serde_json::from_value(value).map(Self::OfficeUsage),
 			Some("live_phase") => |value| serde_json::from_value(value).map(Self::LivePhase),
 			Some("live_levels") => |value| serde_json::from_value(value).map(Self::LiveLevels),
 			Some("live_transcript") => |value| serde_json::from_value(value).map(Self::LiveTranscript),
@@ -5399,6 +5415,7 @@ impl Serialize for RpcNotification {
 			Self::SubagentProgress(member) => serialize_tagged(member, &[("type", "subagent_progress")], serializer),
 			Self::SubagentEvent(member) => serialize_tagged(member, &[("type", "subagent_event")], serializer),
 			Self::OfficeState(member) => serialize_tagged(member, &[("type", "office_state")], serializer),
+			Self::OfficeUsage(member) => serialize_tagged(member, &[("type", "office_usage")], serializer),
 			Self::LivePhase(member) => serialize_tagged(member, &[("type", "live_phase")], serializer),
 			Self::LiveLevels(member) => serialize_tagged(member, &[("type", "live_levels")], serializer),
 			Self::LiveTranscript(member) => serialize_tagged(member, &[("type", "live_transcript")], serializer),
@@ -5443,7 +5460,7 @@ impl RpcServerFrame {
 		let decode: fn(Value) -> Result<Self, serde_json::Error> = match value.get("type").and_then(Value::as_str) {
 			Some("response") => |value| serde_json::from_value(value).map(Self::Response),
 			Some("host_tool_call" | "host_tool_cancel" | "host_uri_request" | "host_uri_cancel") => |value| serde_json::from_value(value).map(Self::RpcHostRequest),
-			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "office_state" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
+			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "office_state" | "office_usage" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
 			_ => |value| Ok(Self::Unknown(value)),
 		};
 		decode(value)

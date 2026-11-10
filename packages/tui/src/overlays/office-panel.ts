@@ -3,7 +3,9 @@
  * for pull requests. ↑/↓ move, Enter opens or changes the selected row, Esc goes back.
  *
  * The panel owns no rules. Every change is an `/office …` command handed to `run`, and the state
- * is re-read afterwards, so it can never disagree with the command line.
+ * is re-read afterwards, so it can never disagree with the command line. With `watch` it also
+ * follows the company live: a change re-reads the state, and booked usage arrives as deltas the
+ * panel adds up itself, so a working member never makes it re-read the whole company.
  */
 import { type Component, matchesKey, routeSgrMouseInput } from "../index";
 import { ListDialogFrame } from "../chrome/list-dialog";
@@ -30,6 +32,8 @@ export interface OfficePanelMember {
 	capability: string;
 	/** Empty for the default model. */
 	model: string;
+	/** Thinking effort; empty for the default. */
+	thinking?: string;
 }
 
 export interface OfficePanelOffice {
@@ -55,15 +59,63 @@ export interface OfficePanelMemory {
 	log: { pr: number; title: string; author: string; target: string }[];
 }
 
+export interface OfficePanelAmount {
+	tokens: number;
+	/** Estimated USD. */
+	cost: number;
+	requests: number;
+}
+
+export interface OfficePanelUsage {
+	/** The local day `today` covers, `YYYY-MM-DD`. */
+	day: string;
+	/** By member name; the general manager is `general-manager`. */
+	members: Record<string, { today: OfficePanelAmount; total: OfficePanelAmount }>;
+	today: OfficePanelAmount;
+	total: OfficePanelAmount;
+}
+
+export interface OfficePanelActivity {
+	office: number;
+	/** `working`, `reviewing`, `awaiting_manager`, `awaiting_owner` or `idle`. */
+	phase: string;
+	working: string[];
+	task?: string;
+}
+
+export interface OfficePanelRun {
+	id: string;
+	office: number;
+	member: string;
+	by: string;
+	task: string;
+	startedAt: string;
+	endedAt?: string;
+	failed?: boolean;
+	pr?: number;
+}
+
 export interface OfficePanelState {
 	enabled: boolean;
 	scale: string;
 	offices: OfficePanelOffice[];
-	company: { baseBranch: string } | null;
+	company: { baseBranch: string; checkout?: string } | null;
 	/** Why there is no company here. */
 	reason?: string;
 	pulls: OfficePanelPull[];
 	memory: OfficePanelMemory[];
+	activity?: OfficePanelActivity[];
+	usage?: OfficePanelUsage | null;
+	/** Recent assignment runs, oldest first. */
+	runs?: OfficePanelRun[];
+}
+
+/** Usage one member booked, as a delta to add to `OfficePanelState.usage`. */
+export interface OfficePanelBooking {
+	checkout: string;
+	member: string;
+	day: string;
+	amount: OfficePanelAmount;
 }
 
 export interface OfficePanelOptions {
@@ -75,8 +127,12 @@ export interface OfficePanelOptions {
 	/** Company sizes with the number of offices each runs. */
 	scales: readonly { id: string; offices: number }[];
 	capabilities: readonly string[];
+	/** Thinking efforts a member on `model` (empty: the default model) can be set to. */
+	thinkingLevels?: (model: string) => readonly string[];
 	minMembers: number;
 	maxMembers: number;
+	/** Follow the company live; returns the function that stops. */
+	watch?: (listeners: { change: () => void; usage: (booking: OfficePanelBooking) => void }) => () => void;
 	requestRender: () => void;
 	onClose: () => void;
 }
@@ -100,6 +156,96 @@ type Page =
 const COMPANY_TAB = "company";
 const PULLS_TAB = "pulls";
 const officeTab = (number: number): string => `office:${number}`;
+const MANAGER = "general-manager";
+/** Recent assignments listed on an office tab and a member page. */
+const RECENT_RUNS = 8;
+/** A burst of changes (a member claims a desk and opens a pull request) is read once. */
+const RELOAD_DELAY_MS = 150;
+
+const PHASE_LABELS: Record<string, string> = {
+	working: "working",
+	reviewing: "reviewing worker pull requests",
+	awaiting_manager: "waiting for the general manager",
+	awaiting_owner: "waiting for you",
+	idle: "idle",
+};
+
+/** The phase in a few words, for the company tab's office rows. */
+const PHASE_SHORT: Record<string, string> = {
+	working: "working",
+	reviewing: "reviewing",
+	awaiting_manager: "waiting for manager",
+	awaiting_owner: "waiting for you",
+};
+
+const zero = (): OfficePanelAmount => ({ tokens: 0, cost: 0, requests: 0 });
+const plus = (a: OfficePanelAmount | undefined, b: OfficePanelAmount | undefined): OfficePanelAmount => ({
+	tokens: (a?.tokens ?? 0) + (b?.tokens ?? 0),
+	cost: (a?.cost ?? 0) + (b?.cost ?? 0),
+	requests: (a?.requests ?? 0) + (b?.requests ?? 0),
+});
+
+/** The local calendar day of `date`, `YYYY-MM-DD`, as omp books usage. */
+function localDay(date: Date): string {
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	return `${date.getFullYear()}-${month}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** `usage` with "today" started over for `day`; the same object when it already covers it. */
+export function rollUsageDay(usage: OfficePanelUsage, day: string): OfficePanelUsage {
+	if (usage.day === day) return usage;
+	const members: OfficePanelUsage["members"] = {};
+	for (const [name, member] of Object.entries(usage.members)) members[name] = { today: zero(), total: member.total };
+	return { ...usage, day, members, today: zero() };
+}
+
+/**
+ * `usage` with `booking` added. A booking on a later day starts "today" over first; one on an
+ * earlier day (a run that crossed midnight, reported late) only counts toward the total.
+ */
+export function bookUsage(usage: OfficePanelUsage, booking: OfficePanelBooking): OfficePanelUsage {
+	const next = rollUsageDay(usage, booking.day > usage.day ? booking.day : usage.day);
+	const today = booking.day === next.day;
+	const prior = next.members[booking.member] ?? { today: zero(), total: zero() };
+	return {
+		...next,
+		members: {
+			...next.members,
+			[booking.member]: {
+				today: today ? plus(prior.today, booking.amount) : prior.today,
+				total: plus(prior.total, booking.amount),
+			},
+		},
+		today: today ? plus(next.today, booking.amount) : next.today,
+		total: plus(next.total, booking.amount),
+	};
+}
+
+/** "950", "41.2k", "1.8M". */
+function shortTokens(tokens: number): string {
+	const n = Math.max(0, tokens);
+	if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`;
+	if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}k`;
+	return String(Math.floor(n));
+}
+
+/** "$12.47"; four decimals under a cent so a small run is not "$0.00". */
+function usd(cost: number): string {
+	const n = Math.max(0, cost);
+	return n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+}
+
+function spend(amount: OfficePanelAmount): string {
+	return `${shortTokens(amount.tokens)} tokens · ${usd(amount.cost)}`;
+}
+
+/** "14:05" today, else "11-09 14:05". */
+function when(iso: string, now: Date): string {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "";
+	const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+	return localDay(date) === localDay(now) ? time : `${localDay(date).slice(5)} ${time}`;
+}
 
 export class OfficePanelComponent implements Component {
 	#options: OfficePanelOptions;
@@ -116,6 +262,9 @@ export class OfficePanelComponent implements Component {
 	#tabRowStart = 0;
 	#tabRowCount = 0;
 	#bodyRowStart = 0;
+	#unwatch: (() => void) | undefined;
+	#reloadTimer: NodeJS.Timeout | undefined;
+	#closed = false;
 
 	constructor(options: OfficePanelOptions) {
 		this.#options = options;
@@ -128,6 +277,87 @@ export class OfficePanelComponent implements Component {
 		this.#input.prompt = "";
 		this.#input.focused = true;
 		void this.#reload();
+		this.#unwatch = options.watch?.({
+			change: () => this.#scheduleReload(),
+			usage: booking => this.#book(booking),
+		});
+	}
+
+	#close(): void {
+		if (this.#closed) return;
+		this.#closed = true;
+		this.#unwatch?.();
+		this.#unwatch = undefined;
+		if (this.#reloadTimer) clearTimeout(this.#reloadTimer);
+		this.#reloadTimer = undefined;
+		this.#options.onClose();
+	}
+
+	#scheduleReload(): void {
+		if (this.#closed || this.#reloadTimer) return;
+		this.#reloadTimer = setTimeout(() => {
+			this.#reloadTimer = undefined;
+			if (!this.#closed) void this.#reload();
+		}, RELOAD_DELAY_MS);
+		this.#reloadTimer.unref?.();
+	}
+
+	/** Spend is billed here: a booking is added to the totals without re-reading the company. */
+	#book(booking: OfficePanelBooking): void {
+		const state = this.#state;
+		if (this.#closed || !state?.usage) return;
+		if (state.company?.checkout && booking.checkout !== state.company.checkout) return;
+		this.#state = { ...state, usage: bookUsage(state.usage, booking) };
+		this.#options.requestRender();
+	}
+
+	/** Usage with "today" as of now: nobody may be working at midnight to say it started over. */
+	#usage(): OfficePanelUsage | undefined {
+		const usage = this.#state?.usage;
+		if (!usage) return undefined;
+		const rolled = rollUsageDay(usage, localDay(new Date()));
+		if (rolled !== usage && this.#state) this.#state = { ...this.#state, usage: rolled };
+		return rolled;
+	}
+
+	#memberSpend(name: string): { today: OfficePanelAmount; total: OfficePanelAmount } {
+		return this.#usage()?.members[name] ?? { today: zero(), total: zero() };
+	}
+
+	#officeSpend(office: OfficePanelOffice): { today: OfficePanelAmount; total: OfficePanelAmount } {
+		let today = zero();
+		let total = zero();
+		for (const member of office.members) {
+			const used = this.#memberSpend(member.id);
+			today = plus(today, used.today);
+			total = plus(total, used.total);
+		}
+		return { today, total };
+	}
+
+	#activity(number: number): OfficePanelActivity | undefined {
+		return this.#state?.activity?.find(candidate => candidate.office === number);
+	}
+
+	#runRows(runs: OfficePanelRun[], withMember: boolean): Row[] {
+		const now = new Date();
+		return runs
+			.slice(-RECENT_RUNS)
+			.reverse()
+			.map(run => {
+				const outcome = !run.endedAt
+					? "running"
+					: run.failed
+						? "failed"
+						: run.pr !== undefined
+							? `PR #${run.pr}`
+							: "done";
+				const task = run.task.replace(/\s+/g, " ").trim();
+				return {
+					label: withMember ? `${run.member}: ${task}` : task,
+					value: `${outcome} · ${when(run.startedAt, now)}`,
+				};
+			});
 	}
 
 	invalidate(): void {
@@ -155,6 +385,7 @@ export class OfficePanelComponent implements Component {
 		} catch (error) {
 			this.#status = { text: error instanceof Error ? error.message : String(error), failed: true };
 		}
+		if (this.#closed) return;
 		this.#tabBar.setTabs(this.#tabs());
 		this.#tabBar.invalidate();
 		this.#options.requestRender();
@@ -245,9 +476,12 @@ export class OfficePanelComponent implements Component {
 		];
 		for (const office of state.offices) {
 			const leader = office.members.find(member => member.role === "leader");
+			const activity = this.#activity(office.number);
+			const phase =
+				activity && activity.phase !== "idle" ? `${PHASE_SHORT[activity.phase] ?? activity.phase} · ` : "";
 			rows.push({
 				label: `Office ${office.number}`,
-				value: `${office.members.length} members · leader ${leader?.id ?? "none"}`,
+				value: `${phase}${office.members.length} members · leader ${leader?.id ?? "none"}`,
 				act: () => this.#tabBar.selectTab(officeTab(office.number)),
 			});
 		}
@@ -255,6 +489,37 @@ export class OfficePanelComponent implements Component {
 		if (waiting.length > 0) {
 			rows.push({ label: "Waiting for you", heading: true });
 			for (const pull of waiting) rows.push(this.#pullRow(pull));
+		}
+		if (state.company) {
+			const count = (kind: string, status: string) =>
+				state.pulls.filter(pull => pull.kind === kind && pull.status === status).length;
+			rows.push({ label: "Pull requests", heading: true });
+			const flow: [string, number][] = [
+				["Worker pull requests in review", count("worker", "open")],
+				["Office pull requests in review", count("office", "open")],
+				["Waiting for you", waiting.length],
+				["Merged", state.pulls.filter(pull => pull.status === "merged").length],
+			];
+			for (const [label, n] of flow)
+				rows.push({ label, value: String(n), act: () => this.#tabBar.selectTab(PULLS_TAB) });
+		}
+		const usage = this.#usage();
+		if (usage) {
+			rows.push({ label: "Spend (estimated at catalog prices)", heading: true });
+			rows.push({ label: "Today", value: `${spend(usage.today)} · ${usage.today.requests} requests` });
+			rows.push({ label: "In total", value: `${spend(usage.total)} · ${usage.total.requests} requests` });
+			const manager = this.#memberSpend(MANAGER);
+			rows.push({
+				label: "General manager",
+				value: `${usd(manager.today.cost)} today · ${usd(manager.total.cost)} total`,
+			});
+			for (const office of state.offices) {
+				const used = this.#officeSpend(office);
+				rows.push({
+					label: `Office ${office.number}`,
+					value: `${usd(used.today.cost)} today · ${usd(used.total.cost)} total`,
+				});
+			}
 		}
 		return rows;
 	}
@@ -265,7 +530,7 @@ export class OfficePanelComponent implements Component {
 		for (const member of office.members) {
 			rows.push({
 				label: `${member.id}  ${member.role.padEnd(6)}  ${member.capability}`,
-				value: member.model || "default model",
+				value: `${member.model || "default model"}${member.thinking ? ` · ${member.thinking}` : ""}`,
 				act: () => this.#push({ kind: "member", id: member.id }),
 			});
 		}
@@ -287,6 +552,25 @@ export class OfficePanelComponent implements Component {
 		if (office.members.length < maxMembers) {
 			rows.push({ label: "Add a worker", act: () => this.#run(["add", String(office.number)]) });
 		}
+		const activity = this.#activity(office.number);
+		if (activity) {
+			rows.push({ label: "Now", heading: true });
+			rows.push({ label: "Doing", value: PHASE_LABELS[activity.phase] ?? activity.phase });
+			if (activity.working.length > 0) rows.push({ label: "At their desks", value: activity.working.join(", ") });
+			if (activity.task) rows.push({ label: `Task: ${activity.task.replace(/\s+/g, " ").trim()}` });
+		}
+		if (state.usage) {
+			const used = this.#officeSpend(office);
+			rows.push({ label: "Spend", heading: true });
+			rows.push({ label: "Today", value: spend(used.today) });
+			rows.push({ label: "In total", value: spend(used.total) });
+			for (const member of office.members) {
+				const mine = this.#memberSpend(member.id);
+				rows.push({ label: member.id, value: `${usd(mine.today.cost)} today · ${usd(mine.total.cost)} total` });
+			}
+		}
+		const runs = (state.runs ?? []).filter(run => run.office === office.number);
+		if (runs.length > 0) rows.push({ label: "Recent assignments", heading: true }, ...this.#runRows(runs, true));
 		const memory = state.memory.find(candidate => candidate.office === office.number);
 		rows.push({ label: "Memory of this project", heading: true });
 		for (const note of memory?.notes ?? []) rows.push({ label: `Lesson: ${note.text}`, value: note.by });
@@ -361,6 +645,20 @@ export class OfficePanelComponent implements Component {
 						onPick: value => this.#run(["set", member.id, "capability", value], () => this.#pop()),
 					}),
 			},
+			{
+				label: "Thinking effort",
+				value: member.thinking || "default",
+				act: () =>
+					this.#push({
+						kind: "pick",
+						title: `Thinking effort of ${member.id}`,
+						choices: [
+							{ label: "default", value: "default" },
+							...(this.#options.thinkingLevels?.(member.model) ?? []).map(value => ({ label: value, value })),
+						],
+						onPick: value => this.#run(["set", member.id, "thinking", value], () => this.#pop()),
+					}),
+			},
 			{ label: "Role", value: `${member.role} · office ${office.number}` },
 		];
 		if (member.role !== "leader") {
@@ -384,6 +682,14 @@ export class OfficePanelComponent implements Component {
 					}),
 			});
 		}
+		if (this.#state?.usage) {
+			const used = this.#memberSpend(member.id);
+			rows.push({ label: "Spend", heading: true });
+			rows.push({ label: "Today", value: `${spend(used.today)} · ${used.today.requests} requests` });
+			rows.push({ label: "In total", value: `${spend(used.total)} · ${used.total.requests} requests` });
+		}
+		const runs = (this.#state?.runs ?? []).filter(run => run.member === member.id);
+		if (runs.length > 0) rows.push({ label: "Recent assignments", heading: true }, ...this.#runRows(runs, false));
 		return rows;
 	}
 
@@ -588,7 +894,7 @@ export class OfficePanelComponent implements Component {
 
 	#back(): void {
 		if (this.#pages.length > 0) this.#pop();
-		else this.#options.onClose();
+		else this.#close();
 	}
 
 	handleInput(data: string): void {
@@ -654,7 +960,7 @@ export class OfficePanelComponent implements Component {
 		if (matchesKey(data, "end")) return this.#move(Number.MAX_SAFE_INTEGER);
 		if (page) return;
 		if (matchesKey(data, "q")) {
-			this.#options.onClose();
+			this.#close();
 			return;
 		}
 		if (

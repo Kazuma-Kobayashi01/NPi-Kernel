@@ -53,7 +53,7 @@ import { runOfficeCommand } from "../../office/commands";
 import { readOfficeState } from "../../office/company";
 import { cfgOfficeEnabled, cfgOfficeOffices, cfgOfficeScale } from "../../office/settings";
 import { onOfficeChange } from "../../office/store";
-import { officeRunSessionFile } from "../../office/usage";
+import { officeRunSessionFile, onOfficeUsage, type UsageAmount } from "../../office/usage";
 import { type AgentSession, type NavigateTreeResult, SessionBusyError } from "../../session/agent-session";
 import type { MCPManager } from "../../mcp/manager";
 import { reconnectMcpManagerServer } from "../../mcp/oauth-reauth";
@@ -133,6 +133,7 @@ import type {
 	RpcResponse,
 	RpcSessionState,
 	RpcOfficeStateFrame,
+	RpcOfficeUsageFrame,
 	RpcSubagentSubscriptionLevel,
 } from "./rpc-types";
 
@@ -1842,8 +1843,36 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 		uiContext: headless ? undefined : rpcUiContext,
 	});
 
+	// Bookings go out as deltas the host adds up itself, never as a whole new state: a working
+	// member reports several times a second and a state read walks git, pull requests and memory.
+	const officeUsage = new Map<string, Omit<RpcOfficeUsageFrame, "type">>();
+	let officeUsagePush: NodeJS.Timeout | undefined;
+	// A state frame replaces the host's totals, so deltas already booked go out before it is read.
+	const flushOfficeUsage = (): void => {
+		if (officeUsagePush) clearTimeout(officeUsagePush);
+		officeUsagePush = undefined;
+		const frames = [...officeUsage.values()];
+		officeUsage.clear();
+		for (const frame of frames) output({ type: "office_usage", ...frame } satisfies RpcOfficeUsageFrame);
+	};
+	onOfficeUsage(booking => {
+		if (!cfgOfficeEnabled.get(session.settings)) return;
+		const key = `${booking.checkout}\0${booking.day}\0${booking.member}`;
+		let frame = officeUsage.get(key);
+		if (!frame) {
+			const amount: UsageAmount = { tokens: 0, cost: 0, requests: 0 };
+			frame = { checkout: booking.checkout, member: booking.member, day: booking.day, amount };
+			officeUsage.set(key, frame);
+		}
+		frame.amount.tokens += booking.amount.tokens;
+		frame.amount.cost += booking.amount.cost;
+		frame.amount.requests += booking.amount.requests;
+		if (officeUsagePush) return;
+		officeUsagePush = setTimeout(flushOfficeUsage, 250);
+		officeUsagePush.unref?.();
+	});
 	// Push the Virtual Office to the host whenever it changes, coalescing bursts (a working
-	// member books usage and moves pull requests in quick succession).
+	// member claims a desk and moves pull requests in quick succession).
 	let officePush: NodeJS.Timeout | undefined;
 	let officeWasEnabled = cfgOfficeEnabled.get(session.settings);
 	const pushOfficeState = (): void => {
@@ -1853,6 +1882,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			const enabled = cfgOfficeEnabled.get(session.settings);
 			if (!enabled && !officeWasEnabled) return;
 			officeWasEnabled = enabled;
+			flushOfficeUsage();
 			void readOfficeState(session.settings, session.sessionManager.getCwd()).then(
 				state => output({ type: "office_state", state } satisfies RpcOfficeStateFrame),
 				() => {},
@@ -2838,6 +2868,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			// =================================================================
 
 			case "get_office_state": {
+				flushOfficeUsage();
 				return success(
 					id,
 					"get_office_state",

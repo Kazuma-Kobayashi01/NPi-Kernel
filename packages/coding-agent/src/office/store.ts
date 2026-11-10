@@ -41,7 +41,12 @@ export function notifyOfficeChange(): void {
 const writes = new Map<string, Promise<unknown>>();
 
 /** Read `file`, let `change` edit the value in place, write it back; serialized per file. */
-export async function updateStore<T, R>(file: string, empty: () => T, change: (value: T) => R): Promise<R> {
+export async function updateStore<T, R>(
+	file: string,
+	empty: () => T,
+	change: (value: T) => R,
+	{ notify = true }: { notify?: boolean } = {},
+): Promise<R> {
 	const prior = writes.get(file) ?? Promise.resolve();
 	const run = prior
 		.catch(() => {})
@@ -49,7 +54,7 @@ export async function updateStore<T, R>(file: string, empty: () => T, change: (v
 			const value = await readStore(file, empty);
 			const result = change(value);
 			await Bun.write(file, JSON.stringify(value, null, "\t"));
-			notifyOfficeChange();
+			if (notify) notifyOfficeChange();
 			return result;
 		});
 	writes.set(file, run);
