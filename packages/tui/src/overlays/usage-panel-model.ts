@@ -1,5 +1,6 @@
-import type { UsageReport } from "@oh-my-pi/pi-ai";
+import type { UsageLimit, UsageReport } from "@oh-my-pi/pi-ai";
 import { formatProviderName } from "../chrome/format";
+import { theme } from "../theme/theme";
 import { sanitizeDisplayLine } from "./extensions/display-text";
 
 /** The `/usage` panel's tabs, in display order. */
@@ -148,4 +149,28 @@ export interface UsageTokensData {
 	session: UsageSessionTokens;
 	/** One per period, in tab order. */
 	periods: UsageStatsPeriod[];
+}
+
+// =============================================================================
+// Shared status paint
+// =============================================================================
+
+export function usageStatusColor(status: UsageLimit["status"]): "success" | "warning" | "error" | "dim" {
+	if (status === "exhausted") return "error";
+	if (status === "warning") return "warning";
+	if (status === "ok") return "success";
+	return "dim";
+}
+
+export function usageStatusIcon(status: UsageLimit["status"]): string {
+	const color = usageStatusColor(status);
+	const icon = status === "exhausted" ? theme.status.error : status === "warning" ? theme.status.warning : status === "ok" ? theme.status.success : theme.status.info;
+	return theme.fg(color, icon);
+}
+
+/** `width`-column bar of the used `fraction` (0..1, clamped); a dotted track when the fraction is unknown. */
+export function usageBar(fraction: number | undefined, status: UsageLimit["status"], width: number): string {
+	if (fraction === undefined) return theme.fg("dim", "·".repeat(width));
+	const filled = Math.round(Math.min(Math.max(fraction, 0), 1) * width);
+	return `${theme.fg(usageStatusColor(status), "█".repeat(filled))}${theme.fg("dim", "░".repeat(width - filled))}`;
 }
