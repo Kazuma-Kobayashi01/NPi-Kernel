@@ -483,7 +483,7 @@ describe("interactive /usage account visibility", () => {
 			expect(overview).toContain("org-team");
 			expect(overview).toContain("org-personal");
 			expect(overview.match(/usage unavailable/g)).toHaveLength(2);
-			expect(overview).not.toContain("%");
+			expect(overview).not.toMatch(/\d+(?:\.\d+)?%/);
 			expect(overview).not.toContain("untouched");
 			expect(overview).not.toContain("no limits");
 			expect(overview).not.toContain("Tavily");

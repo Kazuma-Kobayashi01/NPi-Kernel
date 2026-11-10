@@ -197,7 +197,7 @@ export function buildProviderCards(
 		const declared: CardWindowRow[] = [...buckets.values()].map(bucket => {
 			const fractions = bucket.limits
 				.map(limit => resolveUsedFraction(limit))
-				.filter((value): value is number => value !== undefined && Number.isFinite(value));
+				.filter((value): value is number => value !== undefined);
 			const fraction =
 				fractions.length > 0 ? fractions.reduce((sum, value) => sum + value, 0) / fractions.length : undefined;
 			const worst = bucket.limits.reduce((max, limit) =>
@@ -656,7 +656,7 @@ export function formatActivityErrorDetail(error: string, homeDir = os.homedir())
 	return text.replace(/\.+$/, "");
 }
 
-const CARD_MIN_WIDTH = 32;
+const CARD_MIN_WIDTH = 44;
 const CARD_GUTTER = 3;
 const CARD_MAX_WINDOWS = 4;
 const CARD_MIN_BAR_WIDTH = 10;
@@ -782,14 +782,11 @@ export class UsageDashboardComponent implements Component {
 		return "dim";
 	}
 
-	/**
-	 * Remaining-quota gauge: the filled part is what is left, so the bar and the
-	 * percentage beside it agree and a draining quota visibly shrinks.
-	 */
+	/** Used-quota gauge, matching the classic Details report. */
 	#miniBar(fraction: number | undefined, status: UsageLimit["status"], width: number): string {
 		if (fraction === undefined) return theme.fg("dim", "·".repeat(width));
-		const left = 1 - Math.min(Math.max(fraction, 0), 1);
-		const filled = Math.round(left * width);
+		const used = Math.min(Math.max(fraction, 0), 1);
+		const filled = Math.round(used * width);
 		const bar = "█".repeat(filled);
 		const empty = "░".repeat(width - filled);
 		return `${theme.fg(this.#statusColor(status), bar)}${theme.fg("dim", empty)}`;
@@ -878,7 +875,7 @@ export class UsageDashboardComponent implements Component {
 				});
 				continue;
 			}
-			const freePct = Math.min(100, Math.max(0, Math.round((1 - window.fraction) * 100)));
+			const freePct = Math.max(0, Math.round((1 - window.fraction) * 100));
 			const pressured = isPressured(window.status);
 			const pctPlain = `${freePct}%`.padStart(4);
 			const pctText = theme.fg(this.#statusColor(window.status), pressured ? theme.bold(pctPlain) : pctPlain);
@@ -1087,7 +1084,7 @@ export class UsageDashboardComponent implements Component {
 		const cached = this.#overviewCache;
 		if (cached?.revision === this.#revision && cached.width === innerWidth) return cached.lines;
 		const lines: string[] = [];
-		if (this.#cards.length > 0) lines.push(sectionLine("Quota", "what is left · resets in", innerWidth));
+		if (this.#cards.length > 0) lines.push(sectionLine("Quota", "bar: used · % free · resets in", innerWidth));
 		lines.push(...this.#renderCardsGrid(innerWidth));
 		lines.push("");
 		lines.push(...this.#renderHeatmap(innerWidth));

@@ -76,6 +76,21 @@ The underlying `tui.contentWidth` setting remains numeric: `100` for Common,
 `140` for Wide, or `0` for Full width. The 80- and 120-column choices and existing
 saved custom widths remain supported.
 
+### Interactive usage dashboard
+
+`/usage` opens a fullscreen dashboard without adding a report to the conversation.
+Overview shows provider quotas, account availability, balances and local activity.
+Quota bars fill with **used** capacity, while the adjacent percentage shows
+**free** capacity; reset countdowns sit in their own column. Warning and exhausted
+quotas also carry status symbols. Narrow terminals use a single provider column;
+wider terminals place providers side by side.
+
+Press `Tab` to switch Overview and Details, or `Enter` to open Details. Press `r`
+to refresh; a failed refresh keeps the last report visible. Use the arrow keys,
+Page Up/Down or the mouse wheel to scroll. `Esc` returns from Details to Overview,
+then closes the dashboard. Activity history is local; an unavailable history does
+not hide provider quotas.
+
 ### Launch flags
 
 #### Session and workspace
