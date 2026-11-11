@@ -4,6 +4,7 @@
 
 ### Changed
 
+- The side panel shows a Spend section right after Context, from the first frame: this conversation's estimated USD (four decimals under $1), total tokens, input, output and cache reads. While a reply streams, its output is estimated from the streamed text at the model's output price and added on top, marked "~", until its usage is booked. It replaces the "This conversation" block below the plan.
 - `/usage` Overview draws each provider's quota and the activity heatmap as framed cards; cards in a row share a height and a pressured card's border turns yellow or red.
 
 ### Added

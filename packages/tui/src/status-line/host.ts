@@ -21,7 +21,13 @@ export interface ActiveRepoContext {
 }
 
 export interface StatusLineSession {
-	state: { model?: Model; thinkingLevel?: ThinkingLevel; messages: readonly AgentMessage[] };
+	state: {
+		model?: Model;
+		thinkingLevel?: ThinkingLevel;
+		messages: readonly AgentMessage[];
+		/** The assistant message being streamed, when one is. */
+		streamMessage?: AgentMessage | null;
+	};
 	model?: Model;
 	messages?: readonly AgentMessage[];
 	sessionFile?: string;

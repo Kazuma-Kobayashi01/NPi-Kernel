@@ -6,7 +6,7 @@ import { bottomBorder, divider, row, splitRow, topBorder } from "@oh-my-pi/pi-tu
 import { renderSidePanel } from "@oh-my-pi/pi-tui/chrome/side-panel";
 import { TranscriptContainer } from "@oh-my-pi/pi-tui/chrome/transcript-container";
 import { COMPOSER_DEFAULTS, Composer } from "@oh-my-pi/pi-tui/prompt/composer";
-import { fitComposerLabel } from "@oh-my-pi/pi-tui/status-line/component";
+import { estimateStreamedTokens, fitComposerLabel } from "@oh-my-pi/pi-tui/status-line/component";
 import { WelcomeComponent } from "@oh-my-pi/pi-tui/prompt/welcome";
 import { createTheme, getBuiltinThemes } from "@oh-my-pi/pi-tui/theme/loader";
 import { hexToRgb } from "@oh-my-pi/pi-utils/color";
@@ -148,8 +148,9 @@ describe("side panel", () => {
 			"Resets in 2h 5m",
 			"7 Day",
 			"Resets in 2d 0h",
-			"This conversation",
-			"$0.23",
+			"Spend",
+			"$0.2300",
+			"13K tokens",
 			"12K",
 			"Todo 1/8",
 			"… 2 more",
@@ -157,10 +158,36 @@ describe("side panel", () => {
 			expect(text).toContain(fact);
 		}
 		expect(text).not.toContain("six");
-		const headings = ["Environment", "Context", "Plan usage", "This conversation", "Todo"];
+		const headings = ["Environment", "Context", "Spend", "Plan usage", "Todo"];
 		const order = headings.map(heading => text.indexOf(heading));
 		expect(order).toEqual([...order].sort((left, right) => left - right));
 		for (const row of rows().top) expect(visibleWidth(row)).toBeLessThanOrEqual(30);
+	});
+
+	it("shows spend from the first frame, in USD to four places under a dollar", () => {
+		const { top } = renderSidePanel(
+			{ title: "t", directory: "~/code", limits: [], tasksDone: 0, tasksTotal: 0, openTasks: [], cost: 0.0123, cacheReadTokens: 5_000 },
+			30,
+		);
+		const text = plain(top);
+		expect(text).toContain("$0.0123");
+		expect(text).toContain("5K tokens");
+		expect(text).toContain("Cache read");
+		expect(plain(renderSidePanel({ title: "t", directory: "~", limits: [], tasksDone: 0, tasksTotal: 0, openTasks: [] }, 30).top)).toContain("$0.0000");
+	});
+
+	it("adds the streaming reply's estimate on top, marked with ~", () => {
+		const text = plain(
+			renderSidePanel(
+				{ title: "t", directory: "~", limits: [], tasksDone: 0, tasksTotal: 0, openTasks: [], cost: 0.01, outputTokens: 100, streamingTokens: 400, streamingCost: 0.006 },
+				30,
+			).top,
+		);
+		expect(text).toContain("~$0.0160");
+		expect(text).toContain("~500 tokens");
+		expect(text).toContain("Streaming");
+		expect(estimateStreamedTokens([{ type: "text", text: "abcdefgh" }, { type: "thinking", thinking: "\u4f60\u597d" }])).toBe(4);
+		expect(estimateStreamedTokens(undefined)).toBe(0);
 	});
 
 	it("leaves out the plan without a subscription", () => {
@@ -170,7 +197,8 @@ describe("side panel", () => {
 		);
 		const text = plain(top);
 		expect(text).not.toContain("Plan usage");
-		expect(text).toContain("This conversation");
+		expect(text).toContain("Spend");
+		expect(text).toContain("$1.00");
 	});
 
 	async function docked(columns: number, sidePanel: boolean) {

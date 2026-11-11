@@ -606,6 +606,27 @@ function hasPathSegment(segments: readonly StatusLineSegmentId[]): boolean {
 }
 
 /** The status bar's live facts, for the side panel. */
+/**
+ * Rough output tokens of a streaming reply's blocks: a CJK character is about a token, anything
+ * else about a quarter of one. Good enough for a running estimate the booked usage then replaces.
+ */
+export function estimateStreamedTokens(content: unknown): number {
+	if (!Array.isArray(content)) return 0;
+	let tokens = 0;
+	for (const block of content as Array<Record<string, unknown>>) {
+		const text =
+			typeof block.text === "string"
+				? block.text
+				: typeof block.thinking === "string"
+					? block.thinking
+					: block.type === "toolCall" && block.arguments !== undefined
+						? JSON.stringify(block.arguments)
+						: "";
+		for (const ch of text) tokens += (ch.codePointAt(0) ?? 0) >= 0x2e80 ? 1 : 0.25;
+	}
+	return Math.ceil(tokens);
+}
+
 export interface SidePanelUsage {
 	contextTokens?: number;
 	contextWindow?: number;
@@ -613,6 +634,11 @@ export interface SidePanelUsage {
 	cost: number;
 	inputTokens: number;
 	outputTokens: number;
+	cacheReadTokens: number;
+	/** Output of the reply streaming now, estimated from its text until its usage is booked. */
+	streamingTokens: number;
+	/** `streamingTokens` at the model's output price; undefined without a price. */
+	streamingCost?: number;
 	branch?: string;
 	tier?: string;
 	limits: SidePanelLimit[];
@@ -3575,10 +3601,21 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			cost: ctx.usageStats.cost + (ctx.subagentTreeCost ?? 0),
 			inputTokens: ctx.usageStats.input + ctx.usageStats.cacheWrite,
 			outputTokens: ctx.usageStats.output,
+			cacheReadTokens: ctx.usageStats.cacheRead,
+			...this.#streamingSpend(),
 			branch: ctx.git.branch ?? undefined,
 			tier: usage?.tier,
 			limits,
 		};
+	}
+
+	/** The reply streaming now: its output tokens (estimated from its text) and their cost. */
+	#streamingSpend(): { streamingTokens: number; streamingCost?: number } {
+		const message = this.session.isStreaming ? this.session.state.streamMessage : null;
+		if (!message || message.role !== "assistant") return { streamingTokens: 0 };
+		const tokens = Math.max(estimateStreamedTokens(message.content), message.usage?.output ?? 0);
+		const rate = this.session.model?.cost?.output ?? this.session.state.model?.cost?.output;
+		return { streamingTokens: tokens, ...(rate && rate > 0 ? { streamingCost: (tokens * rate) / 1e6 } : {}) };
 	}
 
 	/** Facts another surface shows right now, so the bar stops repeating them. */

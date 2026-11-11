@@ -396,6 +396,11 @@ describe("interactive /usage account visibility", () => {
 		return stripVTControlCharacters(mounted?.render(120).join("\n") ?? "");
 	}
 
+	/** The overview as running text: card borders dropped and wrapped lines joined, so a phrase a card wraps still matches. */
+	function flatDisplay(): string {
+		return display().replace(/[│▎╭╮╰╯─]/g, " ").replace(/\s+/g, " ");
+	}
+
 	it("renders advisor status before usage refresh returns", async () => {
 		const refresh = Promise.withResolvers<UsageReport[] | null>();
 		const ctx = createInteractiveModeContext({
@@ -450,7 +455,7 @@ describe("interactive /usage account visibility", () => {
 		};
 		await command(async () => [report]).handleUsageCommand();
 
-		const overview = display();
+		const overview = flatDisplay();
 		expect(overview).toContain("2 accts");
 		expect(overview).toContain(email);
 		expect(overview).toContain("org-personal");
@@ -477,7 +482,7 @@ describe("interactive /usage account visibility", () => {
 				return result === "null" ? null : [];
 			}).handleUsageCommand();
 
-			const overview = display();
+			const overview = flatDisplay();
 			expect(overview).toContain("2 accts");
 			expect(overview.match(/shared@example\.test/g)).toHaveLength(2);
 			expect(overview).toContain("org-team");

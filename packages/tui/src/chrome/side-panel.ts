@@ -1,7 +1,8 @@
 /**
  * The session side panel, the terminal's take on the desktop app's rail: where
- * the conversation runs, how full its context is, what is left of the
- * subscription, what this conversation has spent, and what is left to do.
+ * the conversation runs, how full its context is, what this conversation has
+ * spent so far (USD and tokens), what is left of the subscription, and what is
+ * left to do.
  * Pure rendering; the composer docks the rows.
  */
 import { formatNumber } from "@oh-my-pi/pi-utils";
@@ -25,9 +26,15 @@ export interface SidePanelFacts {
 	/** `Provider · plan`, present only for a signed-in subscription. */
 	readonly plan?: string;
 	readonly limits: readonly SidePanelLimit[];
+	/** Estimated USD spend of this conversation, its subagents included. */
 	readonly cost?: number;
+	/** Input tokens, cache writes included. */
 	readonly inputTokens?: number;
 	readonly outputTokens?: number;
+	readonly cacheReadTokens?: number;
+	/** Output of the reply streaming now, estimated; shown with a "~" on top of the booked totals. */
+	readonly streamingTokens?: number;
+	readonly streamingCost?: number;
 	readonly tasksDone: number;
 	readonly tasksTotal: number;
 	/** Unfinished tasks in plan order. */
@@ -87,6 +94,27 @@ export function renderSidePanel(facts: SidePanelFacts, width: number): SidePanel
 		if (percent !== undefined) top.push(meter(percent, width));
 	}
 
+	// Spend comes right after context and is always shown: it is what a session costs as it runs.
+	const input = facts.inputTokens ?? 0;
+	const output = facts.outputTokens ?? 0;
+	const cacheRead = facts.cacheReadTokens ?? 0;
+	const streaming = facts.streamingTokens ?? 0;
+	// While a reply streams its output is estimated on top, marked "~", until its usage is booked.
+	const mark = streaming > 0 ? "~" : "";
+	const spend = `${mark}${formatSpend((facts.cost ?? 0) + (streaming > 0 ? (facts.streamingCost ?? 0) : 0))}`;
+	top.push(
+		"",
+		heading("Spend"),
+		spaced(
+			streaming > 0 ? muted(spend) : theme.bold(spend),
+			muted(`${mark}${formatNumber(input + output + cacheRead + streaming)} tokens`),
+			width,
+		),
+	);
+	if (streaming > 0) top.push(theme.fg("dim", spaced("Streaming", `~${formatNumber(streaming)}`, width)));
+	top.push(muted(spaced("Input", formatNumber(input), width)), muted(spaced("Output", formatNumber(output), width)));
+	if (cacheRead > 0) top.push(muted(spaced("Cache read", formatNumber(cacheRead), width)));
+
 	if (facts.plan !== undefined || facts.limits.length > 0) {
 		top.push("", heading("Plan usage"));
 		if (facts.plan) top.push(muted(fit(facts.plan)));
@@ -98,12 +126,6 @@ export function renderSidePanel(facts: SidePanelFacts, width: number): SidePanel
 		}
 	}
 
-	const conversation: string[] = [];
-	if (facts.cost) conversation.push(muted(spaced("Spend", `$${facts.cost.toFixed(2)}`, width)));
-	if (facts.inputTokens) conversation.push(muted(spaced("Input", formatNumber(facts.inputTokens), width)));
-	if (facts.outputTokens) conversation.push(muted(spaced("Output", formatNumber(facts.outputTokens), width)));
-	if (conversation.length > 0) top.push("", heading("This conversation"), ...conversation);
-
 	if (facts.tasksTotal > 0) {
 		top.push("", `${heading("Todo")} ${muted(`${facts.tasksDone}/${facts.tasksTotal}`)}`);
 		for (const task of facts.openTasks.slice(0, MAX_OPEN_TASKS)) top.push(muted(fit(`○ ${task}`)));
@@ -112,6 +134,13 @@ export function renderSidePanel(facts: SidePanelFacts, width: number): SidePanel
 	}
 
 	return { top, bottom: [] };
+}
+
+/** `$0.0123` under a dollar, `$1.23` above: small sessions still show movement. */
+export function formatSpend(cost: number | undefined): string {
+	if (!cost || cost <= 0) return "$0.0000";
+	if (cost < 0.0001) return "<$0.0001";
+	return "$" + (cost < 1 ? cost.toFixed(4) : cost.toFixed(2));
 }
 
 /** `text` cut from the left: a path's end says more than its start. */
