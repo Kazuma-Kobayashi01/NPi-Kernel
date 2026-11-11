@@ -2186,7 +2186,7 @@ export class SelectorController {
 	 * rejects, and the editor is restored immediately. Returns true when
 	 * credentials were stored.
 	 */
-	async #handleOAuthLogin(providerId: string): Promise<boolean> {
+	async #handleOAuthLogin(providerId: string, accountName?: string): Promise<boolean> {
 		this.ctx.showStatus(`Logging in to ${providerId}…`);
 		const { getOAuthCredentialProvider, LoginDialogComponent, PASTE_CODE_LOGIN_PROVIDERS } =
 			await loadProviderAuthUi();
@@ -2256,7 +2256,12 @@ export class SelectorController {
 			}
 			// Offer to name a new account (re-logins keep their name), so two accounts of one provider
 			// read as e.g. GPT-Plus-Kazuma and GPT-Plus-Hanyu.
-			const named = await this.#nameLoggedInAccount(dialog, getOAuthCredentialProvider(providerId), identity);
+			const named = await this.#nameLoggedInAccount(
+				dialog,
+				getOAuthCredentialProvider(providerId),
+				identity,
+				accountName,
+			);
 			const block = new TranscriptBlock();
 			// Name the account (and Anthropic organization) that was stored so a
 			// login that lands on an unintended account/subscription is visible
@@ -2288,34 +2293,51 @@ export class SelectorController {
 		}
 	}
 
-	/** Ask for an optional name for the account a login just stored; returns the name it got. */
+	/**
+	 * Name the account a login just stored; returns the name it got. `requested` (from `/login <provider>
+	 * <name>`) is used as given; otherwise the user is asked, with the provider's other accounts listed,
+	 * and asked again when the name is taken. Enter skips. Re-logins keep their existing name.
+	 */
 	async #nameLoggedInAccount(
 		dialog: { showPrompt(prompt: { message: string; placeholder?: string; allowEmpty?: boolean }): Promise<string> },
 		provider: string,
 		identity: OAuthLoginIdentity | undefined,
+		requested?: string,
 	): Promise<string | undefined> {
 		if (identity?.type !== "oauth" || identity.credentialId === undefined) return undefined;
 		if (identity.label) return identity.label;
-		let answer: string;
-		try {
-			answer = (
-				await dialog.showPrompt({
-					message: "Name this account (optional, e.g. GPT-Plus-Kazuma); Enter skips:",
-					placeholder: "",
-					allowEmpty: true,
-				})
-			).trim();
-		} catch {
-			return undefined;
+		const oauth = this.ctx.session.modelRegistry.authStorage.oauth;
+		const others = oauth
+			.accounts(provider)
+			.filter(account => account.credentialId !== identity.credentialId && account.label)
+			.map(account => account.label as string);
+		let answer = requested?.trim() ?? "";
+		for (let attempt = 0; attempt < 3; attempt++) {
+			if (!answer && requested === undefined) {
+				const taken = others.length > 0 ? ` Already named: ${others.join(", ")}.` : "";
+				try {
+					answer = (
+						await dialog.showPrompt({
+							message: `Name this account (optional, e.g. GPT-Plus-Kazuma).${taken} Enter skips:`,
+							placeholder: "",
+							allowEmpty: true,
+						})
+					).trim();
+				} catch {
+					return undefined;
+				}
+			}
+			if (!answer) return undefined;
+			try {
+				return oauth.setLabel(provider, identity.credentialId, answer).label;
+			} catch (error) {
+				this.ctx.showWarning(`Account not named: ${error instanceof Error ? error.message : String(error)}`);
+				// A name given on the command line is not asked for again.
+				if (requested !== undefined) return undefined;
+				answer = "";
+			}
 		}
-		if (!answer) return undefined;
-		try {
-			return this.ctx.session.modelRegistry.authStorage.oauth.setLabel(provider, identity.credentialId, answer)
-				.label;
-		} catch (error) {
-			this.ctx.showWarning(`Account not named: ${error instanceof Error ? error.message : String(error)}`);
-			return undefined;
-		}
+		return undefined;
 	}
 
 	async #handleCredentialLogout(providerId: string, account: LogoutAccount): Promise<void> {
@@ -2394,10 +2416,10 @@ export class SelectorController {
 		});
 	}
 
-	async showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void> {
+	async showOAuthSelector(mode: "login" | "logout", providerId?: string, accountName?: string): Promise<void> {
 		if (providerId) {
 			if (mode === "login") {
-				await this.#handleOAuthLogin(providerId);
+				await this.#handleOAuthLogin(providerId, accountName);
 			} else {
 				await this.#showOAuthLogoutAccountSelector(providerId);
 			}
@@ -2437,6 +2459,10 @@ export class SelectorController {
 				},
 				{
 					disabledProviders: withEditionHiddenProviders(cfgDisabledProviders.get(settings)),
+					accountNames: (selectedProviderId: string) =>
+						this.ctx.session.modelRegistry.authStorage.oauth
+							.accounts(selectedProviderId)
+							.map(account => account.label ?? account.email ?? account.accountId ?? `#${account.position}`),
 					validateAuth: async (selectedProviderId: string) => {
 						const apiKey = await this.ctx.session.modelRegistry.getApiKeyForProvider(
 							selectedProviderId,

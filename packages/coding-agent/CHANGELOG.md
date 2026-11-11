@@ -4,7 +4,7 @@
 
 ### Added
 
-- Name stored OAuth accounts, e.g. `GPT-Plus-Kazuma` and `GPT-Plus-Hanyu` for two accounts of one provider: `/login` offers to name a new account, `/session rename <account> <name>` names or renames one (`-` clears it), `/session pin` and `/usage` show the name and `/session pin <name>` pins by it, and `auth.accountPolicies` can select an account by `label`. Names are kept across token refreshes and re-logins.
+- Name stored OAuth accounts, e.g. `GPT-Plus-Kazuma` and `GPT-Plus-Hanyu` for two accounts of one provider: `/login` offers to name a new account (listing the names already taken; `/login <provider> <name>` gives it up front, and the provider list shows each provider's accounts), `/session rename <account> <name>` names or renames one (`-` clears it), `/session pin` and `/usage` show the name and `/session pin <name>` pins by it, and `auth.accountPolicies` can select an account by `label`. Names are kept across token refreshes and re-logins.
 - The `/office` panel sets a member's thinking effort, shows what each office is investigating, spend today and in total per office and member, recent assignments and a Reports tab that opens each report, and updates live while open.
 - RPC `office_usage` frames carry Virtual Office spend as per-member deltas for hosts to add up; booking usage no longer makes the session re-read and push the whole `office_state` several times a second while members work.
 - Virtual Office members take a thinking effort: `/office set <name> thinking <level>` sets it (`default` clears it), `/office status` and the RPC roster show it, and an effort the member's model does not support is clamped to the closest one it does.

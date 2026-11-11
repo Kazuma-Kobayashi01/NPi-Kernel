@@ -830,7 +830,7 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		name: "login",
 		icon: "signIn",
 		description: "Login with OAuth provider",
-		inlineHint: "[provider|redirect URL]",
+		inlineHint: "[provider [account name]|redirect URL]",
 		allowArgs: true,
 		getTuiAutocompleteDescription: runtime =>
 			runtime.ctx.oauthManualInput.hasPending()
@@ -840,7 +840,10 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			const manualInput = runtime.ctx.oauthManualInput;
 			const args = command.args.trim();
 			if (args.length > 0) {
-				const matchedProvider = getOAuthProviders().find(provider => provider.id === args);
+				// `/login <provider> [account name]`: the name is given to the account the login adds.
+				const [providerArg = "", ...nameParts] = args.split(/\s+/);
+				const accountName = nameParts.join(" ").trim() || undefined;
+				const matchedProvider = getOAuthProviders().find(provider => provider.id === providerArg);
 				if (matchedProvider) {
 					if (manualInput.hasPending()) {
 						const pendingProvider = manualInput.pendingProviderId;
@@ -851,7 +854,7 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 						clearSubmittedText(runtime);
 						return;
 					}
-					void runtime.ctx.showOAuthSelector("login", matchedProvider.id);
+					void runtime.ctx.showOAuthSelector("login", matchedProvider.id, accountName);
 					clearSubmittedText(runtime);
 					return;
 				}

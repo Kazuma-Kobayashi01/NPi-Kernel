@@ -611,7 +611,7 @@ export interface InteractiveModeContext {
 	prepareSessionSwitch(): Promise<void>;
 	handleResumeSession(sessionPath: string, options?: ResumeSessionOptions): Promise<void>;
 	handleSessionDeleteCommand(): Promise<void>;
-	showOAuthSelector(mode: "login" | "logout", providerId?: string): Promise<void>;
+	showOAuthSelector(mode: "login" | "logout", providerId?: string, accountName?: string): Promise<void>;
 	showSessionPinSelector(): Promise<void>;
 	showResetUsageSelector(): Promise<void>;
 	showProviderSetup(): Promise<void>;

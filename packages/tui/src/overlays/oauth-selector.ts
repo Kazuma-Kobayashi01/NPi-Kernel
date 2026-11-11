@@ -94,6 +94,7 @@ export class OAuthSelectorComponent extends OverlayPanel {
 	#pickerItems: readonly TspPickerItem[] | undefined;
 	#pickerRoot: NativeNode | undefined;
 	#sheet: OAuthSelectorSheet | undefined;
+	#accountNames: ((providerId: string) => readonly string[]) | undefined;
 	constructor(
 		mode: "login" | "logout",
 		authStorage: OAuthSelectorAuthSource,
@@ -104,10 +105,13 @@ export class OAuthSelectorComponent extends OverlayPanel {
 			validateAuth?: (providerId: string) => Promise<boolean>;
 			requestRender?: () => void;
 			sheet?: OAuthSelectorSheet;
+			/** Names of the accounts already signed in under a provider, shown on its row. */
+			accountNames?: (providerId: string) => readonly string[];
 		},
 	) {
 		super(mode === "login" ? "Select provider to login" : "Select provider to logout", "omp.overlay.oauth");
 		this.#mode = mode;
+		this.#accountNames = options?.accountNames;
 		this.#authStorage = authStorage;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
@@ -510,10 +514,12 @@ export class OAuthSelectorComponent extends OverlayPanel {
 	/** Credential status of a provider row: `value` (state) and `detail` (origin) spans. */
 	#describeStatus(providerId: string): { value?: readonly TspSpan[]; detail?: readonly TspSpan[] } {
 		const origin = this.#authStorage.keys.source(providerId);
+		const accounts = origin?.kind === "oauth" ? this.#accountSummary(providerId) : undefined;
 		const detail = origin
 			? [
 					span(
-						origin.kind === "env" && origin.envVar ? `env: ${origin.envVar}` : ORIGIN_LABELS[origin.kind],
+						accounts ??
+							(origin.kind === "env" && origin.envVar ? `env: ${origin.envVar}` : ORIGIN_LABELS[origin.kind]),
 						"muted",
 					),
 				]
@@ -525,6 +531,13 @@ export class OAuthSelectorComponent extends OverlayPanel {
 			return { value: [span("logged in", "success")], detail };
 		}
 		return { detail };
+	}
+
+	/** "2 accounts: A, B" for a provider with stored accounts; undefined otherwise. */
+	#accountSummary(providerId: string): string | undefined {
+		const names = this.#accountNames?.(providerId) ?? [];
+		if (names.length === 0) return undefined;
+		return names.length === 1 ? names[0] : `${names.length} accounts: ${names.join(", ")}`;
 	}
 
 	/** One provider card: initials mark, origin detail, auth-state dot, disabled reason. */
@@ -547,7 +560,7 @@ export class OAuthSelectorComponent extends OverlayPanel {
 		const detail = !source
 			? "Not configured"
 			: origin?.kind === "oauth"
-				? `Signed in · ${source}`
+				? `Signed in · ${this.#accountSummary(provider.id) ?? source}`
 				: `API key · ${source}`;
 		const initials = provider.name
 			.split(/[^\p{L}\p{N}]+/u)
