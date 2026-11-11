@@ -163,6 +163,32 @@ export function collectUnreportedAccounts(
 	});
 }
 
+/**
+ * The stored OAuth account a report belongs to, by the same rules as {@link collectUnreportedAccounts}:
+ * the org gates (when either side has one), then the email decides when both carry one, else an
+ * account or project id. `undefined` when no stored account matches.
+ */
+export function accountForReport(
+	report: UsageReport,
+	accounts: readonly UsageAccountIdentity[],
+): UsageAccountIdentity | undefined {
+	const reportOrg = typeof report.metadata?.orgId === "string" ? report.metadata.orgId.toLowerCase() : undefined;
+	const reportEmail = typeof report.metadata?.email === "string" ? report.metadata.email.toLowerCase() : undefined;
+	const identifiers = reportIdentifiers(report);
+	return accounts.find(account => {
+		if (account.provider !== report.provider || account.type !== "oauth") return false;
+		const accountOrg = account.orgId?.toLowerCase();
+		if ((accountOrg || reportOrg) && accountOrg !== reportOrg) return false;
+		const email = account.email?.toLowerCase();
+		if (email && reportEmail) return email === reportEmail;
+		const ids = [account.email, account.accountId, account.projectId]
+			.filter((value): value is string => typeof value === "string" && value.length > 0)
+			.map(value => value.toLowerCase());
+		if (ids.length === 0) return accountOrg !== undefined && accountOrg === reportOrg;
+		return ids.some(id => identifiers.has(id));
+	});
+}
+
 /** Compose the account label from parts, masking each part individually so `--redact` cannot be bypassed by the composite string. */
 export function accountIdentityLabel(account: UsageAccountIdentity, redaction?: Map<string, string>): string {
 	if (account.type === "api_key") return "API key";

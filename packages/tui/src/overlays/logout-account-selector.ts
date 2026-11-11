@@ -14,6 +14,34 @@ import { actionHint, hintsRow, overlayCard } from "../native/overlay";
 
 const LOGOUT_SELECTOR_MAX_VISIBLE = 10;
 
+/** What the list is for: `/logout` signs an account out, `/account` renames it. */
+export interface AccountListWording {
+	readonly title: string;
+	readonly pickerTitle: string;
+	readonly subtitle: string;
+	readonly action: string;
+	readonly hint: string;
+	readonly empty: string;
+	readonly danger: boolean;
+}
+
+function logoutWording(providerName: string | undefined): AccountListWording {
+	return {
+		title: providerName ? `Select ${providerName} account to log out` : "Select an account to log out",
+		pickerTitle: providerName ? `${providerName} accounts` : "Accounts",
+		subtitle: "Pick the account to sign out",
+		action: "Sign out",
+		hint: "log out account",
+		empty: "No stored accounts to log out",
+		danger: true,
+	};
+}
+
+/** Row key: credential ids are per store, so the provider keeps keys unique across providers. */
+function logoutKey(account: LogoutAccount): string {
+	return `${account.provider}:${account.credentialId}`;
+}
+
 export interface LogoutAccount {
 	credentialId: number;
 	provider: string;
@@ -23,7 +51,10 @@ export interface LogoutAccount {
 	active: boolean;
 }
 
-/** Account picker for `/logout` after the provider has been selected. */
+/**
+ * Account picker for `/logout`: one provider's accounts, or (`providerName` undefined) every stored
+ * account of every provider, each row naming its provider.
+ */
 export class LogoutAccountSelectorComponent extends OverlayPanel {
 	#listContainer: Container;
 	#menu: MenuSelection<LogoutAccount>;
@@ -34,28 +65,37 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 	#nativeRoot: NativeNode | undefined;
 	#pickerRoot: NativeNode | undefined;
 	#pickerItems: readonly TspPickerItem[] | undefined;
-	readonly #providerName: string;
+	readonly #providerName: string | undefined;
 	readonly #accounts: readonly LogoutAccount[];
+	readonly #nameOf: (provider: string) => string;
+	readonly #wording: AccountListWording;
 
 	constructor(
-		providerName: string,
+		providerName: string | undefined,
 		accounts: LogoutAccount[],
 		onSelect: (account: LogoutAccount) => void,
 		onCancel: () => void,
+		options: { providerName?: (provider: string) => string; wording?: AccountListWording } = {},
 	) {
-		super(`Select ${providerName} account to log out`, "omp.overlay.logout");
+		const wording = options.wording ?? logoutWording(providerName);
+		super(wording.title, "omp.overlay.logout");
+		this.#wording = wording;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
 		this.#providerName = providerName;
-		this.#accounts = accounts;
-		const active = accounts.find(account => account.active);
+		this.#nameOf = options.providerName ?? (provider => provider);
+		// Every provider's accounts in one list: each row names its provider.
+		this.#accounts = providerName
+			? accounts
+			: accounts.map(account => ({ ...account, label: `${this.#nameOf(account.provider)} · ${account.label}` }));
+		const active = this.#accounts.find(account => account.active);
 		this.#menu = new MenuSelection<LogoutAccount>(
-			accounts,
+			this.#accounts,
 			{
-				getKey: account => String(account.credentialId),
+				getKey: account => logoutKey(account),
 				getSearchText: account => `${account.label} ${account.detail} ${account.provider}`,
 			},
-			active ? String(active.credentialId) : undefined,
+			active ? logoutKey(active) : undefined,
 		);
 
 		this.#listContainer = new Container();
@@ -98,14 +138,14 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 		}
 
 		if (total === 0) {
-			this.#listContainer.addChild(new TruncatedText(theme.fg("muted", "No stored accounts to log out"), 0, 0));
+			this.#listContainer.addChild(new TruncatedText(theme.fg("muted", this.#wording.empty), 0, 0));
 		}
 
 		this.#listContainer.addChild(
 			new TruncatedText(
 				theme.fg(
 					"muted",
-					`${editorKeys("tui.select.up", "tui.select.down")} select · ${formatKeyHint("enter")} log out account · ${editorKey("tui.select.cancel")} cancel`,
+					`${editorKeys("tui.select.up", "tui.select.down")} select · ${formatKeyHint("enter")} ${this.#wording.hint} · ${editorKey("tui.select.cancel")} cancel`,
 				),
 				0,
 				0,
@@ -145,8 +185,8 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 	override describe(cx: DescribeContext): NativeNode {
 		if (cx.supports("picker")) {
 			this.#pickerRoot ??= dockedPicker({
-				title: `${this.#providerName} accounts`,
-				subtitle: "Pick the account to sign out",
+				title: this.#wording.pickerTitle,
+				subtitle: this.#wording.subtitle,
 				icon: "key-round",
 				noun: "accounts",
 				size: "md",
@@ -154,15 +194,18 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 				preview: "none",
 				query: null,
 				items: (this.#pickerItems ??= this.#accounts.map(account => ({
-					id: String(account.credentialId),
+					id: logoutKey(account),
 					label: account.label,
 					...(account.detail ? { detail: account.detail } : {}),
 					badges: [{ text: account.type === "oauth" ? "login" : "api key" }],
 				}))),
-				current: this.#accounts.filter(account => account.active).map(account => String(account.credentialId)),
+				current: this.#accounts.filter(account => account.active).map(account => logoutKey(account)),
 				selected: this.#menu.selectedKey ?? null,
-				empty: "No stored accounts to log out",
-				actions: [pickerAction("confirm", "Sign out", "enter", { primary: true, danger: true }), CLOSE_ACTION],
+				empty: this.#wording.empty,
+				actions: [
+					pickerAction("confirm", this.#wording.action, "enter", { primary: true, danger: this.#wording.danger }),
+					CLOSE_ACTION,
+				],
 			});
 			return this.#pickerRoot;
 		}
@@ -176,7 +219,7 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 					value: account.active ? [span("active", "muted")] : undefined,
 				},
 				undefined,
-				String(account.credentialId),
+				logoutKey(account),
 			),
 		);
 		this.#nativeRoot = overlayCard(this.nativeRole, this.title, [
@@ -184,7 +227,7 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 				"list",
 				{
 					selected: this.#menu.selectedKey ?? null,
-					empty: "No stored accounts to log out",
+					empty: this.#wording.empty,
 					max: { lines: LOGOUT_SELECTOR_MAX_VISIBLE },
 				},
 				this.#nativeItems,
@@ -192,7 +235,7 @@ export class LogoutAccountSelectorComponent extends OverlayPanel {
 			),
 			(this.#nativeHints ??= hintsRow([
 				actionHint(["tui.select.up", "tui.select.down"], "select"),
-				{ keys: ["enter"], label: "log out account" },
+				{ keys: ["enter"], label: this.#wording.hint },
 				actionHint("tui.select.cancel", "cancel"),
 			])),
 		]);

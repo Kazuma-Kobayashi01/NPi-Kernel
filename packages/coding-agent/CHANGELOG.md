@@ -4,6 +4,7 @@
 
 ### Added
 
+- `/account` lists every signed-in OAuth account across providers (name, email, active in this session) and renames the selected one; outside the terminal UI it prints the list.
 - Name stored OAuth accounts, e.g. `GPT-Plus-Kazuma` and `GPT-Plus-Hanyu` for two accounts of one provider: `/login` offers to name a new account (listing the names already taken; `/login <provider> <name>` gives it up front, and the provider list shows each provider's accounts), `/session rename <account> <name>` names or renames one (`-` clears it), `/session pin` and `/usage` show the name and `/session pin <name>` pins by it, and `auth.accountPolicies` can select an account by `label`. Names are kept across token refreshes and re-logins.
 - The `/office` panel sets a member's thinking effort, shows what each office is investigating, spend today and in total per office and member, recent assignments and a Reports tab that opens each report, and updates live while open.
 - RPC `office_usage` frames carry Virtual Office spend as per-member deltas for hosts to add up; booking usage no longer makes the session re-read and push the whole `office_state` several times a second while members work.
@@ -33,6 +34,8 @@
 
 ### Changed
 
+- `/usage` gives each signed-in account its own card, titled with the provider and the account's name, instead of averaging a provider's accounts into one card; an account whose lookup failed gets its own card.
+- `/logout` without a provider lists every stored account of every provider and logs out the one you pick, instead of asking for the provider first; account rows show the name you gave the account.
 - Virtual Office dispatch no longer asks which model or thinking effort a member batch should use, or waits for approval of the `office` call: each assignment runs on the model and effort configured for that member, falling back to the session's subagent setting.
 - A connection that resets, is refused or cannot be reached three times in a row on the same model stops being retried there (it used to take all ten `retry.maxRetries`, about a minute each during a provider outage); the turn moves to the fallback chain or reports the error.
 - The short prompt for small fast models (Gemini Flash and Lite) asks them to send independent reads and searches in one response instead of one per turn.

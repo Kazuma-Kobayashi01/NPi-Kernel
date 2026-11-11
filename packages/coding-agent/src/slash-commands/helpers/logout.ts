@@ -17,6 +17,9 @@ function nonEmpty(value: string | undefined): string | undefined {
 function oauthLabel(row: StoredAuthCredential): string {
 	const credential = row.credential;
 	if (credential.type !== "oauth") return `API key #${row.id}`;
+	// The name the user gave the account says which one it is better than anything else.
+	const named = nonEmpty(credential.label);
+	if (named) return named;
 	const base =
 		nonEmpty(credential.email) ??
 		nonEmpty(credential.accountId) ??
@@ -33,7 +36,10 @@ function oauthDetail(row: StoredAuthCredential, label: string): string {
 	const credential = row.credential;
 	if (credential.type === "api_key") return `stored API key #${row.id}`;
 	const parts: string[] = [];
+	const named = nonEmpty(credential.label);
 	const email = nonEmpty(credential.email);
+	const org = nonEmpty(credential.orgName) ?? nonEmpty(credential.orgId);
+	if (named && org) parts.push(org);
 	const accountId = nonEmpty(credential.accountId);
 	const projectId = nonEmpty(credential.projectId);
 	const enterpriseUrl = nonEmpty(credential.enterpriseUrl);
@@ -104,6 +110,40 @@ export function toLogoutAccounts(
 			if (left.active !== right.active) return left.active ? -1 : 1;
 			return left.label.localeCompare(right.label) || left.credentialId - right.credentialId;
 		});
+}
+
+/**
+ * Every stored account of every provider, for `/logout` without a provider: grouped by provider
+ * (in name order), the session's active account first within each. Reloads the store first.
+ */
+export async function listAllLogoutAccounts(authStorage: AuthStorage, sessionId: string): Promise<LogoutAccount[]> {
+	await authStorage.credentials.reload();
+	const providers = [...new Set(authStorage.credentials.list().map(row => row.provider))].sort();
+	return providers.flatMap(provider =>
+		toLogoutAccounts(provider, authStorage.credentials.list(provider), {
+			activeIdentity: authStorage.oauth.identity(provider, sessionId),
+			activeApiKey: authStorage.keys.source(provider)?.kind === "api_key",
+		}),
+	);
+}
+
+/**
+ * Every stored OAuth account, for `/account`: the same rows as {@link listAllLogoutAccounts} without
+ * API keys (they have no name to give).
+ */
+export async function listOAuthAccounts(authStorage: AuthStorage, sessionId: string): Promise<LogoutAccount[]> {
+	return (await listAllLogoutAccounts(authStorage, sessionId)).filter(account => account.type === "oauth");
+}
+
+/** The `/account` list as text, for hosts without the panel. */
+export function formatAccountList(accounts: readonly LogoutAccount[], providerName: (provider: string) => string): string {
+	if (accounts.length === 0) return "No OAuth accounts are signed in. Use /login to add one.";
+	return accounts
+		.map(
+			account =>
+				`${providerName(account.provider)} · ${account.label}${account.active ? " (active)" : ""}${account.detail ? `  ${account.detail}` : ""}`,
+		)
+		.join("\n");
 }
 
 /** Stored accounts `/logout` can remove for `provider`, active first. Reloads the store to see other processes' changes. */

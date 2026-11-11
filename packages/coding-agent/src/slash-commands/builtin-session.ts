@@ -12,7 +12,8 @@ import {
 } from "../utils/changelog";
 import { formatTokenCount, refreshStatusLine } from "./builtin-modes";
 import { buildContextReportText } from "./helpers/context-report";
-import { formatCoarseDuration } from "@oh-my-pi/pi-tui/chrome/format";
+import { formatCoarseDuration, formatProviderName } from "@oh-my-pi/pi-tui/chrome/format";
+import { formatAccountList, listOAuthAccounts } from "./helpers/logout";
 import { truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { buildJobTree, jobTreeGuide, jobTreeIndent } from "@oh-my-pi/pi-tui/overlays/job-tree";
 import { theme } from "@oh-my-pi/pi-tui/theme";
@@ -883,9 +884,23 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
+		name: "account",
+		icon: "session",
+		description: "View and rename signed-in OAuth accounts",
+		handle: async (_command, runtime) => {
+			const accounts = await listOAuthAccounts(runtime.session.modelRegistry.authStorage, runtime.session.sessionId);
+			await runtime.output(formatAccountList(accounts, formatProviderName));
+			return commandConsumed();
+		},
+		handleTui: (_command, runtime) => {
+			void runtime.ctx.showAccountManager();
+			clearSubmittedText(runtime);
+		},
+	},
+	{
 		name: "logout",
 		icon: "signOut",
-		description: "Logout from OAuth provider",
+		description: "Log out one stored account",
 		inlineHint: "[provider]",
 		allowArgs: true,
 		handleTui: (command, runtime) => {

@@ -80,7 +80,10 @@ export interface UnavailableUsageAccount {
 /** Compact per-provider summary backing one card in the subscriptions grid. */
 export interface ProviderCard {
 	provider: string;
+	/** `Provider · account`: each signed-in account has its own card. */
 	name: string;
+	/** The account the card shows (its user-given name, else email or id). */
+	account?: string;
 	/** Number of represented accounts, including unavailable usage lookups. */
 	accounts: number;
 	unavailableAccounts: string[];
@@ -157,23 +160,31 @@ export function buildProviderCards(
 	reports: UsageReport[],
 	nowMs: number,
 	unavailableAccounts: readonly UnavailableUsageAccount[] = [],
+	accountName?: (report: UsageReport) => string | undefined,
 ): ProviderCard[] {
 	const displayReports = collapseSharedUsageReports(reports);
-	const grouped = new Map<string, UsageReport[]>();
+	// One card per signed-in account: reports group by provider and account, so two accounts of
+	// one provider (GPT-Plus-Kazuma, GPT-Plus-Hanyu) each show their own quotas.
+	const grouped = new Map<string, { provider: string; account: string; reports: UsageReport[]; unavailable: string[] }>();
+	const seenPerProvider = new Map<string, number>();
 	for (const report of displayReports) {
-		const list = grouped.get(report.provider) ?? [];
-		list.push(report);
-		grouped.set(report.provider, list);
+		const index = seenPerProvider.get(report.provider) ?? 0;
+		seenPerProvider.set(report.provider, index + 1);
+		const account = accountName?.(report) ?? reportAccountLabel(report, report.limits[0], index);
+		const key = `${report.provider}\u0000${account}`;
+		const entry = grouped.get(key) ?? { provider: report.provider, account, reports: [], unavailable: [] };
+		entry.reports.push(report);
+		grouped.set(key, entry);
 	}
-	for (const account of unavailableAccounts) {
-		if (!grouped.has(account.provider)) grouped.set(account.provider, []);
+	for (const missing of unavailableAccounts) {
+		const key = `${missing.provider}\u0000${missing.label}`;
+		const entry = grouped.get(key) ?? { provider: missing.provider, account: missing.label, reports: [], unavailable: [] };
+		entry.unavailable.push(missing.label);
+		grouped.set(key, entry);
 	}
 
 	const cards: ProviderCard[] = [];
-	for (const [provider, providerReports] of grouped) {
-		const unavailable = unavailableAccounts
-			.filter(account => account.provider === provider)
-			.map(account => account.label);
+	for (const { provider, account, reports: providerReports, unavailable } of grouped.values()) {
 		const buckets = new Map<string, { label: string; limits: UsageLimit[] }>();
 		for (const report of providerReports) {
 			for (const limit of report.limits) {
@@ -268,7 +279,8 @@ export function buildProviderCards(
 		);
 		cards.push({
 			provider,
-			name: formatProviderName(provider),
+			name: `${formatProviderName(provider)} · ${account}`,
+			account,
 			accounts: providerReports.length + unavailable.length,
 			unavailableAccounts: unavailable,
 			windows,
@@ -623,6 +635,8 @@ function formatActivityTotals(layout: HeatmapLayout): string {
 export interface UsageDashboardOptions {
 	reports: UsageReport[];
 	unavailableAccounts?: readonly UnavailableUsageAccount[];
+	/** The name to show for the account a report belongs to (the user's name for it); default: its email or id. */
+	accountName?: (report: UsageReport) => string | undefined;
 	/**
 	 * Full classic `/usage` report of `reports` (the latest refresh) for the
 	 * expanded detail view; re-invoked per terminal width.
@@ -723,7 +737,7 @@ export class UsageDashboardComponent implements Component {
 		this.#options = options;
 		this.#reports = options.reports;
 		this.#nowMs = Date.now();
-		this.#cards = buildProviderCards(this.#reports, this.#nowMs, options.unavailableAccounts);
+		this.#cards = buildProviderCards(this.#reports, this.#nowMs, options.unavailableAccounts, options.accountName);
 		this.#panel = new OverlayPanel("Usage");
 		this.#header = new PanelRows();
 		this.#header.setHeight(1);
@@ -864,7 +878,7 @@ export class UsageDashboardComponent implements Component {
 		}
 
 		for (const account of card.unavailableAccounts) {
-			const text = sanitizeDisplayLine(`${account} — usage unavailable`);
+			const text = sanitizeDisplayLine(account === card.account ? "usage unavailable" : `${account} — usage unavailable`);
 			for (const line of wrapTextWithAnsi(text, Math.max(1, width - 2))) {
 				lines.push(`  ${theme.fg("dim", line)}`);
 			}
@@ -1385,13 +1399,13 @@ export class UsageDashboardComponent implements Component {
 	/** `3 providers · 10 accounts` over the quota rows. */
 	#quotaMeta(framed: readonly ProviderCard[]): NativeChild[] {
 		if (framed.length === 0) return [];
-		const accounts = framed.reduce((sum, entry) => sum + entry.accounts, 0);
-		const parts = [`${framed.length} provider${framed.length === 1 ? "" : "s"}`];
-		if (accounts > framed.length) parts.push(`${accounts} accounts`);
+		const providers = new Set(framed.map(entry => entry.provider)).size;
+		const parts = [`${providers} provider${providers === 1 ? "" : "s"}`];
+		if (framed.length > providers) parts.push(`${framed.length} accounts`);
 		return [
 			text([span(parts.join(" · "), "dim")], {
 				role: "omp.usage.section.meta",
-				title: "Each quota shows the mean across a provider's accounts; it resets with the fullest one",
+				title: "Each signed-in account has its own card",
 			}),
 		];
 	}
@@ -1899,7 +1913,7 @@ export class UsageDashboardComponent implements Component {
 			if (reports) {
 				this.#reports = reports;
 				this.#nowMs = Date.now();
-				this.#cards = buildProviderCards(reports, this.#nowMs, this.#options.unavailableAccounts);
+				this.#cards = buildProviderCards(reports, this.#nowMs, this.#options.unavailableAccounts, this.#options.accountName);
 				this.#detailCache = null;
 			}
 		} catch (error) {

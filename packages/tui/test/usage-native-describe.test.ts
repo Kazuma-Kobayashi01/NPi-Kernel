@@ -143,7 +143,7 @@ describe("UsageDashboardComponent.describe", () => {
 			findAll(tile, n => n.k === "text").map(plain),
 		);
 		expect(tiles).toEqual([
-			["Tightest quota", "10% left", "Claude Weekly · Anthropic"],
+			["Tightest quota", "10% left", "Claude Weekly · Anthropic · a@test"],
 			["Past year", "$247", "740 requests"],
 			["Last 30 days", "$46.50", "140 requests"],
 			["Busiest day", "$200", expect.stringMatching(/ · 600 requests$/)],
@@ -163,7 +163,7 @@ describe("UsageDashboardComponent.describe", () => {
 			"No usage yet",
 			expect.stringContaining("Quotas show here"),
 			"Untouched",
-			"Zai",
+			"Zai · z@test",
 		]);
 		expect(findAll(root, n => n.p?.role === "omp.usage.stats" || n.k === "chart")).toEqual([]);
 	});

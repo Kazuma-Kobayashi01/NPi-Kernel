@@ -87,9 +87,9 @@ describe("buildHeatmapLayout", () => {
 describe("buildProviderCards", () => {
 	const now = Date.now();
 
-	it("averages a window across accounts instead of showing the worst account", () => {
-		// One exhausted + one barely-used account: the classic report shows the
-		// aggregate (~50% free), so the card must not read 0% free.
+	it("gives each account of a provider its own card, the fullest first", () => {
+		// One exhausted + one unused account: each shows its own quota instead of a
+		// provider-wide average that would hide the exhausted one.
 		const reports = [
 			report("anthropic", "a@x.test", [
 				{ ...limit("anthropic", "a", "7d", "Claude 7 Day", 1.0, "exhausted", now + 1000), id: "anthropic:7d" },
@@ -99,16 +99,23 @@ describe("buildProviderCards", () => {
 			]),
 		];
 		const cards = buildProviderCards(reports, now);
-		expect(cards).toHaveLength(1);
-		expect(cards[0].windows).toHaveLength(1);
-		expect(cards[0].windows[0].fraction).toBeCloseTo(0.5);
-		// Mixed healthy/exhausted accounts read as warning, not exhausted.
-		expect(cards[0].windows[0].status).toBe("warning");
-		// Reset countdown comes from the most-used account (when capacity returns).
+		expect(cards.map(card => card.name)).toEqual(["Anthropic · a@x.test", "Anthropic · b@x.test"]);
+		expect(cards[0].windows[0].fraction).toBeCloseTo(1);
+		expect(cards[0].windows[0].status).toBe("exhausted");
 		expect(cards[0].windows[0].resetMs).toBe(1000);
+		expect(cards[1].windows[0].fraction).toBeCloseTo(0);
+		expect(cards[1].idle).toBe(true);
 	});
 
-	it("aggregates reset inventory without showing a spent grant's earlier expiry", () => {
+	it("names a card after the account name the host resolves", () => {
+		const reports = [report("openai-codex", "k@x.test", [limit("openai-codex", "k", "7d", "7 days", 0.3, "ok")])];
+		const cards = buildProviderCards(reports, now, [{ provider: "openai-codex", label: "GPT-Plus-Hanyu" }], () => "GPT-Plus-Kazuma");
+		expect(cards.map(card => card.name).sort()).toEqual(["Openai Codex · GPT-Plus-Hanyu", "Openai Codex · GPT-Plus-Kazuma"]);
+		const missing = cards.find(card => card.account === "GPT-Plus-Hanyu");
+		expect(missing?.unavailableAccounts).toEqual(["GPT-Plus-Hanyu"]);
+	});
+
+	it("keeps each account's reset inventory on its card without a spent grant's earlier expiry", () => {
 		const claude = report("anthropic", "claude@example.test", [
 			limit("anthropic", "claude", "5h", "Claude 5 Hour", 0, "ok"),
 		]);
@@ -141,15 +148,22 @@ describe("buildProviderCards", () => {
 			credits: [{ id: "later", remainingCount: 2, expiresAt: new Date(now + 3 * 86_400_000).toISOString() }],
 		};
 
-		const card = buildProviderCards([claude, sibling], now)[0];
+		const cards = buildProviderCards([claude, sibling], now);
+		const card = cards.find(entry => entry.account === "claude@example.test")!;
 
 		expect(card.resetCredits).toEqual({
-			bankedCount: 5,
-			redeemableCount: 2,
+			bankedCount: 3,
+			redeemableCount: 0,
 			soonestExpiryMs: 2 * 86_400_000,
 			unavailableReasons: ["weekly cooldown"],
 		});
 		expect(card.idle).toBe(false);
+		expect(cards.find(entry => entry.account === "sibling@example.test")?.resetCredits).toEqual({
+			bankedCount: 2,
+			redeemableCount: 2,
+			soonestExpiryMs: 3 * 86_400_000,
+			unavailableReasons: [],
+		});
 	});
 
 	it("sorts pressured providers first and collapses untouched ones into idle", () => {
@@ -454,15 +468,17 @@ describe("UsageDashboardComponent", () => {
 		}
 	});
 
-	it("keeps the error icon on an exhausted card when another account's lookup fails", () => {
+	it("keeps the error icon on an exhausted account and gives a failed lookup its own card", () => {
 		const component = dashboard(
 			[report("anthropic", "a@test", [limit("anthropic", "a", "7d", "Claude 7 Day", 1, "exhausted")])],
 			[{ provider: "anthropic", label: "b@test" }],
 		);
 		try {
 			const output = Bun.stripANSI(component.render(100).join("\n"));
-			const title = output.split("\n").find(line => line.includes("2 accts"));
+			const title = output.split("\n").find(line => line.includes("Anthropic · a@test"));
 			expect(title?.replace(/^[│▎\s]+/, "")).toStartWith(`${theme.status.error} Anthropic`);
+			expect(output).toContain("Anthropic · b@test");
+			expect(output).toContain("usage unavailable");
 		} finally {
 			component.dispose();
 		}

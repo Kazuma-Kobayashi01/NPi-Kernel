@@ -612,6 +612,8 @@ export interface InteractiveModeContext {
 	handleResumeSession(sessionPath: string, options?: ResumeSessionOptions): Promise<void>;
 	handleSessionDeleteCommand(): Promise<void>;
 	showOAuthSelector(mode: "login" | "logout", providerId?: string, accountName?: string): Promise<void>;
+	/** `/account`: list signed-in OAuth accounts and rename them. */
+	showAccountManager(): Promise<void>;
 	showSessionPinSelector(): Promise<void>;
 	showResetUsageSelector(): Promise<void>;
 	showProviderSetup(): Promise<void>;

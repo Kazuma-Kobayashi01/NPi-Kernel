@@ -9408,6 +9408,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.#selectorController.showOAuthSelector(mode, providerId, accountName);
 	}
 
+	showAccountManager(): Promise<void> {
+		return this.#selectorController.showAccountManager();
+	}
+
 	showSessionPinSelector(): Promise<void> {
 		return this.#selectorController.showSessionPinSelector();
 	}

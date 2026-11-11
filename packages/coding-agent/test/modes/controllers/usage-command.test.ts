@@ -456,8 +456,9 @@ describe("interactive /usage account visibility", () => {
 		await command(async () => [report]).handleUsageCommand();
 
 		const overview = flatDisplay();
-		expect(overview).toContain("2 accts");
+		expect(overview.match(/Anthropic · /g)).toHaveLength(2);
 		expect(overview).toContain(email);
+		expect(overview).toContain("Anthropic · shared@example.test · org-team");
 		expect(overview).toContain("org-personal");
 		expect(overview).toContain("usage unavailable");
 		expect(overview).toContain("75%");
@@ -483,7 +484,7 @@ describe("interactive /usage account visibility", () => {
 			}).handleUsageCommand();
 
 			const overview = flatDisplay();
-			expect(overview).toContain("2 accts");
+			expect(overview.match(/Anthropic · /g)).toHaveLength(2);
 			expect(overview.match(/shared@example\.test/g)).toHaveLength(2);
 			expect(overview).toContain("org-team");
 			expect(overview).toContain("org-personal");
@@ -502,7 +503,7 @@ describe("interactive /usage account visibility", () => {
 			expect(details).not.toContain("Infinity");
 
 			mounted?.handleInput("\x1b");
-			expect(display()).toContain("2 accts");
+			expect(flatDisplay().match(/Anthropic · /g)).toHaveLength(2);
 			mounted?.handleInput("\x1b");
 			expect(mounted).toBeUndefined();
 		},

@@ -73,11 +73,17 @@ import { findSessionContinuation, readSessionInfo, type SessionInfo } from "../.
 import { SessionManager } from "../../session/session-manager";
 import { loadPinnedSessionIds, setSessionPinned } from "../../session/session-pins";
 import { FileSessionStorage } from "../../session/session-storage";
-import { listLogoutAccounts, logoutCredential } from "../../slash-commands/helpers/logout";
+import {
+	listAllLogoutAccounts,
+	listLogoutAccounts,
+	listOAuthAccounts,
+	logoutCredential,
+} from "../../slash-commands/helpers/logout";
 import type { LogoutAccount } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import { describeRedeemOutcome, toResetUsageAccounts } from "../../slash-commands/helpers/reset-usage";
 import { toSessionPinAccounts } from "../../slash-commands/helpers/session-pin";
 import {
+	accountForReport,
 	accountIdentityLabel,
 	collectStoredAccounts,
 	collectUnreportedAccounts,
@@ -95,6 +101,7 @@ import { AskTool, type AskToolInput } from "../../tools/ask";
 import { type AskToolDetails } from "@oh-my-pi/pi-tui/tools/ask";
 import { sanitizeDisplayWarnings, shortenPath } from "@oh-my-pi/pi-tui/render/render-utils";
 import { sanitizeErrorLine } from "@oh-my-pi/pi-tui/chrome/error-block";
+import { formatProviderName } from "@oh-my-pi/pi-tui/chrome/format";
 import { ToolAbortError } from "../../tools/tool-errors";
 import { loginBrowserSession } from "../../utils/browser-session";
 import { copyToClipboard } from "../../utils/clipboard";
@@ -283,18 +290,6 @@ export class SelectorController {
 		return acquireModelRoleMutation();
 	}
 
-	async #refreshOAuthProviderAuthState(): Promise<void> {
-		const { getOAuthProviders } = await loadProviderAuthUi();
-		const oauthProviders = getOAuthProviders();
-		await Promise.all(
-			oauthProviders.map(provider =>
-				this.ctx.session.modelRegistry
-					.getApiKeyForProvider(provider.id, this.ctx.session.sessionId)
-					.catch(() => undefined),
-			),
-		);
-	}
-
 	/**
 	 * Restore keyboard focus to whatever currently owns the editor slot. The
 	 * slot can hold the editor itself or a hook selector/input/editor pushed
@@ -473,9 +468,15 @@ export class SelectorController {
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
+		// Each account gets its own card, named as the user named it (else its email or id).
+		const accountName = (report: UsageReport): string | undefined => {
+			const account = accountForReport(report, accounts);
+			return account ? accountIdentityLabel(account) : undefined;
+		};
 		const dashboard = new UsageDashboardComponent({
 			reports,
 			unavailableAccounts,
+			accountName,
 			renderDetail: (width, current) =>
 				renderUsageReports(
 					current,
@@ -2376,6 +2377,112 @@ export class SelectorController {
 		}
 	}
 
+	/**
+	 * `/account`: every signed-in OAuth account across providers, with its name, email and whether
+	 * this session uses it. Enter renames the selected account (an empty name clears it); the list
+	 * opens again afterwards so the new name shows.
+	 */
+	async showAccountManager(selectKey?: string): Promise<void> {
+		const authStorage = this.ctx.session.modelRegistry.authStorage;
+		let accounts: LogoutAccount[];
+		try {
+			accounts = await listOAuthAccounts(authStorage, this.ctx.session.sessionId);
+		} catch (error: unknown) {
+			this.ctx.showError(`Could not load accounts: ${error instanceof Error ? error.message : String(error)}`);
+			return;
+		}
+		if (accounts.length === 0) {
+			this.ctx.showStatus("No OAuth accounts are signed in. Use /login to add one.");
+			return;
+		}
+		if (selectKey) {
+			const index = accounts.findIndex(account => `${account.provider}:${account.credentialId}` === selectKey);
+			if (index > 0) accounts.unshift(...accounts.splice(index, 1));
+		}
+		const { LogoutAccountSelectorComponent } = await loadProviderAuthUi();
+		this.showSelector(done => {
+			const selector = new LogoutAccountSelectorComponent(
+				undefined,
+				accounts,
+				account => {
+					done();
+					void this.#renameAccount(account);
+				},
+				() => {
+					done();
+					this.ctx.ui.requestRender();
+				},
+				{
+					providerName: formatProviderName,
+					wording: {
+						title: "Accounts",
+						pickerTitle: "Accounts",
+						subtitle: "Signed-in accounts; Enter renames one",
+						action: "Rename",
+						hint: "rename",
+						empty: "No OAuth accounts are signed in",
+						danger: false,
+					},
+				},
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
+	async #renameAccount(account: LogoutAccount): Promise<void> {
+		const oauth = this.ctx.session.modelRegistry.authStorage.oauth;
+		const current = oauth.accounts(account.provider).find(entry => entry.credentialId === account.credentialId);
+		const answer = await this.ctx.showHookInput(
+			`Name for ${formatProviderName(account.provider)} account ${current?.email ?? account.detail} (empty clears it)`,
+			current?.label ?? "",
+		);
+		if (answer !== undefined) {
+			const name = answer.trim();
+			try {
+				const renamed = oauth.setLabel(account.provider, account.credentialId, name || undefined);
+				this.ctx.showStatus(renamed.label ? `Account named ${renamed.label}` : "Account name cleared");
+			} catch (error: unknown) {
+				this.ctx.showWarning(`Account not renamed: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		await this.showAccountManager(`${account.provider}:${account.credentialId}`);
+	}
+
+	/** `/logout` without a provider: every stored account of every provider in one list; Enter logs that one out. */
+	async #showAllAccountsLogoutSelector(): Promise<void> {
+		const authStorage = this.ctx.session.modelRegistry.authStorage;
+		let accounts: LogoutAccount[];
+		try {
+			accounts = await listAllLogoutAccounts(authStorage, this.ctx.session.sessionId);
+		} catch (error: unknown) {
+			this.ctx.showError(
+				`Could not load stored credentials: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return;
+		}
+		if (accounts.length === 0) {
+			this.ctx.showStatus("No stored accounts to log out. Remove env or config auth at its source.");
+			return;
+		}
+		const { LogoutAccountSelectorComponent } = await loadProviderAuthUi();
+		this.showSelector(done => {
+			const selector = new LogoutAccountSelectorComponent(
+				undefined,
+				accounts,
+				account => {
+					done();
+					void this.#handleCredentialLogout(account.provider, account);
+				},
+				() => {
+					done();
+					this.ctx.ui.requestRender();
+				},
+				{ providerName: formatProviderName },
+			);
+			return { component: selector, focus: selector };
+		});
+	}
+
 	async #showOAuthLogoutAccountSelector(providerId: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
 		let accounts: LogoutAccount[];
@@ -2426,18 +2533,11 @@ export class SelectorController {
 			return;
 		}
 
-		const { getOAuthProviders, OAuthSelectorComponent } = await loadProviderAuthUi();
 		if (mode === "logout") {
-			await this.#refreshOAuthProviderAuthState();
-			const oauthProviders = getOAuthProviders();
-			const loggedInProviders = oauthProviders.filter(provider =>
-				this.ctx.session.modelRegistry.authStorage.credentials.has(provider.id),
-			);
-			if (loggedInProviders.length === 0) {
-				this.ctx.showStatus("No stored provider credentials to log out. Remove env or config auth at its source.");
-				return;
-			}
+			await this.#showAllAccountsLogoutSelector();
+			return;
 		}
+		const { getOAuthProviders, OAuthSelectorComponent } = await loadProviderAuthUi();
 
 		this.showSelector(done => {
 			const selector = new OAuthSelectorComponent(
