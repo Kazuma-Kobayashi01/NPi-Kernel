@@ -800,6 +800,31 @@ export class UsageDashboardComponent implements Component {
 		return `${theme.bold(icon)}${" ".repeat(Math.max(0, width - visibleWidth(icon)))}`;
 	}
 
+	/** Frame `lines` in a rounded card `width` wide; `tone` colors the border (pressured cards stand out). */
+	#boxCard(lines: readonly string[], width: number, tone: "error" | "warning" | "border"): string[] {
+		const box = theme.boxRound;
+		const inner = Math.max(1, width - 4);
+		const edge = (text: string) => theme.fg(tone, text);
+		const out = [edge(`${box.topLeft}${box.horizontal.repeat(width - 2)}${box.topRight}`)];
+		for (const line of lines) {
+			const fitted = truncateToWidth(line, inner);
+			const pad = " ".repeat(Math.max(0, inner - visibleWidth(fitted)));
+			out.push(`${edge(box.vertical)} ${fitted}${pad} ${edge(box.vertical)}`);
+		}
+		out.push(edge(`${box.bottomLeft}${box.horizontal.repeat(width - 2)}${box.bottomRight}`));
+		return out;
+	}
+
+	#cardTone(card: ProviderCard): "error" | "warning" | "border" {
+		const status =
+			card.unavailableAccounts.length > 0
+				? statusWithUnavailableAccounts(card.windows)
+				: card.unlimited
+					? "ok"
+					: aggregateStatus(card.windows);
+		return status === "exhausted" ? "error" : status === "warning" ? "warning" : "border";
+	}
+
 	#renderCardLines(card: ProviderCard, width: number, labels: string[][], layout: CardRowLayout): string[] {
 		const lines: string[] = [];
 		const cardStatus =
@@ -902,6 +927,8 @@ export class UsageDashboardComponent implements Component {
 		const idle = this.#cards.filter(card => card.idle);
 		const columns = Math.max(1, Math.floor((innerWidth + CARD_GUTTER) / (CARD_MIN_WIDTH + CARD_GUTTER)));
 		const cardWidth = Math.floor((innerWidth - (columns - 1) * CARD_GUTTER) / columns);
+		// Each card is framed: border and padding take four columns off its body.
+		const bodyWidth = cardWidth - 4;
 		const lines: string[] = [];
 		for (let start = 0; start < active.length; start += columns) {
 			const cards = active.slice(start, start + columns);
@@ -931,7 +958,7 @@ export class UsageDashboardComponent implements Component {
 			const markerWidth = windows.some(rows => rows.some(window => isPressured(window.status)))
 				? ROW_MARKER_WIDTH
 				: 0;
-			const contentWidth = Math.max(1, cardWidth - 2 - markerWidth);
+			const contentWidth = Math.max(1, bodyWidth - 2 - markerWidth);
 			const suffixWidth = 5 + (resetWidth > 0 ? resetWidth + 1 : 0);
 			const inlineBarWidth = contentWidth - labelWidth - 1 - suffixWidth;
 			const stacked = inlineBarWidth < CARD_MIN_BAR_WIDTH;
@@ -961,8 +988,15 @@ export class UsageDashboardComponent implements Component {
 				stacked,
 				labelHeights,
 			};
+			const bodies = cards.map((card, index) => this.#renderCardLines(card, bodyWidth, labelLines[index]!, layout));
+			// Cards in one row share a height so the frames line up.
+			const bodyHeight = Math.max(...bodies.map(body => body.length));
 			const rowCards = cards.map((card, index) =>
-				this.#renderCardLines(card, cardWidth, labelLines[index]!, layout),
+				this.#boxCard(
+					[...bodies[index]!, ...Array<string>(bodyHeight - bodies[index]!.length).fill("")],
+					cardWidth,
+					this.#cardTone(card),
+				),
 			);
 			const height = Math.max(...rowCards.map(card => card.length));
 			for (let lineIdx = 0; lineIdx < height; lineIdx++) {
@@ -1087,7 +1121,7 @@ export class UsageDashboardComponent implements Component {
 		if (this.#cards.length > 0) lines.push(sectionLine("Quota", "bar: used · % free · resets in", innerWidth));
 		lines.push(...this.#renderCardsGrid(innerWidth));
 		lines.push("");
-		lines.push(...this.#renderHeatmap(innerWidth));
+		lines.push(...this.#boxCard(this.#renderHeatmap(innerWidth - 4), innerWidth, "border"));
 		this.#overviewCache = { revision: this.#revision, width: innerWidth, lines };
 		return lines;
 	}

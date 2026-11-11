@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `/usage` Overview draws each provider's quota and the activity heatmap as framed cards; cards in a row share a height and a pressured card's border turns yellow or red.
+
 ### Added
 
 - `OfficePanelComponent` takes `thinkingLevels`, `watch` and `loadReport`, draws office activity, spend and recent assignments when the state carries them, and has a Reports tab instead of pull requests.
