@@ -13,7 +13,7 @@ import {
 import { formatTokenCount, refreshStatusLine } from "./builtin-modes";
 import { buildContextReportText } from "./helpers/context-report";
 import { formatCoarseDuration, formatProviderName } from "@oh-my-pi/pi-tui/chrome/format";
-import { formatAccountList, listOAuthAccounts } from "./helpers/logout";
+import { formatAccountRows, listAccountRows } from "./helpers/accounts";
 import { truncateToWidth } from "@oh-my-pi/pi-tui/render/render-utils";
 import { buildJobTree, jobTreeGuide, jobTreeIndent } from "@oh-my-pi/pi-tui/overlays/job-tree";
 import { theme } from "@oh-my-pi/pi-tui/theme";
@@ -886,10 +886,14 @@ export const BUILTIN_SESSION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 	{
 		name: "account",
 		icon: "session",
-		description: "View and rename signed-in OAuth accounts",
+		description: "View, activate and rename signed-in OAuth accounts",
 		handle: async (_command, runtime) => {
-			const accounts = await listOAuthAccounts(runtime.session.modelRegistry.authStorage, runtime.session.sessionId);
-			await runtime.output(formatAccountList(accounts, formatProviderName));
+			const rows = await listAccountRows(
+				runtime.session.modelRegistry.authStorage,
+				runtime.session.sessionId,
+				formatProviderName,
+			);
+			await runtime.output(formatAccountRows(rows));
 			return commandConsumed();
 		},
 		handleTui: (_command, runtime) => {

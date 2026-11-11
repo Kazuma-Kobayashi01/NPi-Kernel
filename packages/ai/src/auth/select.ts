@@ -590,7 +590,14 @@ export class CredentialSelector {
 		);
 		// A session restriction drops every other account before ranking, pins,
 		// and the fallback passes below, so none of them can route back to it.
-		const credentials = stored.filter(entry => this.#deps.affinity.allows(provider, sessionId, entry.credential));
+		const allowed = stored.filter(entry => this.#deps.affinity.allows(provider, sessionId, entry.credential));
+		// An activated account (`/account`) is the provider's only one in use; the others sit idle. A
+		// session pinned to an account explicitly keeps it.
+		const pin = this.#deps.affinity.get(provider, sessionId);
+		const explicitPinIndex = pin?.type === "oauth" && pin.explicit === true ? pin.index : undefined;
+		const credentials = allowed.some(entry => entry.credential.activated === true)
+			? allowed.filter(entry => entry.credential.activated === true || entry.index === explicitPinIndex)
+			: allowed;
 
 		if (credentials.length === 0) return undefined;
 		// Ranking and preflight both await provider work; preserve the row each

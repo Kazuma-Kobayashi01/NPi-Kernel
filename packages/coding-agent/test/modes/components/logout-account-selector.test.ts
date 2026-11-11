@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { LogoutAccountSelectorComponent } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import { initTheme } from "@oh-my-pi/pi-tui/theme";
 import type { StoredAuthCredential } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { formatAccountList, toLogoutAccounts } from "@oh-my-pi/pi-coding-agent/slash-commands/helpers/logout";
+import { toLogoutAccounts } from "@oh-my-pi/pi-coding-agent/slash-commands/helpers/logout";
 
 beforeAll(async () => {
 	await initTheme();
@@ -104,41 +104,5 @@ describe("LogoutAccountSelectorComponent", () => {
 		component.handleInput("\x1b[B");
 		component.handleInput("\n");
 		expect(selected).toEqual(["openai-codex:7"]);
-	});
-
-	it("says rename instead of log out when /account opens it", () => {
-		const component = new LogoutAccountSelectorComponent(
-			undefined,
-			toLogoutAccounts("anthropic", [oauth(1, "anthropic", "a@example.com")]),
-			() => {},
-			() => {},
-			{
-				wording: {
-					title: "Accounts",
-					pickerTitle: "Accounts",
-					subtitle: "Signed-in accounts; Enter renames one",
-					action: "Rename",
-					hint: "rename",
-					empty: "No OAuth accounts are signed in",
-					danger: false,
-				},
-			},
-		);
-		const rendered = component
-			.render(100)
-			.map(line => Bun.stripANSI(line))
-			.join("\n");
-		expect(rendered).toContain("rename");
-		expect(rendered).not.toContain("log out");
-	});
-
-	it("prints the /account list as text for hosts without the panel", () => {
-		const accounts = toLogoutAccounts("openai-codex", [oauth(3, "openai-codex", "k@example.com", "GPT-Plus-Kazuma")], {
-			activeIdentity: { email: "k@example.com" },
-		});
-		expect(formatAccountList(accounts, () => "Openai Codex")).toBe(
-			"Openai Codex · GPT-Plus-Kazuma (active)  k@example.com · oauth #3",
-		);
-		expect(formatAccountList([], () => "")).toContain("/login");
 	});
 });

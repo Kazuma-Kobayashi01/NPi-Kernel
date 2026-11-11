@@ -127,25 +127,6 @@ export async function listAllLogoutAccounts(authStorage: AuthStorage, sessionId:
 	);
 }
 
-/**
- * Every stored OAuth account, for `/account`: the same rows as {@link listAllLogoutAccounts} without
- * API keys (they have no name to give).
- */
-export async function listOAuthAccounts(authStorage: AuthStorage, sessionId: string): Promise<LogoutAccount[]> {
-	return (await listAllLogoutAccounts(authStorage, sessionId)).filter(account => account.type === "oauth");
-}
-
-/** The `/account` list as text, for hosts without the panel. */
-export function formatAccountList(accounts: readonly LogoutAccount[], providerName: (provider: string) => string): string {
-	if (accounts.length === 0) return "No OAuth accounts are signed in. Use /login to add one.";
-	return accounts
-		.map(
-			account =>
-				`${providerName(account.provider)} · ${account.label}${account.active ? " (active)" : ""}${account.detail ? `  ${account.detail}` : ""}`,
-		)
-		.join("\n");
-}
-
 /** Stored accounts `/logout` can remove for `provider`, active first. Reloads the store to see other processes' changes. */
 export async function listLogoutAccounts(
 	authStorage: AuthStorage,

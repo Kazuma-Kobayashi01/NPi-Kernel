@@ -73,12 +73,9 @@ import { findSessionContinuation, readSessionInfo, type SessionInfo } from "../.
 import { SessionManager } from "../../session/session-manager";
 import { loadPinnedSessionIds, setSessionPinned } from "../../session/session-pins";
 import { FileSessionStorage } from "../../session/session-storage";
-import {
-	listAllLogoutAccounts,
-	listLogoutAccounts,
-	listOAuthAccounts,
-	logoutCredential,
-} from "../../slash-commands/helpers/logout";
+import { listAccountRows } from "../../slash-commands/helpers/accounts";
+import { listAllLogoutAccounts, listLogoutAccounts, logoutCredential } from "../../slash-commands/helpers/logout";
+import { type AccountRow, accountRowKey } from "@oh-my-pi/pi-tui/overlays/account-manager";
 import type { LogoutAccount } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import { describeRedeemOutcome, toResetUsageAccounts } from "../../slash-commands/helpers/reset-usage";
 import { toSessionPinAccounts } from "../../slash-commands/helpers/session-pin";
@@ -2378,74 +2375,74 @@ export class SelectorController {
 	}
 
 	/**
-	 * `/account`: every signed-in OAuth account across providers, with its name, email and whether
-	 * this session uses it. Enter renames the selected account (an empty name clears it); the list
-	 * opens again afterwards so the new name shows.
+	 * `/account`: signed-in OAuth accounts grouped by provider. Enter activates the selected account (the
+	 * only one its provider's requests use; the others go idle), `r` renames it. The panel opens again
+	 * after either so the change shows.
 	 */
 	async showAccountManager(selectKey?: string): Promise<void> {
 		const authStorage = this.ctx.session.modelRegistry.authStorage;
-		let accounts: LogoutAccount[];
+		let rows: AccountRow[];
 		try {
-			accounts = await listOAuthAccounts(authStorage, this.ctx.session.sessionId);
+			rows = await listAccountRows(authStorage, this.ctx.session.sessionId, formatProviderName);
 		} catch (error: unknown) {
 			this.ctx.showError(`Could not load accounts: ${error instanceof Error ? error.message : String(error)}`);
 			return;
 		}
-		if (accounts.length === 0) {
+		if (rows.length === 0) {
 			this.ctx.showStatus("No OAuth accounts are signed in. Use /login to add one.");
 			return;
 		}
-		if (selectKey) {
-			const index = accounts.findIndex(account => `${account.provider}:${account.credentialId}` === selectKey);
-			if (index > 0) accounts.unshift(...accounts.splice(index, 1));
-		}
-		const { LogoutAccountSelectorComponent } = await loadProviderAuthUi();
+		const { AccountManagerComponent } = await import("@oh-my-pi/pi-tui/overlays/account-manager");
 		this.showSelector(done => {
-			const selector = new LogoutAccountSelectorComponent(
-				undefined,
-				accounts,
-				account => {
-					done();
-					void this.#renameAccount(account);
-				},
-				() => {
-					done();
-					this.ctx.ui.requestRender();
-				},
+			const panel = new AccountManagerComponent(
+				rows,
 				{
-					providerName: formatProviderName,
-					wording: {
-						title: "Accounts",
-						pickerTitle: "Accounts",
-						subtitle: "Signed-in accounts; Enter renames one",
-						action: "Rename",
-						hint: "rename",
-						empty: "No OAuth accounts are signed in",
-						danger: false,
+					onActivate: row => {
+						done();
+						void this.#activateAccount(row);
+					},
+					onRename: row => {
+						done();
+						void this.#renameAccount(row);
+					},
+					onCancel: () => {
+						done();
+						this.ctx.ui.requestRender();
 					},
 				},
+				selectKey,
 			);
-			return { component: selector, focus: selector };
+			return { component: panel, focus: panel };
 		});
 	}
 
-	async #renameAccount(account: LogoutAccount): Promise<void> {
+	async #activateAccount(row: AccountRow): Promise<void> {
+		try {
+			this.ctx.session.modelRegistry.authStorage.oauth.activate(row.provider, row.credentialId);
+			this.ctx.showStatus(`${row.name} is the active ${row.providerName} account; its other accounts are idle`);
+		} catch (error: unknown) {
+			this.ctx.showWarning(`Account not activated: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		await this.showAccountManager(accountRowKey(row));
+	}
+
+	async #renameAccount(row: AccountRow): Promise<void> {
 		const oauth = this.ctx.session.modelRegistry.authStorage.oauth;
-		const current = oauth.accounts(account.provider).find(entry => entry.credentialId === account.credentialId);
+		const current = oauth.accounts(row.provider).find(entry => entry.credentialId === row.credentialId);
 		const answer = await this.ctx.showHookInput(
-			`Name for ${formatProviderName(account.provider)} account ${current?.email ?? account.detail} (empty clears it)`,
+			`Name for ${row.providerName} account ${current?.email ?? row.name} (empty clears it)`,
 			current?.label ?? "",
 		);
 		if (answer !== undefined) {
 			const name = answer.trim();
 			try {
-				const renamed = oauth.setLabel(account.provider, account.credentialId, name || undefined);
+				const renamed = oauth.setLabel(row.provider, row.credentialId, name || undefined);
 				this.ctx.showStatus(renamed.label ? `Account named ${renamed.label}` : "Account name cleared");
 			} catch (error: unknown) {
 				this.ctx.showWarning(`Account not renamed: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
-		await this.showAccountManager(`${account.provider}:${account.credentialId}`);
+		await this.showAccountManager(accountRowKey(row));
 	}
 
 	/** `/logout` without a provider: every stored account of every provider in one list; Enter logs that one out. */

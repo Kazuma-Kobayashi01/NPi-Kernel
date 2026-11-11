@@ -617,6 +617,8 @@ export interface OAuthAccountSummary {
 	credentialId: number;
 	/** The name the user gave the account. */
 	label?: string;
+	/** The account activated for its provider; the provider's other accounts are idle. */
+	activated?: boolean;
 	accountId?: string;
 	email?: string;
 	projectId?: string;
@@ -1160,6 +1162,14 @@ export interface OAuthApi {
 	 * @throws AIError.ConfigurationError when the name is taken, too long, or the account is gone.
 	 */
 	setLabel(provider: string, credentialId: number, label: string | undefined): OAuthAccountSummary;
+	/**
+	 * Activate stored OAuth account `credentialId` of `provider`: from the next request only it is
+	 * used and the provider's other accounts are idle. `undefined` activates none, so the accounts
+	 * rotate by remaining quota again. A session pinned to an account explicitly keeps its pin.
+	 *
+	 * @throws AIError.ConfigurationError when the account is gone.
+	 */
+	activate(provider: string, credentialId: number | undefined): void;
 	/**
 	 * Return the configured account policy matching an OAuth identity.
 	 *

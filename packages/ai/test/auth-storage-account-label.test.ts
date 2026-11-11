@@ -68,6 +68,30 @@ describe("AuthStorage.oauth.setLabel", () => {
 		expect(rows).toHaveLength(2);
 	});
 
+	test("an activated account is the only one used; the others idle until none is activated", async () => {
+		const storage = authStorage!;
+		const [, hanyu] = storage.oauth.accounts(PROVIDER);
+		storage.oauth.activate(PROVIDER, hanyu!.credentialId);
+		expect(storage.oauth.accounts(PROVIDER).map(account => account.activated === true)).toEqual([false, true]);
+		for (let i = 0; i < 4; i++) expect(await storage.keys.get(PROVIDER, `session-${i}`)).toBe("b");
+		// A re-login of the activated account keeps it activated.
+		await store!.upsertAuthCredential(PROVIDER, oauth("hanyu", "b2"));
+		await storage.credentials.reload();
+		expect(storage.oauth.accounts(PROVIDER).find(account => account.accountId === "hanyu")?.activated).toBe(true);
+		// Activating another moves the mark; none brings rotation back.
+		const [kazuma] = storage.oauth.accounts(PROVIDER);
+		storage.oauth.activate(PROVIDER, kazuma!.credentialId);
+		expect(
+			storage.oauth
+				.accounts(PROVIDER)
+				.filter(account => account.activated)
+				.map(account => account.accountId),
+		).toEqual(["kazuma"]);
+		storage.oauth.activate(PROVIDER, undefined);
+		expect(storage.oauth.accounts(PROVIDER).some(account => account.activated)).toBe(false);
+		expect(() => storage.oauth.activate(PROVIDER, 999_999)).toThrow(/No stored/);
+	});
+
 	test("an account policy can select an account by its name", () => {
 		expect(matchesAuthAccountSelector({ label: "gpt-plus-hanyu" }, { label: "GPT-Plus-Hanyu" })).toBe(true);
 		expect(matchesAuthAccountSelector({ label: "GPT-Plus-Hanyu" }, { label: "GPT-Plus-Kazuma" })).toBe(false);

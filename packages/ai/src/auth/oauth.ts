@@ -277,6 +277,7 @@ export class OAuthAccounts implements OAuthApi {
 				position,
 				credentialId: selection.credentialId,
 				...(selection.credential.label ? { label: selection.credential.label } : {}),
+				...(selection.credential.activated ? { activated: true } : {}),
 				accountId: selection.credential.accountId,
 				email: selection.credential.email,
 				projectId: selection.credential.projectId,
@@ -396,6 +397,22 @@ export class OAuthAccounts implements OAuthApi {
 		if (!summary)
 			throw new AIError.ConfigurationError(`The ${provider} account #${credentialId} is no longer stored.`);
 		return summary;
+	}
+
+	activate(provider: string, credentialId: number | undefined): void {
+		const selections = this.#getStoredOAuthSelections(provider);
+		if (credentialId !== undefined && !selections.some(selection => selection.credentialId === credentialId)) {
+			throw new AIError.ConfigurationError(`No stored ${provider} account #${credentialId}.`);
+		}
+		for (const selection of selections) {
+			const want = selection.credentialId === credentialId;
+			if ((selection.credential.activated === true) === want) continue;
+			const { activated: _previous, ...rest } = selection.credential;
+			const credential: OAuthCredential = want ? { ...rest, activated: true } : rest;
+			if (!this.#deps.pool.writeById(provider, selection.credentialId, credential) && want) {
+				throw new AIError.ConfigurationError(`The ${provider} account #${credentialId} is no longer stored.`);
+			}
+		}
 	}
 
 	/**

@@ -42,6 +42,12 @@ export type OAuthCredentials = {
 	 * Set by the user, never by a provider; kept across token refreshes and re-logins.
 	 */
 	label?: string;
+	/**
+	 * The account the user activated for its provider (`/account`). While one account of a provider
+	 * is activated, requests use only it; the provider's other accounts sit idle. No activated
+	 * account: the provider's accounts rotate by remaining quota. Kept across refreshes and re-logins.
+	 */
+	activated?: boolean;
 };
 
 export type OAuthProvider = OAuthProviderUnion;

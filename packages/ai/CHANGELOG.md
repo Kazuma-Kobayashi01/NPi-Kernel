@@ -4,6 +4,7 @@
 
 ### Added
 
+- `AuthStorage.oauth.activate(provider, credentialId)` activates one stored OAuth account (`OAuthCredentials.activated`): while one is activated, OAuth selection uses only it (and an explicit session pin), leaving the provider's other accounts idle; `undefined` returns to rotation. `OAuthAccountSummary.activated` reports it; it survives refreshes and re-logins.
 - OAuth credentials take a user-given `label` (unique per provider, ignoring case) kept across refreshes and re-logins: `AuthStorage.oauth.setLabel(provider, credentialId, label)` sets or clears it, `oauth.accounts()` and `oauth.identity()` report it, `oauth.login()` returns the stored row's `credentialId`, and account policy selectors match `label`.
 - Added `waitForSibling` to `RotateCredentialOptions`; set it to `false` to skip the short sibling-unblock wait in `limits.rotate()` while still blocking the failed credential ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))
 

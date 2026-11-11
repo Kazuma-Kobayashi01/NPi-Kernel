@@ -72,7 +72,7 @@ Use the interactive slash commands inside a session:
 
 - `/login` — opens the OAuth/key selector. `/login <provider>` jumps straight to one provider (e.g. `/login anthropic`); for an OAuth flow that needs a pasted callback, run `/login <redirect-url>` to complete it.
 - `/logout` — lists every stored account (OAuth logins and API keys) of every provider; pick one to remove it. `/logout <provider>` lists that provider's only.
-- `/account` — lists signed-in OAuth accounts and renames them.
+- `/account` — lists signed-in OAuth accounts by provider; Enter activates one (the provider's only account in use, the rest idle), `r` renames it.
 
 Outside a session, `omp login [<provider>]` runs the same login from the terminal, including extension-registered providers: it prints the auth URL (and opens it in your browser), reads any prompts from stdin, and saves to the same store sessions use — local `agent.db`, or the configured auth broker. Without a provider it shows a numbered picker. Successful login refreshes that provider's model catalog online so newly unlocked models are visible.
 
