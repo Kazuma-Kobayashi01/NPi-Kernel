@@ -13,7 +13,7 @@ function nonEmpty(value: string | undefined): string | undefined {
  */
 export async function listAccountRows(
 	authStorage: AuthStorage,
-	sessionId: string,
+	sessionId: string | undefined,
 	providerName: (provider: string) => string,
 ): Promise<AccountRow[]> {
 	await authStorage.credentials.reload();
@@ -46,6 +46,8 @@ export async function listAccountRows(
 				providerName: providerName(provider),
 				credentialId: account.credentialId,
 				name,
+				...(nonEmpty(account.label) ? { label: nonEmpty(account.label) } : {}),
+				...(email ? { email } : {}),
 				detail: detail.join(" · "),
 				state: anyActivated ? (account.activated ? "active" : "idle") : "rotating",
 				inUse: account.active,

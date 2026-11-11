@@ -177,6 +177,10 @@ export const usageHelp = {
 	description: "Show provider usage limits for every authenticated account",
 } satisfies CommandMetadata;
 
+export const accountHelp = {
+	description: "List signed-in OAuth accounts by provider, activate one per provider, and rename them",
+} satisfies CommandMetadata;
+
 export const officeHelp = {
 	description: "Manage the Virtual Office: roster, company size, and the reports offices hand in",
 } satisfies CommandMetadata;

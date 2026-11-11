@@ -19,6 +19,9 @@ export interface AccountRow {
 	readonly credentialId: number;
 	/** The name the user gave the account, else its email or id. */
 	readonly name: string;
+	/** The name the user gave the account, when it has one. */
+	readonly label?: string;
+	readonly email?: string;
 	/** Email, organization and row id, whatever the name does not already say. */
 	readonly detail: string;
 	/**
