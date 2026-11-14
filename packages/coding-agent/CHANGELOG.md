@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A seance `task` whose `sourceSession` id belongs to another project now fails with a hint to pass that session's `.jsonl` path, which works from any project, instead of only "was not found" ([#19095](https://github.com/can1357/oh-my-pi/pull/19095) by [@zhivko-kocev](https://github.com/zhivko-kocev))
+- Pressing Enter in `/resume` on a session recorded in a folder that has since been moved or deleted no longer does nothing: a session filed under the current folder is moved here and resumed, and any other one reports why it cannot be resumed
+- Leading `KEY=VALUE` environment assignments are now stripped when evaluating `deny` and `prompt` rules in `bash.patterns` so they cannot bypass command restrictions ([#18351](https://github.com/can1357/oh-my-pi/pull/18351) by [@asuffield](https://github.com/asuffield))
+- omp's WebKit engine is now pinned per omp release and updated in place: an engine in `~/.o2/lib/abkit` that names no version or an older release is replaced before the first open that runs it (once no process runs from it), so the ABKit 0.1.1 fix for plain-http cookies (sign-ins to router and LAN admin pages) reaches existing installs. Local builds (`VERSION` `dev`), newer releases and an engine another app manages (Tern's `manager.json` two folders above its real path, as for omp itself) are kept
+- Chromium and WebKit tabs: a click or key press that opens a `confirm()` or `prompt()` returns instead of timing out after 8 s, and while one is pending, calls that need the page (reads, actions, `evaluate`, waits on page content, screenshots) fail at once naming the dialog and `tab.handleDialog()`, instead of each running out its deadline with "could not count matches" or a bare timeout
+- `tab.waitForUrl()` given anything but a string or a RegExp (a predicate function, say) now fails at once on every backend with an error naming what it takes, instead of an internal `pattern.test is not a function` on WebKit, Tern and cmux
+- WebKit tabs' request log: an XHR or `fetch` to a plain-http host that answers `text/html` (as many router UIs' APIs do) is `fetch`, not `subdocument`; only a frame's document request is a `subdocument`. Request body sizes, which the engine does not report, are left out (HAR `bodySize` -1) instead of 0, and a response without `Content-Length` no longer reports a body size of 0. `sizes.requestBody` is now optional in the request-record type
+- `write` no longer fails with "content is required" on strict-mode providers such as Wafer and Fireworks, where models sent `content: null` for an ordinary file write
+- A seance `task` now accepts a `sourceSession` id from any project, such as the short ids `archive` lists, instead of failing preflight until given the session's `.jsonl` path; `/seance <id>` resolves cross-project ids in about a second instead of scanning every session
+- On Windows, a `mnemopi.dbPath` of `~/…` now resolves to a native path (`C:\Users\you\mnemopi\custom.db`) instead of mixing `\` and `/` ([#19106](https://github.com/can1357/oh-my-pi/pull/19106) by [@zhivko-kocev](https://github.com/zhivko-kocev))
+- Advisors no longer get repeat-read warnings for reads another advisor made; each advisor now keeps its own tool state (snapshots, conflict history, repeat-read counts) ([#18834](https://github.com/can1357/oh-my-pi/issues/18834))
+- `/new` and switching sessions now start tools fresh: `conflict://` ids, already-reported diagnostics and repeat-read counts no longer carry over from the previous conversation, for the main agent and advisors alike
+- `/annotate session` now opens the same fullscreen message picker as `/copy` in classic terminals and Tern ([#19145](https://github.com/can1357/oh-my-pi/pull/19145) by [@anatoli-tsinovoy](https://github.com/anatoli-tsinovoy))
+- Edit responses now show inserted or replaced runs of up to 41 lines in full instead of collapsing them to `…`, so the next edit can target lines it just wrote without a "never displayed" rejection ([#19091](https://github.com/can1357/oh-my-pi/issues/19091))
+- Edit responses mark skipped lines between separate hunks with `…` instead of a blank line ([#19091](https://github.com/can1357/oh-my-pi/issues/19091))
+- After a file changes outside the edit tool (formatter, build step, another writer), lines an earlier read displayed that kept their number and content can still be edited after a partial re-read, instead of being rejected as never displayed ([#19092](https://github.com/can1357/oh-my-pi/issues/19092))
+- `omp stats` no longer freezes the dashboard for seconds each time an open Spotlight tab rebuilds after a sync ([#19118](https://github.com/can1357/oh-my-pi/pull/19118) by [@will-bogusz](https://github.com/will-bogusz))
+- In Chromium browser tabs, a click on an element inside a frame the page removes while the mouse button is down fails as unconfirmed instead of reporting a click the element never got, and sends no remaining presses of a double-click to the exposed page; a frame that navigates on the press still counts as delivered ([#19094](https://github.com/can1357/oh-my-pi/pull/19094) by [@will-bogusz](https://github.com/will-bogusz))
+- Hashline edits from a truncated `@file` mention can no longer target rows the mention never showed, and a mention whose first line exceeds the size limit no longer offers a partial line as editable ([#19093](https://github.com/can1357/oh-my-pi/pull/19093) by [@apoc](https://github.com/apoc))
+- Long tasks and stage names in the pinned TODO panel now wrap beneath their own text with the tree lines intact, instead of restarting at the panel's left edge ([#19117](https://github.com/can1357/oh-my-pi/pull/19117) by [@chan1103](https://github.com/chan1103))
+- Fixed prompt-history search returning unrelated prompts for punctuated queries such as `a/b` ([#18762](https://github.com/can1357/oh-my-pi/issues/18762)) ([#19111](https://github.com/can1357/oh-my-pi/pull/19111) by [@Alex-Wengg](https://github.com/Alex-Wengg)).
+- `omp zsh` on Windows: `zsh/files` (`mkdir`, `rmdir`, `rm`, `mv`, `ln`) and `zstat` work on real directories instead of failing with "the filename, directory name, or volume label syntax is incorrect" ([#19146](https://github.com/can1357/oh-my-pi/pull/19146) by [@zhivko-kocev](https://github.com/zhivko-kocev))
+- `omp zsh` on Windows: after a failed `zsh/system` call, `syserror` prints the POSIX error (`Bad file descriptor`, `Illegal seek`) instead of a Windows message such as "The operation completed successfully." ([#19107](https://github.com/can1357/oh-my-pi/pull/19107) by [@zhivko-kocev](https://github.com/zhivko-kocev))
+- On Windows, `find -exec`, `xargs` and `env` no longer fail with `not found` (status 127) when running an external program such as `sh` ([#19108](https://github.com/can1357/oh-my-pi/pull/19108) by [@zhivko-kocev](https://github.com/zhivko-kocev))
+- Fixed loading a session another omp process has open (e.g. ACP `session/load` from a second process) and then exiting creating a duplicate "open-elsewhere" copy of the session ([#19103](https://github.com/can1357/oh-my-pi/issues/19103))
+- Fixed `^` model mentions and `/switch` argument completions missing discovered models for the rest of a session after provider discovery failed at startup; using those lists now retries the failed discovery, and an open `^` list updates once it recovers models.
+- A background job result that arrives after an ACP prompt ends no longer starts a turn the client cannot see; it is folded into the next prompt
+- A failed OpenAI server compaction now falls back to the next compaction method instead of first retrying server compaction on another model
+- Language servers are now told when a newly created file is edited again soon after; on macOS such edits were previously dropped as repeats of the creation
+- A `bash` command streaming into the Pseudo shell view keeps its rows through heredocs and loops inside `$(`, nested `$(`, unfinished arithmetic, line continuations and a trailing `&`, and is drawn as it will continue only while its arguments still stream: once complete, waiting to run, or running, an unfinished end is shown as written
+
+## [18.20.0] - 2026-11-12
+
+### Breaking Changes
+
+- `secrets.yml` regex rules are now Rust `regex` patterns run natively, in linear time: lookarounds and backreferences are no longer supported, and a `(?P<secret>…)` group marks the part to redact (text around it is context that stays); `\d`, `\w` and `\s` are Unicode-aware. A regex rule that does not compile stops startup with an error naming the file and entry instead of being skipped. Migrate `(?<=password=)\S+` to `password=(?P<secret>\S+)`; see [docs/secrets.md](https://github.com/can1357/oh-my-pi/blob/main/docs/secrets.md) ([#18965](https://github.com/can1357/oh-my-pi/pull/18965) by [@H4vC](https://github.com/H4vC))
+- Secret placeholders are now four camelCased words after the friendly name, e.g. `GitHubToken_correctHorseStapleBattery`, with no `$$` delimiters, and the transcript shows the real value wherever the model wrote one. Placeholders in the old `$$NAME_HASH:CASE$$` form, in sessions saved before this change, stay literal text, including in tool calls the model copies them into; start a new session to get working placeholders ([#19014](https://github.com/can1357/oh-my-pi/pull/19014) by [@H4vC](https://github.com/H4vC))
+- What the model writes from placeholders (replies, thinking, tool calls, summaries) is stored as written and replayed byte-identical, keeping thinking signatures and prompt caches valid; model output that still holds a value (written while redaction was off, or before the secret was configured) is redacted on replay. Values a regex rule finds later no longer rewrite earlier history. A `friendlyName` is shown to the model as written and is dropped only when it spells out its own secret ([#19014](https://github.com/can1357/oh-my-pi/pull/19014) by [@H4vC](https://github.com/H4vC))
+- Nix builds with `withAppleFm = false` no longer compile the Apple Foundation Models bridge with the host's Xcode ([#18911](https://github.com/can1357/oh-my-pi/pull/18911))
+- Apple Silicon Nix builds include Apple Foundation Models support instead of silently building without it ([#16584](https://github.com/can1357/oh-my-pi/pull/16584) by [@honsunrise](https://github.com/honsunrise))
+- `ask` over RPC hosts without a form dialog now shows each prompt with the form's surrounding paragraphs, lists, preformatted blocks and tables instead of only the question ([#18927](https://github.com/can1357/oh-my-pi/issues/18927))
+
 ### Added
 
 - `/rc` lets paired phones drive the running terminal session: phone prompts run and show in the terminal, and approval and ask dialogs appear on both sides (first answer wins). `/rc <wss://relay>` (saved to `remote.relayUrl`), `/rc --listen <host:port>`, `/rc status`, `/rc off`. Phones see and open only that session. `remote.autoStart` (Settings → Interaction → Remote Control) runs `/rc` at launch.
@@ -74,6 +118,21 @@
 - LM Studio local discovery now reads all models from `/api/v1/models`, correctly capturing tool use capabilities, active loaded-instance context limits, and vision support when `/api/v0/models` is unavailable or omitted.
 - Future `gpt-6.1+` and subsequent OpenAI Codex subscription models automatically inherit the 500K base context window and 922K maximum input ceiling.
 - Startup no longer lists every mounted MCP tool by default; mount details remain in debug logs and can be shown with `tools.xdevNotices`.
+- RPC/ACP `/session delete` now switches the live session before deleting its file, so later turns save to a new, resumable session ([#18665](https://github.com/can1357/oh-my-pi/issues/18665)).
+- Extension prompts shown from `session_before_*` handlers no longer time out after 30 seconds while the operator is still answering ([#18424](https://github.com/can1357/oh-my-pi/pull/18424) by [@aw1cks](https://github.com/aw1cks))
+- A second exit request now skips pending `worktree.onExit` prompts and keeps those worktrees instead of waiting for an answer ([#18424](https://github.com/can1357/oh-my-pi/pull/18424) by [@aw1cks](https://github.com/aw1cks))
+- Advice that makes the agent keep working after it finished no longer comes back a second time, often as a blocker, while the agent is fixing it: advisor reviews of the earlier answer are cancelled and the advisor reviews the fix instead ([#18735](https://github.com/can1357/oh-my-pi/pull/18735) by [@H4vC](https://github.com/H4vC))
+- On Windows, the bash tool's shell resolves MSYS drive paths (`/c/Users/...`, `/mnt/c/...`) everywhere, so running `/c/.../tool.exe`, `cd /c/...`, `[ -f /c/... ]` and `< /c/...` reach drive C: like they already did for `ls` and other built-in utilities
+- On Windows, cmd-style command lines such as `dir | find /c /v ""`, `sort /r`, `timeout /t 5` and `whoami /all` in the bash tool run the Windows programs they were written for, instead of pi's GNU-style `find`/`sort`/`timeout`/`whoami` (which read `/c` as drive C: and could walk the whole drive)
+- Changing or unsetting `PATH` in the bash tool's shell now forgets remembered command locations, as bash does, so a command no longer runs from a directory that has left `PATH`
+- One slow or flooding collab guest no longer ends sharing for the room: the host drops that guest's backlog and asks it to rejoin, sessions larger than the send budget can be joined, and guest questions nobody received settle as unavailable ([#18629](https://github.com/can1357/oh-my-pi/pull/18629) by [@iliaal](https://github.com/iliaal))
+
+## [18.18.6] - 2026-11-09
+
+### Added
+
+- In Tern, a turn's long-press menu on a phone can edit and resend a prompt, retry the turn, open the rewind page on it, or fork the session from it into a new session
+- A rewind from the transcript says how many turns it dropped and offers Undo on its toast in Tern, which puts the turns and your draft back
 
 ### Changed
 

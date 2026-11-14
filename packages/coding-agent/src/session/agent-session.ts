@@ -3817,6 +3817,11 @@ export class AgentSession implements SettingsScope {
 		) {
 			return;
 		}
+		// Another live process owns the session, so this process wrote nothing to
+		// it (its first write would have moved it to a sibling it owns). Writing
+		// the marker would fork the conversation into an "open-elsewhere" copy
+		// just to say a reader exited, and any pending tool calls are the owner's.
+		if (this.sessionManager.isOwnedElsewhere()) return;
 		const kind: SessionExitData["kind"] =
 			reason === "dispose" || reason === postmortem.Reason.MANUAL
 				? "normal"
@@ -13171,6 +13176,9 @@ export class AgentSession implements SettingsScope {
 	 * only known once its file is loaded). A session created with `allowSessionModelFallback` (and
 	 * `retry.modelFallback` on) instead keeps its current model and reports a
 	 * warning. Reloading the current session keeps the current model.
+	 *
+	 * With `onCwdChange`, a target whose recorded directory is missing or cannot be
+	 * entered throws `Cannot resume session: …` and the current session stays active.
 	 * @returns true if switch completed, false if cancelled by hook or cwd change
 	 */
 	async switchSession(
@@ -13311,7 +13319,11 @@ export class AgentSession implements SettingsScope {
 							throw SESSION_CWD_CHANGE_REJECTED;
 						}
 					} else if (path.resolve(recordedCwd) !== path.resolve(previousSessionState.cwd)) {
-						throw SESSION_CWD_CHANGE_REJECTED;
+						// setSessionFile kept the current cwd because the recorded one cannot be
+						// entered; resuming here would point tools at the wrong project.
+						throw new Error(
+							`Cannot resume session: its directory ${recordedCwd} is missing or cannot be entered`,
+						);
 					}
 				}
 			}
