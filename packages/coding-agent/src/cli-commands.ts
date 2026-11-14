@@ -232,6 +232,11 @@ export const commands: CommandEntry[] = [
 		help: commandHelp.readHelp,
 	},
 	{
+		name: "remote",
+		load: () => import("./commands/remote").then(m => m.default),
+		help: commandHelp.remoteHelp,
+	},
+	{
 		name: "render",
 		load: () => import("./commands/render").then(m => m.default),
 		help: commandHelp.renderHelp,

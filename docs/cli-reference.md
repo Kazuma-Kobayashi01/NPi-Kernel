@@ -85,7 +85,10 @@ Quota bars fill with **used** capacity, while the adjacent percentage shows
 quotas also carry status symbols. Narrow terminals use a single provider column;
 wider terminals place providers side by side.
 
-Press `Tab` to switch Overview and Details, or `Enter` to open Details. Press `r`
+Press `Tab` to switch Overview and Details, or `Enter` to open Details. Details lists
+each account's quota consumed per limit window over the last 7 and 30 days (100% =
+one full window), derived from the recorded usage history; accounts whose usage
+could not be fetched are named as unavailable. Press `r`
 to refresh; a failed refresh keeps the last report visible. Use the arrow keys,
 Page Up/Down or the mouse wheel to scroll. `Esc` returns from Details to Overview,
 then closes the dashboard. Activity history is local; an unavailable history does
@@ -149,6 +152,21 @@ See [providers](./providers.md) and [models](./models.md) for model resolution.
 | `--hide-thinking`     | Hide thinking blocks in TUI output (display only; does not disable model thinking).                                                                       |
 | `--print-thoughts`    | Include thinking blocks in print-mode text output.                                                                                                        |
 | `--external-thinking` | Use a private scratchpad while disabling supported GPT/Claude/Gemini reasoning. Use at your own risk: providers have flagged this request shape as abuse. |
+
+Gemini 4 Hydrogen supports `low`, `medium`, `high` (default), and `xhigh` on
+both `google/gemini-4-hydrogen` (API key) and
+`google-antigravity/gemini-4-hydrogen` (subscription OAuth). For example:
+
+```sh
+npi --model google/gemini-4-hydrogen --thinking xhigh
+npi --model google-antigravity/gemini-4-hydrogen --thinking xhigh
+```
+
+Antigravity discovery combines its effort-specific SKUs into one Hydrogen
+model; the selected effort chooses the upstream SKU. Availability still follows
+the signed-in account's roster. `xhigh` sends the native `XHIGH` level, not a
+thinking-token budget. Ordinary streaming output remains capped at 65,536 tokens;
+this integration does not implement long-decode continuation.
 
 #### Prewalk and plan modes
 
@@ -329,6 +347,7 @@ Logging in to an OAuth provider again with another account keeps both: each acco
 | `share`                     | Share a saved session via an encrypted link (same as the `/share` slash command).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [session operations](./session-operations-export-share-fork-resume.md)                                                                               |
 | `setup`                     | Run onboarding setup or install dependencies for optional features.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |                                                                                                                                                      |
 | `shell`                     | Interactive shell console.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                                                                                                                                                      |
+| `remote`                    | Remote Connect host for a phone app: `remote pair --relay <url> \| --listen <host:port>` pairs a phone by QR code and a 6-digit code confirmed on both sides, `remote start` serves paired phones (end-to-end encrypted) through a Relay or directly, `remote devices`, `remote revoke <id>` and `remote status` manage them. In the TUI, `/rc [wss://relay \| --listen host:port]` lets paired phones drive the running session itself (dialogs show on both sides, first answer wins; `/rc off` stops). | [Remote Connect plan](./plan-android-remote-connect.md) |
 | `read`                      | Show what the read tool will return for a path, URL, or internal URI. (The [`read` tool](./tools/read.md) is a separate agent tool.)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |                                                                                                                                                      |
 | `render`                    | Draw a session's entire thread through the production transcript pipeline (with repaint timing).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |                                                                                                                                                      |
 | `skill`, `skills`           | Install, search, publish, and manage skills on skills.omp.sh.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | [skills](./skills.md)                                                                                                                                |

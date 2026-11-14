@@ -13,6 +13,7 @@ import type {
 import type { Model, ToolExample } from "@oh-my-pi/pi-ai";
 import {
 	EditSession,
+	EditStore,
 	editDescription,
 	editGrammar,
 	editInspect,
@@ -35,6 +36,8 @@ import type { ToolSession } from "../tools";
 import { routeWriteThroughBridge } from "../tools/acp-bridge";
 import { approvalTargetKey } from "../tools/approval-targets";
 import { strictestApproval, truncateForPrompt } from "../tools/approval";
+import { createHunkApproval, readApprovalText, type ApprovalFileChange, type HunkApprovalProposal } from "../tools/approval-hunks";
+import { resolveToCwd } from "../tools/path-utils";
 import {
 	deleteFileWithFallback,
 	hasFileWriteFallback,
@@ -512,6 +515,74 @@ export class EditTool implements AgentTool<TInput> {
 		};
 	}
 
+	async prepareHunkApproval(args: unknown, signal?: AbortSignal): Promise<HunkApprovalProposal | undefined> {
+		const sourceStore = getEditStore(this.session);
+		const store = new EditStore();
+		const context = sessionResolveContext(this.session, { signal });
+		const inspection = this.#inspect(args);
+		const paths = new Set<string>();
+		for (const target of inspection.paths) {
+			const resolved = extractUriScheme(target)
+				? (await this.#resolveUrl(target, context, false)).path
+				: resolveToCwd(target, this.session.cwd);
+			if (resolved) paths.add(resolved);
+		}
+		const originals = new Map<string, string | null>();
+		for (const target of paths) originals.set(target, await readApprovalText(target));
+		// Stage against a private store: native apply records snapshots/registers even with a no-op writer.
+		const tags = [...JSON.stringify(args).matchAll(/#([0-9A-Fa-f]{4})/g)].map(match => match[1]);
+		for (const target of paths) {
+			for (const tag of new Set([...tags, sourceStore.headHash(target)].filter((tag): tag is string => tag !== null))) {
+				const text = sourceStore.byHashText(target, tag);
+				if (text !== null) store.recordSnapshot(target, text, sourceStore.seenLines(target, tag));
+			}
+		}
+		const native = new EditSession(store, this.#policy(false, context), undefined, (_error, url) => this.#resolveUrl(url, context, false));
+		const requests = new Map<string, EditWriteRequest>();
+		const moveBefore = new Map<string, string | null>();
+		try {
+			native.setArgsJson(JSON.stringify(args));
+			native.finish();
+			const outcome = await native.apply({ lspFlush: false }, async (_error, request) => {
+				requests.set(request.path, request);
+				if (request.moveTo) {
+					moveBefore.set(request.path, await readApprovalText(request.moveTo));
+				}
+				return { written: request.content ?? "" };
+			});
+			if (outcome.isError) return undefined;
+			// A rename followed by a recreation (or another overlapping operation) cannot be independently selected.
+			const touched = outcome.files.flatMap(file => [file.path, ...(file.moveTo ? [file.moveTo] : [])]);
+			if (new Set(touched).size !== touched.length) return undefined;
+			const files: ApprovalFileChange[] = outcome.files.map(file => ({
+				path: file.path,
+				before: file.op === "create" ? null : file.oldText ?? originals.get(file.path)!,
+				after: file.op === "delete" ? null : requests.get(file.path)!.content!,
+				moveTo: file.moveTo,
+				moveBefore: moveBefore.get(file.path),
+			}));
+			return createHunkApproval(files, async (file, content, applySignal) => {
+				const request = requests.get(file.path)!;
+				applySignal?.throwIfAborted();
+				// Preserve the native operation, but omit formatting and automatic repair.
+				if (request.op === "delete") await deleteFileWithFallback(file.path, Bun.file(file.path));
+				else if (request.op === "move") {
+					const mode = await movedFileMode(file.path);
+					await mkdirAllowingFallback(path.dirname(request.moveTo!));
+					await writeFileWithFallback(request.moveTo!, content!);
+					if (mode !== undefined) await chmodMovedFile(request.moveTo!, mode);
+					await deleteFileWithFallback(file.path, Bun.file(file.path));
+				} else await writeFileWithFallback(file.path, content!);
+				sourceStore.invalidate(file.path);
+				if (content !== null) sourceStore.recordSnapshot(file.moveTo ?? file.path, content);
+				this.session.bumpFileMutationVersion?.(file.path);
+				if (file.moveTo) this.session.bumpFileMutationVersion?.(file.moveTo);
+			});
+		} finally {
+			native.close();
+		}
+	}
+
 	async execute(
 		toolCallId: string,
 		params: EditParams,
@@ -680,7 +751,7 @@ export class EditTool implements AgentTool<TInput> {
 	 * A line/partial selector is refused ({@link InternalUrlRouter.peelWriteSelector}): edits
 	 * address whole files.
 	 */
-	async #resolveUrl(url: string, context: ResolveContext): Promise<EditUrlResolution> {
+	async #resolveUrl(url: string, context: ResolveContext, create = true): Promise<EditUrlResolution> {
 		const router = InternalUrlRouter.instance();
 		try {
 			const target = router.peelWriteSelector(url, "edit");
@@ -691,7 +762,7 @@ export class EditTool implements AgentTool<TInput> {
 				const reason = spec.write?.via === "handler" ? "is written through `write`, not edited" : "is read-only";
 				return { error: `${url} ${reason}`, planWritable: false };
 			}
-			const located = await router.locate(target, context, { create: true });
+			const located = await router.locate(target, context, { create });
 			return { path: located ?? undefined, planWritable: spec.write?.scope === "sandbox" };
 		} catch (error) {
 			return { error: error instanceof Error ? error.message : String(error), planWritable: false };

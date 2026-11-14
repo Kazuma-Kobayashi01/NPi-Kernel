@@ -494,6 +494,13 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 		{ ...endpointRequest, path: RETRIEVE_USER_QUOTA_SUMMARY_PATH },
 		ctx,
 	);
+	// A refused account (revoked token, or the service disabled for it) answers every path alike: stop here
+	// instead of asking the legacy catalog too, and let AuthStorage hold further probes off for long.
+	const refused = summaryResult.response?.status;
+	if (refused === 401 || refused === 403) {
+		const text = await summaryResult.response!.text().catch(() => "");
+		throw new AIError.ProviderHttpError(`Antigravity usage refused (${refused}): ${text.slice(0, 300)}`, refused);
+	}
 	if (summaryResult.response?.ok) {
 		const summaryData = (await summaryResult.response.json()) as AntigravityQuotaSummaryResponse;
 		const summaryReport = buildQuotaSummaryReport(summaryData, params, summaryResult.endpoint, nowMs);

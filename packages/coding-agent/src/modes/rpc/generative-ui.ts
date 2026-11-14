@@ -1,5 +1,7 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { isRecord, Snowflake } from "@oh-my-pi/pi-utils";
+import { isEnoent, isRecord, Snowflake } from "@oh-my-pi/pi-utils";
 import { customMessageEntryMessage } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import type { AgentSession } from "../../session/agent-session";
 import type { CustomMessage } from "../../session/messages";
@@ -18,9 +20,15 @@ export interface UiStateDetails {
 	rendered: boolean;
 	reason?: string;
 	continuation?: "pending" | "admitted";
+	revision?: number;
 }
 export interface UiPresentDetails extends UiStateDetails {
 	schema: UiSchema;
+}
+export interface UiUpdateDetails extends UiPresentDetails {
+	status: "rendered";
+	rendered: true;
+	revision: number;
 }
 export interface UiSubmitDetails extends UiStateDetails {
 	values: Record<string, UiValue>;
@@ -62,9 +70,13 @@ export class GenerativeUiController {
 	}
 	canPresent(params: unknown): boolean {
 		if (!this.#available() || this.#session.isCompacting) return false;
-		if (!isRecord(params) || Object.keys(params).some(key => key !== "schema") || !("schema" in params)) return false;
+		if (!isRecord(params) || Object.keys(params).some(key => key !== "schema" && key !== "ui_id") || !("schema" in params)) return false;
 		try {
 			const schema = normalizeUiSchema(params.schema);
+			if (params.ui_id !== undefined) {
+				const target = this.#lookup(params.ui_id, this.#session.sessionId);
+				return schema.mode === "display" && target.presentation.schema.mode === "display";
+			}
 			if (schema.mode === "interactive" && this.pendingUi) return false;
 			return true;
 		} catch {
@@ -76,7 +88,7 @@ export class GenerativeUiController {
 		const interactions = new Map<string, Interaction>();
 		const branch = this.#session.sessionManager.getBranchView();
 		for (const entry of branch) {
-			if (entry.type !== "custom_message" || entry.customType !== "ui.present") continue;
+			if (entry.type !== "custom_message" || (entry.customType !== "ui.present" && entry.customType !== "ui.update")) continue;
 			const details = entry.details;
 			if (!isRecord(details) || typeof details.ui_id !== "string" || typeof details.session_id !== "string") continue;
 			let schema: UiSchema;
@@ -84,6 +96,15 @@ export class GenerativeUiController {
 				schema = normalizeUiSchema(details.schema);
 			} catch {
 				// Untrusted historical schemas remain raw error cards, never admission state.
+				continue;
+			}
+			if (entry.customType === "ui.update") {
+				const target = interactions.get(details.ui_id);
+				if (target && target.presentation.session_id === details.session_id && target.presentation.schema.mode === "display" && schema.mode === "display") {
+					const revision = (target.presentation.revision ?? 0) + 1;
+					target.presentation = { ...target.presentation, schema, revision };
+					target.state = { ...target.state, revision };
+				}
 				continue;
 			}
 			const task_id = typeof details.task_id === "string" ? details.task_id : undefined;
@@ -162,13 +183,14 @@ export class GenerativeUiController {
 	}
 	async present(params: unknown, toolCallId?: string): Promise<UiStateDetails> {
 		this.#assertAvailable();
-		if (!isRecord(params) || Object.keys(params).some(key => key !== "schema") || !("schema" in params))
-			throw new Error("ui.present requires only schema");
+		if (!isRecord(params) || Object.keys(params).some(key => key !== "schema" && key !== "ui_id") || !("schema" in params))
+			throw new Error("ui.present requires schema and optional ui_id");
 		const schema = normalizeUiSchema(params.schema);
 		await this.#session.waitForMessagePersistence();
 		const origin = this.#session.sessionManager.getBranchView().findLast(entry => entry.type === "message" && entry.message.role === "assistant" &&
 			entry.message.content.some(block => block.type === "toolCall" && block.id === toolCallId && block.name === "ui.present"));
 		if (!toolCallId || !origin) throw new Error("ui.present requires an assistant tool call in the current branch");
+		if (params.ui_id !== undefined) return this.#update(params.ui_id, schema, toolCallId, origin.id);
 		const existing = [...this.#interactions().values()].find(({ presentation }) =>
 			presentation.task_id === toolCallId && presentation.message_id === origin.id);
 		if (existing) return existing.state;
@@ -185,6 +207,24 @@ export class GenerativeUiController {
 			ui_id: details.ui_id, session_id: details.session_id, task_id: toolCallId,
 			message_id: origin.id, status: initialStatus, rendered: schema.mode === "display",
 		};
+	}
+	/** Replace a branch-local display without creating another presentation or touching form admission. */
+	async #update(ui_id: unknown, schema: UiSchema, task_id: string, message_id: string): Promise<UiStateDetails> {
+		const interaction = this.#lookup(ui_id, this.#session.sessionId);
+		if (schema.mode !== "display" || interaction.presentation.schema.mode !== "display") throw new Error("ui_id updates require a display UI and a display schema");
+		const prior = this.#session.sessionManager.getBranchView().find(entry => entry.type === "custom_message" && entry.customType === "ui.update" &&
+			isRecord(entry.details) && entry.details.ui_id === ui_id && entry.details.task_id === task_id && entry.details.message_id === message_id);
+		if (prior?.type === "custom_message") {
+			const receipt = prior.details as UiUpdateDetails;
+			return { ui_id: receipt.ui_id, session_id: receipt.session_id, status: "rendered", rendered: true, revision: receipt.revision };
+		}
+		const details: UiUpdateDetails = {
+			ui_id: interaction.presentation.ui_id, session_id: this.#session.sessionId,
+			task_id, message_id, status: "rendered", rendered: true, schema,
+			revision: (interaction.presentation.revision ?? 0) + 1,
+		};
+		await this.#persist({ customType: "ui.update", content: "Display UI updated.", display: true, details, attribution: "agent" });
+		return { ui_id: details.ui_id, session_id: details.session_id, status: "rendered", rendered: true, revision: details.revision };
 	}
 	#lookup(ui_id: unknown, session_id: unknown): Interaction {
 		if (typeof ui_id !== "string" || session_id !== this.#session.sessionId)
@@ -231,6 +271,24 @@ export class GenerativeUiController {
 		const details: UiSubmitDetails = { ...state, status: "submitted", continuation: "pending", values: validated };
 		this.#settling.add(state.ui_id);
 		try {
+			for (const control of presentation.schema.components) {
+				if (control.type !== "path-picker") continue;
+				const selected = validated[control.id] as string[];
+				if (selected.length === 0) continue;
+				const cwd = await fs.realpath(this.#session.sessionManager.getCwd());
+				for (const selectedPath of selected) {
+					let resolved: string;
+					try { resolved = await fs.realpath(path.join(cwd, selectedPath)); }
+					catch (error) {
+						if (isEnoent(error)) throw new Error(`Path-picker ${control.id}: path does not exist: ${selectedPath}`);
+						throw error;
+					}
+					const relative = path.relative(cwd, resolved);
+					if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error(`Path-picker ${control.id}: path is outside the session project: ${selectedPath}`);
+					const stat = await fs.stat(resolved);
+					if ((control.kind === "file" && !stat.isFile()) || (control.kind === "directory" && !stat.isDirectory()) || (control.kind === "any" && !stat.isFile() && !stat.isDirectory())) throw new Error(`Path-picker ${control.id}: expected ${control.kind}: ${selectedPath}`);
+				}
+			}
 			await this.#persist({ customType: "ui.submit", content: JSON.stringify({ ui_id, values: details.values }), details, display: true, attribution: "user" });
 			return details;
 		} finally { this.#settling.delete(state.ui_id); }
@@ -286,6 +344,6 @@ export const uiContinuationMessage: Pick<CustomMessage, "customType" | "content"
 	customType: "ui.continue", content: continuation, display: false, attribution: "user",
 };
 export function generativeUiHistoryMessage(entry: SessionEntry): CustomMessage | undefined {
-	if (entry.type !== "custom_message" || !["ui.present", "ui.submit", "ui.state"].includes(entry.customType)) return undefined;
+	if (entry.type !== "custom_message" || !["ui.present", "ui.update", "ui.submit", "ui.state"].includes(entry.customType)) return undefined;
 	return customMessageEntryMessage(entry);
 }

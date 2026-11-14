@@ -17,6 +17,7 @@ import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "@oh-my-pi/pi-tui
 import { openPath } from "../utils/open";
 import { copyToClipboard } from "../utils/clipboard";
 import { refreshStatusLine } from "./builtin-modes";
+import { remoteControlStatus } from "../remote/remote-control-status";
 import { CollabQrCodeComponent, collabBrowserLink } from "@oh-my-pi/pi-tui/chrome/collab-qrcode";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./helpers/parse";
 import { formatDumpArchiveReport } from "../session/session-dump-format";
@@ -442,6 +443,49 @@ export const BUILTIN_COLLABORATION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpe
 			let heading = existing ? "Collab session restarted with control access" : "Collab session started!";
 			if (host === existing) heading = view ? "Read-only collab session active" : "Collab session active";
 			showCollabLink(ctx, host, heading, view);
+		},
+	},
+	{
+		name: "rc",
+		icon: "broadcast",
+		description: "Remote control: drive this session from a paired phone",
+		inlineHint: "[wss://relay | --listen host:port | status | off]",
+		subcommands: [
+			{ name: "status", description: "Show whether phones can reach this session" },
+			{ name: "off", description: "Stop remote control" },
+		],
+		subcommandOptional: true,
+		allowArgs: true,
+		getTuiAutocompleteDescription: runtime =>
+			runtime.ctx.remoteControl ? "Remote control: on" : "Remote control: off",
+		handleTui: async (command, runtime) => {
+			const ctx = runtime.ctx;
+			clearSubmittedText(runtime);
+			const args = command.args.trim();
+			const current = ctx.remoteControl;
+			if (args === "off" || args === "stop") {
+				if (!current) {
+					ctx.showStatus("Remote control is off");
+					return;
+				}
+				ctx.remoteControl = undefined;
+				await current.stop();
+				ctx.showStatus("Remote control stopped");
+				return;
+			}
+			if (args === "status" || (current && !args)) {
+				ctx.showStatus(current ? remoteControlStatus(current) : "Remote control is off (/rc to start)");
+				return;
+			}
+			if (current) {
+				ctx.showError("Remote control is already on (/rc off first)");
+				return;
+			}
+			// Loaded on use, like `omp-stats` above: remote control carries the RPC server, which imports the
+			// slash-command registry this module is part of (a static import is a cycle), and plain TUI startup
+			// leaves the RPC server out (see `main.ts`).
+			const { startRemoteControl } = await import("../remote/remote-control");
+			await startRemoteControl(ctx, args);
 		},
 	},
 	{

@@ -148,3 +148,101 @@ describe("Generative UI image references", () => {
 		expect(() => normalizeUiSchema(image(unicode))).toThrow();
 	});
 });
+
+describe("Generative UI suggestions, ranking, paths and wizard steps", () => {
+	const button = { type: "button", id: "send", label: "Send" };
+	const form = (control: Record<string, unknown>) => ({ version: 1, mode: "interactive", components: [control, button] });
+	const ranking = { type: "ranking", id: "rank", label: "Priority", options };
+	const picker = { type: "path-picker", id: "paths", label: "Files" };
+	const suggestions = { type: "suggestions", id: "next", items: [{ id: "explain", label: "Explain", prompt: "Explain the result", description: "More detail" }] };
+
+	it("normalizes bounded display suggestions and rejects interactive suggestions and unsafe/duplicate item ids", () => {
+		const display = (component: Record<string, unknown>) => ({ version: 1, mode: "display", components: [component] });
+		expect(normalizeUiSchema(display(suggestions)).components[0]).toMatchObject({ style: "chips", items: suggestions.items });
+		expect(normalizeUiSchema(display({ ...suggestions, style: "cards", label: "x".repeat(120), items: Array.from({ length: 6 }, (_, i) => ({ id: `i${i}`, label: "x".repeat(80), prompt: "x".repeat(500), description: "x".repeat(200) })) })).mode).toBe("display");
+		for (const component of [
+			{ ...suggestions, items: [] }, { ...suggestions, items: Array.from({ length: 7 }, (_, i) => ({ id: `i${i}`, label: "Next" })) },
+			{ ...suggestions, items: [suggestions.items[0], suggestions.items[0]] },
+			{ ...suggestions, style: "other" }, { ...suggestions, label: "x".repeat(121) },
+			...["__proto__", "constructor", "prototype", "", "bad.id"].map(id => ({ ...suggestions, items: [{ id, label: "Next" }] })),
+			...[{ label: "x".repeat(81) }, { prompt: "x".repeat(501) }, { description: "x".repeat(201) }, { action: "run" }].map(extra => ({ ...suggestions, items: [{ ...suggestions.items[0], ...extra }] })),
+		]) expect(() => normalizeUiSchema(display(component))).toThrow();
+		expect(() => normalizeUiSchema(form(suggestions))).toThrow(/display-only/);
+	});
+
+	it("requires ranking defaults and submissions to be full permutations of 2–12 unique options", () => {
+		const host = normalizeUiSchema(form(ranking));
+		expect(host.components[0]).toMatchObject({ default: ["a", "b", "c"] });
+		expect(validateUiValues(host, { rank: ["c", "a", "b"] })).toEqual({ rank: ["c", "a", "b"] });
+		const rawDefault = ["c", "b", "a"];
+		const normalized = normalizeUiSchema(form({ ...ranking, default: rawDefault }));
+		rawDefault.push("a");
+		expect(normalized.components[0]).toMatchObject({ default: ["c", "b", "a"] });
+		for (const value of [[], ["a"], ["a", "b", "b"], ["a", "b", "unknown"], ["a", "b", "c", "a"], "a", [1, 2, 3]]) {
+			expect(() => normalizeUiSchema(form({ ...ranking, default: value }))).toThrow();
+			expect(() => validateUiValues(host, { rank: value })).toThrow();
+		}
+		for (const invalidOptions of [[], [options[0]], [options[0], options[0]], Array.from({ length: 13 }, (_, i) => ({ label: "Option", value: `${i}` })), [{ label: "A", value: "" }, options[1]]]) {
+			expect(() => normalizeUiSchema(form({ ...ranking, options: invalidOptions }))).toThrow();
+		}
+		const twelve = Array.from({ length: 12 }, (_, i) => ({ label: "x".repeat(120), value: `${i}`, description: "x".repeat(200) }));
+		expect(normalizeUiSchema(form({ ...ranking, options: twelve })).components[0]).toMatchObject({ default: twelve.map(o => o.value) });
+		expect(() => normalizeUiSchema({ version: 1, mode: "display", components: [ranking] })).toThrow();
+	});
+
+	it("normalizes project-relative picker paths and enforces required, multiple, maxItems and path format", () => {
+		const host = normalizeUiSchema(form(picker));
+		expect(host.components[0]).toMatchObject({ kind: "file", multiple: false, default: [], required: false, maxItems: 1 });
+		expect(validateUiValues(host, { paths: [] })).toEqual({ paths: [] });
+		expect(validateUiValues(host, { paths: ["src\\my file.ts"] })).toEqual({ paths: ["src/my file.ts"] });
+		const many = normalizeUiSchema(form({ ...picker, multiple: true, required: true, maxItems: 50, kind: "any" }));
+		expect(many.components[0]).toMatchObject({ default: [], maxItems: 50 });
+		const fifty = Array.from({ length: 50 }, (_, i) => `src/file${i}.ts`);
+		expect(validateUiValues(many, { paths: fifty }).paths).toEqual(fifty);
+		expect(() => validateUiValues(many, { paths: [] })).toThrow();
+		expect(() => validateUiValues(many, { paths: [...fifty, "extra"] })).toThrow();
+		expect(normalizeUiSchema(form({ ...picker, multiple: true })).components[0]).toMatchObject({ maxItems: 20 });
+		for (const path of ["", "/absolute", "\\absolute", "~/file", "../file", "a/../file", "a/./file", "a//file", "C:\\file", "https://example.com/file", "a\0b", "x".repeat(1025)]) {
+			expect(() => normalizeUiSchema(form({ ...picker, default: [path] }))).toThrow();
+			expect(() => validateUiValues(host, { paths: [path] })).toThrow();
+		}
+		expect(validateUiValues(host, { paths: ["x".repeat(1024)] }).paths).toEqual(["x".repeat(1024)]);
+		for (const values of [["a", "b"], ["a", "a"], "a", [1]]) expect(() => validateUiValues(host, { paths: values })).toThrow();
+		expect(() => validateUiValues(many, { paths: ["src/a", "src\\a"] })).toThrow(/Duplicate/);
+		for (const extra of [{ maxItems: 0 }, { maxItems: 51 }, { maxItems: 1.5 }, { kind: "socket" }, { multiple: "yes" }, { required: "yes" }, { placeholder: "x".repeat(121) }, { default: ["a", "b"] }]) expect(() => normalizeUiSchema(form({ ...picker, ...extra }))).toThrow();
+		const singleLargeMax = normalizeUiSchema(form({ ...picker, maxItems: 50 }));
+		expect(() => validateUiValues(singleLargeMax, { paths: ["a", "b"] })).toThrow();
+	});
+
+	it("validates every non-button wizard component belongs to exactly one of 2–6 steps", () => {
+		const raw = { version: 1, mode: "interactive", components: [{ type: "text", id: "intro", text: "Rank and select" }, ranking, picker, button], steps: [{ id: "priorities", title: "Priorities", components: ["intro", "rank"] }, { id: "files", title: "Files", components: ["paths"] }] };
+		const host = normalizeUiSchema(raw);
+		expect(host.steps).toEqual(raw.steps);
+		expect(validateUiValues(host, { rank: ["b", "a", "c"], paths: ["src/a.ts"] })).toEqual({ rank: ["b", "a", "c"], paths: ["src/a.ts"] });
+		expect(normalizeUiSchema(JSON.parse(JSON.stringify(host)))).toEqual(host);
+		for (const steps of [
+			[], [raw.steps[0]], Array.from({ length: 7 }, (_, i) => ({ id: `s${i}`, title: "Step", components: [] })),
+			[{ ...raw.steps[0], id: "bad.id" }, raw.steps[1]],
+			[{ ...raw.steps[0], title: "x".repeat(81) }, raw.steps[1]],
+			[raw.steps[0], { ...raw.steps[1], id: raw.steps[0].id }],
+			[raw.steps[0], { ...raw.steps[1], components: [] }],
+			[raw.steps[0], { ...raw.steps[1], components: ["paths", "intro"] }],
+			[raw.steps[0], { ...raw.steps[1], components: ["paths", "send"] }],
+			[raw.steps[0], { ...raw.steps[1], components: ["missing"] }],
+			[raw.steps[0], { ...raw.steps[1], components: ["paths", "paths"] }],
+		]) expect(() => normalizeUiSchema({ ...raw, steps })).toThrow();
+		expect(() => normalizeUiSchema({ version: 1, mode: "display", components: [{ type: "text", id: "intro", text: "Hi" }], steps: raw.steps })).toThrow(/interactive-only/);
+		expect(normalizeUiSchema({ ...raw, steps: [...raw.steps, ...Array.from({ length: 4 }, (_, i) => ({ id: `empty${i}`, title: "x".repeat(80), components: [] }))] }).steps).toHaveLength(6);
+	});
+
+	it("routes new arguments through strict tool validation and retains hidden array defaults", () => {
+		const schema = { version: 1, mode: "interactive", components: [{ type: "checkbox", id: "enabled", label: "Enabled" }, { ...ranking, visibleWhen: { id: "enabled", equals: true } }, { ...picker, required: true, default: ["src\\a.ts"], visibleWhen: { id: "enabled", equals: true } }, button], steps: [{ id: "enable", title: "Enable", components: ["enabled"] }, { id: "configure", title: "Configure", components: ["rank", "paths"] }] };
+		const args = validateToolArguments({ name: "ui.present", description: "", parameters: uiPresentParameters }, { type: "toolCall", id: "wizard", name: "ui.present", arguments: { schema, ui_id: null } });
+		expect(args.ui_id).toBeUndefined();
+		const host = normalizeUiSchema(args.schema);
+		expect(validateUiValues(host, { enabled: false })).toEqual({ enabled: false, rank: ["a", "b", "c"], paths: ["src/a.ts"] });
+		const displayArgs = validateToolArguments({ name: "ui.present", description: "", parameters: uiPresentParameters }, { type: "toolCall", id: "suggestions", name: "ui.present", arguments: { ui_id: "display-id", schema: { version: 1, mode: "display", components: [suggestions] } } });
+		expect(displayArgs.ui_id).toBe("display-id");
+		expect(normalizeUiSchema(displayArgs.schema).components[0]).toMatchObject({ type: "suggestions" });
+	});
+});

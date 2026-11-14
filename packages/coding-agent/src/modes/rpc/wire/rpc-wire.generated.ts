@@ -374,6 +374,10 @@ export type InterruptMode = "immediate" | "wait";
 
 export type StreamingBehavior = "steer" | "followUp";
 
+export type ApprovalMode = "always-ask" | "always-ask-cached" | "write" | "yolo";
+
+export type ToolTier = "read" | "write" | "exec";
+
 export type QueuedMessageQueue = "steering" | "followUp";
 
 export type CacheWarmingMode = "off" | "streaming" | "idle";
@@ -548,6 +552,8 @@ export interface UiState {
 	reason?: string;
 	continuation?: "pending" | "admitted";
 	continuation_error?: string;
+	/** Revision of an in-place updated display UI. */
+	revision?: number;
 }
 
 export interface PendingUi {
@@ -569,6 +575,7 @@ export interface SessionState {
 	followUpMode?: QueueMode;
 	interruptMode?: InterruptMode;
 	sessionFile?: string;
+	approvalMode?: ApprovalMode;
 	sessionName?: string;
 	pendingUi?: PendingUi | null;
 	autoCompactionEnabled?: boolean;
@@ -1475,6 +1482,15 @@ export interface AskQuestion {
 	recommended?: number;
 }
 
+/** One independently approvable change of a file-mutating tool call. */
+export interface ApprovalHunk {
+	/** Zero-based across the whole proposal, not per file. */
+	index: number;
+	path: string;
+	header: string;
+	lines: string[];
+}
+
 export interface SelectUiRequest {
 	type: "extension_ui_request";
 	id: string;
@@ -1482,6 +1498,11 @@ export interface SelectUiRequest {
 	title: string;
 	options: string[];
 	optionDetails?: SelectOptionDetail[];
+	toolCallId?: string;
+	toolName?: string;
+	tier?: ToolTier;
+	/** Approval of a file mutation: the hunks the host may accept separately. */
+	hunks?: ApprovalHunk[];
 	timeout?: number;
 }
 
@@ -1594,6 +1615,8 @@ export interface ValueUiResponse {
 	type: "extension_ui_response";
 	id: string;
 	value: string;
+	/** With `Approve` on a request carrying `hunks`: the accepted proper subset. */
+	selectedHunks?: number[];
 }
 
 /** Answers a `confirm` request. */
@@ -1824,6 +1847,14 @@ export interface SetAskDialogParams {
 
 export interface SetAskDialogResult {
 	enabled: boolean;
+}
+
+export interface SetApprovalModeParams {
+	mode: ApprovalMode;
+}
+
+export interface SetApprovalModeResult {
+	mode: ApprovalMode;
 }
 
 export interface GetAvailableCommandsResult {
@@ -2223,6 +2254,7 @@ export interface RpcWireCommands {
 	set_slow_mode: { params: SetSlowModeParams; result: SetSlowModeResult };
 	goal: { params: GoalParams; result: GoalResult };
 	set_ask_dialog: { params: SetAskDialogParams; result: SetAskDialogResult };
+	set_approval_mode: { params: SetApprovalModeParams; result: SetApprovalModeResult };
 	get_available_commands: { params: undefined; result: GetAvailableCommandsResult };
 	get_entries: { params: GetEntriesParams; result: SessionEntries };
 	get_tree: { params: undefined; result: SessionTree };

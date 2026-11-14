@@ -1,0 +1,28 @@
+services:
+  npi-relay:
+    # deploy.sh writes RELAY_IMAGE_TAG (git sha) into .env next to this file.
+    image: npi-relay:${RELAY_IMAGE_TAG:-latest}
+    container_name: npi-relay
+    restart: unless-stopped
+    # Only the local reverse proxy reaches the Relay; it terminates TLS.
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      RELAY_MAX_HOSTS: "16"
+      # Set once secrets/firebase-service-account.json exists (and uncomment the mount below).
+      # RELAY_FCM_CREDENTIALS: /run/secrets/fcm.json
+    volumes:
+      - npi-relay-data:/data
+      # - ./secrets/firebase-service-account.json:/run/secrets/fcm.json:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  npi-relay-data:

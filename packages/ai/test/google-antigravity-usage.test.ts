@@ -173,6 +173,30 @@ describe("antigravity usage provider", () => {
 		);
 	});
 
+	it("stops at a refused account instead of also asking the model catalog and the sandbox", async () => {
+		const requestedUrls: string[] = [];
+		const fetchImpl: FetchImpl = async input => {
+			requestedUrls.push(String(input));
+			return new Response(
+				JSON.stringify({
+					error: {
+						code: 403,
+						message: "This service has been disabled in this account for violation of Terms of Service.",
+						status: "PERMISSION_DENIED",
+					},
+				}),
+				{ status: 403, headers: { "content-type": "application/json" } },
+			);
+		};
+
+		const probe = antigravityUsageProvider.fetchUsage!(
+			{ provider: "google-antigravity", credential: makeCredential(), signal: undefined },
+			makeCtx(fetchImpl),
+		);
+		await expect(probe).rejects.toMatchObject({ status: 403 });
+		expect(requestedUrls).toEqual(["https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"]);
+	});
+
 	it("keeps the worst remainingFraction when merging same tier", async () => {
 		const payload = {
 			models: {

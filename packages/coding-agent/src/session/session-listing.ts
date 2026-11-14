@@ -119,7 +119,9 @@ function getSessionScanCache(storage: SessionStorage): SessionScanCache {
 function sanitizeSessionName(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	const firstLine = value.split(/\r?\n/)[0] ?? "";
-	const stripped = firstLine.replace(/[\x00-\x1F\x7F]/g, "");
+	// A byte window that ends inside a multi-byte character decodes to U+FFFD, and a UTF-16 cut can leave a
+	// lone surrogate: both read as garbage in a name, so they are dropped rather than shown.
+	const stripped = firstLine.toWellFormed().replace(/[\x00-\x1F\x7F\uFFFD]/g, "");
 	const trimmed = stripped.trim();
 	return trimmed.length > 0 ? trimmed : undefined;
 }
@@ -224,8 +226,23 @@ function statusFromTailMessage(message: TailMessage): SessionStatus {
 	}
 }
 
+/** The byte window ended inside a multi-byte character: the decoder left U+FFFD at the end of the text. */
+function dropCutCharacterAtEnd(text: string): string {
+	let end = text.length;
+	while (end > 0 && text.charCodeAt(end - 1) === 0xfffd) end--;
+	return end === text.length ? text : text.slice(0, end);
+}
+
+/** The window began inside a multi-byte character: the decoder left U+FFFD at the start of the text. */
+function dropCutCharacterAtStart(text: string): string {
+	let start = 0;
+	while (start < text.length && text.charCodeAt(start) === 0xfffd) start++;
+	return start === 0 ? text : text.slice(start);
+}
+
 function decodeJsonStringFragment(value: string): string {
-	const safeValue = value.endsWith("\\") ? value.slice(0, -1) : value;
+	// A fragment cut by the prefix window may end inside an escape: drop the unfinished `\uXXX` or lone `\`.
+	const safeValue = value.replace(/\\u[0-9a-fA-F]{0,3}$/, "").replace(/(?<!\\)(?:\\\\)*\\$/, m => m.slice(0, -1));
 	try {
 		return JSON.parse(`"${safeValue}"`) as string;
 	} catch {
@@ -427,12 +444,14 @@ async function scanSessionFile(
 		return cached.info ? { ...cached.info } : undefined;
 	}
 	try {
-		const [content, suffix] = await storage.readTextSlices(
+		let [content, suffix] = await storage.readTextSlices(
 			file,
 			SESSION_LIST_PREFIX_BYTES,
 			withStatus ? SESSION_LIST_SUFFIX_BYTES : 0,
 		);
 		const { size, mtime } = stat;
+		content = dropCutCharacterAtEnd(content);
+		suffix = dropCutCharacterAtStart(suffix);
 		const entries = parseJsonlLenient<Record<string, unknown>>(content);
 		const header = parseSessionListHeader(content, entries);
 		if (!header) {

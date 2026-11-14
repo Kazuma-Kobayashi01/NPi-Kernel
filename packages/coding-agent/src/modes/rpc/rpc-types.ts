@@ -21,6 +21,8 @@ import type { OfficeCommandResult } from "../../office/commands";
 import type { OfficeState } from "../../office/company";
 import type { UsageAmount as OfficeUsageAmount } from "../../office/usage";
 import type { ContextUsage } from "../../extensibility/extensions/types";
+import type { ApprovalMode, ToolTier } from "../../tools/approval";
+import type { ApprovalHunk } from "../../tools/approval-hunks";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
 import type { SessionLeaseReport } from "../../session/session-storage";
 import type { RestoredQueuedMessage } from "../../session/agent-session-types";
@@ -84,6 +86,7 @@ export type RpcCommand =
 			token_budget?: number;
 	  }
 	| { id?: string; type: "set_ask_dialog"; enabled: boolean }
+	| { id?: string; type: "set_approval_mode"; mode: ApprovalMode }
 	| { id?: string; type: "get_available_commands" }
 	| { id?: string; type: "get_entries"; since?: string }
 	| { id?: string; type: "get_tree" }
@@ -210,6 +213,7 @@ export interface RpcSessionState {
 	sessionFile?: string;
 	sessionId: string;
 	sessionName?: string;
+	approvalMode: ApprovalMode;
 	pendingUi: PendingUi | null;
 	autoCompactionEnabled: boolean;
 	fastModeEnabled: boolean;
@@ -506,6 +510,7 @@ export type RpcResponse =
 	| { id?: string; type: "response"; command: "set_slow_mode"; success: true; data: { enabled: boolean } }
 	| { id?: string; type: "response"; command: "goal"; success: true; data: RpcGoalResult }
 	| { id?: string; type: "response"; command: "set_ask_dialog"; success: true; data: { enabled: boolean } }
+	| { id?: string; type: "response"; command: "set_approval_mode"; success: true; data: { mode: ApprovalMode } }
 	| {
 			id?: string;
 			type: "response";
@@ -875,6 +880,10 @@ export type RpcExtensionUIRequest =
 			title: string;
 			options: string[];
 			optionDetails?: RpcExtensionUISelectOptionDetail[];
+			toolCallId?: string;
+			toolName?: string;
+			tier?: ToolTier;
+			hunks?: readonly ApprovalHunk[];
 			timeout?: number;
 	  }
 	| { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message: string; timeout?: number }
@@ -1050,7 +1059,7 @@ export interface RpcHostUriResult {
 
 /** Response to an extension UI request */
 export type RpcExtensionUIResponse =
-	| { type: "extension_ui_response"; id: string; value: string }
+	| { type: "extension_ui_response"; id: string; value: string; selectedHunks?: number[] }
 	| { type: "extension_ui_response"; id: string; confirmed: boolean }
 	| { type: "extension_ui_response"; id: string; cancelled: true; timedOut?: boolean }
 	/** Answers to an `ask` request, one per question in request order. */

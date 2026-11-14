@@ -171,6 +171,15 @@ export const frameDefs = {
 		},
 		"One question of an `ask` request; hosts always offer free text besides `options`.",
 	),
+	ApprovalHunk: doc(
+		{
+			index: doc("number.integer", "Zero-based across the whole proposal, not per file."),
+			path: "string",
+			header: "string",
+			lines: "string[]",
+		},
+		"One independently approvable change of a file-mutating tool call.",
+	),
 	SelectUiRequest: {
 		type: UI,
 		id: "string",
@@ -178,6 +187,10 @@ export const frameDefs = {
 		title: "string",
 		options: "string[]",
 		"optionDetails?": "SelectOptionDetail[]",
+		"toolCallId?": "string",
+		"toolName?": "string",
+		"tier?": "ToolTier",
+		"hunks?": doc("ApprovalHunk[]", "Approval of a file mutation: the hunks the host may accept separately."),
 		"timeout?": "number.integer",
 	},
 	ConfirmUiRequest: {
@@ -254,7 +267,12 @@ export const frameDefs = {
 		"Answer to one `ask` question: exact option labels, plus optional free text.",
 	),
 	ValueUiResponse: doc(
-		{ type: "'extension_ui_response'", id: "string", value: "string" },
+		{
+			type: "'extension_ui_response'",
+			id: "string",
+			value: "string",
+			"selectedHunks?": doc("number.integer[]", "With `Approve` on a request carrying `hunks`: the accepted proper subset."),
+		},
 		"Answers a `select`, `input`, or `editor` request.",
 	),
 	ConfirmUiResponse: doc(

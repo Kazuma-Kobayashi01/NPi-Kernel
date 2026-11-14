@@ -1286,7 +1286,7 @@ export const cfgStartupAnimation = register({
 export const cfgStartupBgm = register({
 	id: "startup.bgm",
 	type: "boolean",
-	default: true,
+	default: false,
 	ui: {
 		tab: "interaction",
 		group: "Startup & Updates",

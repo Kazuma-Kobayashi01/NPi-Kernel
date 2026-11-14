@@ -78,6 +78,8 @@ import { restartArgv } from "../cli/flag-tables";
 import type { CollabGuestLink } from "../collab/guest";
 import { CollabController } from "../collab/controller";
 import type { CollabHost } from "../collab/host";
+import type { RemoteControl } from "../remote/remote-control";
+import { cfgRemoteAutoStart } from "../remote/settings";
 import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import { appKey, editorKey, fitHints, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { renderSidePanel, type SidePanelRows } from "@oh-my-pi/pi-tui/chrome/side-panel";
@@ -1765,6 +1767,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Owned room; use {@link collabController}.host for current-session reuse and links. */
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
+	/** Paired phones following and driving this session (`/rc`). */
+	remoteControl?: RemoteControl;
 	#streamPublisher: StreamPublisher | undefined;
 	#recorder: SessionRecorder | undefined;
 	#recorderStarting = false;
@@ -2805,6 +2809,8 @@ export class InteractiveMode implements InteractiveModeContext {
 
 		// Initialize hooks with TUI-based UI context
 		await logger.time("InteractiveMode.init:hooks", () => this.initHooksAndCustomTools());
+		// Dialogs can now be offered to a phone too.
+		if (cfgRemoteAutoStart.get(this.settings)) void this.#autoStartRemoteControl();
 		// A live `disabledExtensions` edit suspends or resumes extensions: drop (or restore) their link
 		// schemes and renderers from the transcript.
 		const extensionRunner = this.session.extensionRunner;
@@ -8293,6 +8299,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			// Guests get goodbye and the registry entry disappears before the
 			// session is disposed, under the same still-closing progress notice.
 			await this.collabController.shutdown("host exited");
+			await this.remoteControl?.stop();
+			this.remoteControl = undefined;
 			await this.#liveCommandController.stop();
 			await this.#btwController.dispose();
 			this.#omfgController.dispose();
@@ -8371,6 +8379,17 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		await this.shutdown();
+	}
+
+	/** `remote.autoStart`: `/rc` at launch, in the background; a missing relay or phone only warns. */
+	async #autoStartRemoteControl(): Promise<void> {
+		try {
+			// Loaded on use: remote control carries the RPC server, which plain TUI startup leaves out (see `main.ts`).
+			const { startRemoteControl } = await import("../remote/remote-control");
+			await startRemoteControl(this, "", { auto: true });
+		} catch (err) {
+			logger.warn("Remote control auto-start failed", { error: String(err) });
+		}
 	}
 
 	// Extension UI integration

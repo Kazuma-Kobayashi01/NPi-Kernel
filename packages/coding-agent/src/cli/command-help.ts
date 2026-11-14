@@ -120,6 +120,9 @@ export const psHelp = {
 export const readHelp = {
 	description: "Show what the read tool will return for a path, URL, or internal URI",
 } satisfies CommandMetadata;
+export const remoteHelp = {
+	description: "Run the Remote Connect host daemon, pair mobile devices, and manage authorized devices",
+} satisfies CommandMetadata;
 export const renderHelp = {
 	description: "Draw a session's entire thread through the production transcript pipeline (with repaint timing)",
 } satisfies CommandMetadata;

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Gemini 4 Hydrogen for Google API keys and Antigravity subscriptions: low/medium/high/xhigh, default high, and one subscription model routed to its effort-specific SKUs. Mandatory requests without an explicit effort honor a supported model default when no default SKU supplies one.
 - `alibaba` provider for international Model Studio pay-as-you-go keys.
 - `alibaba` and `alibaba-cn` carry published names, limits, prices, image input and per-model thinking controls, because `/models` only lists ids. Models that always think and expose no control send no thinking parameter.
 

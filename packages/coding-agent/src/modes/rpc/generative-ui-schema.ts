@@ -16,6 +16,7 @@ const component = type.or(
 	{ type: "'bar-chart' | 'line-chart' | 'pie-chart'", id: "string", "title?": "string", "unit?": "string", data: type({ label: "string", value: "number", "color?": "string" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'divider'", id: "string", "label?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'image'", id: "string", src: "string", "thumbnail?": "string", "alt?": "string", "title?": "string", "sourceUrl?": "string", "attribution?": "string", "description?": "string", "visibleWhen?": visibleWhen },
+	{ type: "'suggestions'", id: "string", "label?": "string", "style?": "'chips' | 'cards'", items: type({ id: "string", label: "string", "prompt?": "string", "description?": "string" }).array(), "visibleWhen?": visibleWhen },
 	{ type: "'button'", id: "string", label: "string" },
 	{ type: "'input'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'textarea'", id: "string", label: "string", "default?": "string", "required?": "boolean", "minLength?": "number", "maxLength?": "number", "rows?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
@@ -25,6 +26,8 @@ const component = type.or(
 	{ type: "'checkbox' | 'switch'", id: "string", label: "string", "default?": "boolean", "visibleWhen?": visibleWhen },
 	{ type: "'select' | 'radio' | 'segmented-control' | 'searchable-select'", id: "string", label: "string", options: type({ label: "string", value: "string", "description?": "string" }).array(), "default?": "string", "required?": "boolean", "visibleWhen?": visibleWhen },
 	{ type: "'multiselect' | 'checkbox-group'", id: "string", label: "string", options: type({ label: "string", value: "string", "description?": "string" }).array(), "default?": "string[]", "minItems?": "number", "maxItems?": "number", "visibleWhen?": visibleWhen },
+	{ type: "'ranking'", id: "string", label: "string", options: type({ label: "string", value: "string", "description?": "string" }).array(), "default?": "string[]", "visibleWhen?": visibleWhen },
+	{ type: "'path-picker'", id: "string", label: "string", "kind?": "'file' | 'directory' | 'any'", "multiple?": "boolean", "default?": "string[]", "required?": "boolean", "maxItems?": "number", "placeholder?": "string", "visibleWhen?": visibleWhen },
 	{ type: "'option-cards'", id: "string", label: "string", cards: type({ id: "string", title: "string", "description?": "string", "tag?": "string", "recommended?": "boolean" }).array(), "default?": "string", "required?": "boolean", "visibleWhen?": visibleWhen },
 );
 
@@ -35,7 +38,9 @@ export const uiPresentParameters = type({
 		"title?": "string",
 		"layout?": "'stack' | 'row' | 'grid' | 'column'",
 		components: component.array(),
+		"steps?": type({ id: "string", title: "string", components: "string[]" }).array(),
 	},
+	"ui_id?": "string",
 }).onDeepUndeclaredKey("reject");
 
 export type UiMode = "display" | "interactive";
@@ -48,6 +53,8 @@ export type UiTabItem = { id: string; label: string; content: string };
 export type UiTimelineItem = { time: string; title: string; description?: string; status?: "pending" | "current" | "done" | "failed" };
 export type UiChartDataPoint = { label: string; value: number; color?: string };
 export type UiOptionCard = { id: string; title: string; description?: string; tag?: string; recommended?: boolean };
+export type UiSuggestionItem = { id: string; label: string; prompt?: string; description?: string };
+export type UiStep = { id: string; title: string; components: string[] };
 
 export type UiComponent =
 	// Display components
@@ -65,6 +72,7 @@ export type UiComponent =
 	| { type: "bar-chart" | "line-chart" | "pie-chart"; id: string; title?: string; unit?: string; data: UiChartDataPoint[]; visibleWhen?: UiVisibleWhen }
 	| { type: "divider"; id: string; label?: string; visibleWhen?: UiVisibleWhen }
 	| { type: "image"; id: string; src: string; thumbnail?: string; alt?: string; title?: string; sourceUrl?: string; attribution?: string; description?: string; visibleWhen?: UiVisibleWhen }
+	| { type: "suggestions"; id: string; label?: string; style: "chips" | "cards"; items: UiSuggestionItem[]; visibleWhen?: UiVisibleWhen }
 	// Interactive components
 	| { type: "button"; id: string; label: string }
 	| { type: "input" | "textarea"; id: string; label: string; default: string; required: boolean; minLength: number; maxLength: number; rows?: number; placeholder?: string; visibleWhen?: UiVisibleWhen }
@@ -73,6 +81,8 @@ export type UiComponent =
 	| { type: "time-picker"; id: string; label: string; default: string; required: boolean; visibleWhen?: UiVisibleWhen }
 	| { type: "checkbox" | "switch"; id: string; label: string; default: boolean; visibleWhen?: UiVisibleWhen }
 	| { type: "checkbox-group" | "multiselect"; id: string; label: string; options: UiOption[]; default: string[]; minItems: number; maxItems: number; visibleWhen?: UiVisibleWhen }
+	| { type: "ranking"; id: string; label: string; options: UiOption[]; default: string[]; visibleWhen?: UiVisibleWhen }
+	| { type: "path-picker"; id: string; label: string; kind: "file" | "directory" | "any"; multiple: boolean; default: string[]; required: boolean; maxItems: number; placeholder?: string; visibleWhen?: UiVisibleWhen }
 	| { type: "select" | "radio" | "segmented-control" | "searchable-select"; id: string; label: string; options: UiOption[]; default: string; required: boolean; visibleWhen?: UiVisibleWhen }
 	| { type: "option-cards"; id: string; label: string; cards: UiOptionCard[]; default: string; required: boolean; visibleWhen?: UiVisibleWhen };
 
@@ -81,7 +91,7 @@ export type UiInteractiveComponent = Extract<UiComponent, {
 	type: "button" | "input" | "textarea" | "number-input" | "slider" | "number" |
 	"date" | "date-picker" | "time-picker" | "checkbox" | "switch" |
 	"checkbox-group" | "multiselect" | "select" | "radio" |
-	"segmented-control" | "searchable-select" | "option-cards";
+	"segmented-control" | "searchable-select" | "option-cards" | "ranking" | "path-picker";
 }>;
 
 /** Interactive components that hold a value; `button` only submits the form. */
@@ -93,6 +103,7 @@ export interface UiSchema {
 	title?: string;
 	layout: "stack" | "row" | "grid" | "column";
 	components: UiComponent[];
+	steps?: UiStep[];
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -153,13 +164,30 @@ function imageUrl(value: unknown, name: string): string {
 function imageSource(value: unknown): string {
 	const s = string(value, MAX_IMAGE_REF, "image.src");
 	if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(s)) return imageUrl(s, "image.src");
-	if (s.startsWith("/") || s.startsWith("\\") || s.startsWith("~")) throw new Error("image.src must be project-relative");
+	return projectRelativePath(s, MAX_IMAGE_REF, "image.src");
+}
+
+function projectRelativePath(value: unknown, max: number, name: string): string {
+	const s = string(value, max, name);
+	if (s.startsWith("/") || s.startsWith("\\") || s.startsWith("~") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(s) || s.includes("\0")) throw new Error(`${name} must be project-relative`);
 	const segments = s.split(/[\\/]/);
 	if (segments.some(segment => segment === "" || segment === "." || segment === "..")) {
-		throw new Error("image.src must be a normalized project-relative path");
+		throw new Error(`${name} must be a normalized project-relative path`);
 	}
-	// The contract and the host's file reader are `/`-separated; a literal backslash is a filename on macOS.
 	return segments.join("/");
+}
+
+function paths(value: unknown, multiple: boolean, maxItems: number, required: boolean): string[] {
+	if (!Array.isArray(value) || value.length > maxItems || (!multiple && value.length > 1) || (required && value.length === 0)) throw new Error("Invalid path-picker cardinality");
+	const result = value.map(v => projectRelativePath(v, 1024, "path-picker path"));
+	if (new Set(result).size !== result.length) throw new Error("Duplicate path-picker path");
+	return result;
+}
+
+function safeId(value: unknown, name: string): string {
+	const id = string(value, 64, name);
+	if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || ["__proto__", "constructor", "prototype"].includes(id)) throw new Error(`Invalid ${name}`);
+	return id;
 }
 
 function number(value: unknown): number {
@@ -237,7 +265,7 @@ export function isInteractiveComponent(c: UiComponent): c is UiInteractiveCompon
 		"button", "input", "textarea", "number-input", "slider", "number",
 		"date", "date-picker", "time-picker", "checkbox", "switch",
 		"checkbox-group", "multiselect", "select", "radio",
-		"segmented-control", "searchable-select", "option-cards",
+		"segmented-control", "searchable-select", "option-cards", "ranking", "path-picker",
 	].includes(c.type);
 }
 
@@ -247,7 +275,7 @@ export function isUiControl(c: UiComponent): c is UiControl {
 
 export function normalizeUiSchema(value: unknown): UiSchema {
 	const schema = object(value);
-	keys(schema, ["version", "mode", "title", "layout", "components"]);
+	keys(schema, ["version", "mode", "title", "layout", "components", "steps"]);
 	if (schema.version !== 1) throw new Error("Unsupported UI schema version");
 	const layout = schema.layout === undefined ? "stack" : schema.layout;
 	if (layout !== "stack" && layout !== "row" && layout !== "grid" && layout !== "column") throw new Error("Invalid UI layout");
@@ -442,6 +470,31 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 					...condProp,
 				};
 			}
+			case "suggestions": {
+				keys(c, ["type", "id", "label", "style", "items", "visibleWhen"]);
+				const style = oneOf(c.style, ["chips", "cards"] as const, "suggestions style") ?? "chips";
+				if (!Array.isArray(c.items) || c.items.length < 1 || c.items.length > 6) throw new Error("Suggestions require 1–6 items");
+				const itemIds = new Set<string>();
+				const items = c.items.map(rawItem => {
+					const item = object(rawItem); keys(item, ["id", "label", "prompt", "description"]);
+					const itemId = safeId(item.id, "suggestion id");
+					if (itemIds.has(itemId)) throw new Error("Duplicate suggestion id");
+					itemIds.add(itemId);
+					return { id: itemId, label: text(item.label, 80, "suggestion label"), ...(item.prompt === undefined ? {} : { prompt: text(item.prompt, 500, "suggestion prompt") }), ...(item.description === undefined ? {} : { description: text(item.description, 200, "suggestion description") }) };
+				});
+				return { type: kind, id, style, items, ...(c.label === undefined ? {} : { label: text(c.label, 120, "suggestions label") }), ...condProp };
+			}
+			case "path-picker": {
+				keys(c, ["type", "id", "label", "kind", "multiple", "default", "required", "maxItems", "placeholder", "visibleWhen"]);
+				const pathKind = oneOf(c.kind, ["file", "directory", "any"] as const, "path-picker kind") ?? "file";
+				const multiple = c.multiple === undefined ? false : boolean(c.multiple);
+				const required = c.required === undefined ? false : boolean(c.required);
+				const maxItems = c.maxItems === undefined ? (multiple ? 20 : 1) : integer(c.maxItems, 50);
+				if (maxItems === 0) throw new Error("path-picker maxItems must be 1–50");
+				const initial = paths(c.default === undefined ? [] : c.default, multiple, maxItems, false);
+				textLength += initial.reduce((sum, p) => sum + p.length, 0);
+				return { type: kind, id, label: text(c.label, 120, "label"), kind: pathKind, multiple, required, maxItems, default: initial, ...(c.placeholder === undefined ? {} : { placeholder: text(c.placeholder, 120, "placeholder") }), ...condProp };
+			}
 			case "button": {
 				keys(c, ["type", "id", "label"]);
 				return { type: "button", id, label: text(c.label, 120, "button.label") };
@@ -491,11 +544,12 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 				const label = text(c.label, 120, "label");
 				return { type: kind, id, label, default: c.default === undefined ? false : boolean(c.default), ...condProp };
 			}
+			case "ranking":
 			case "checkbox-group":
 			case "multiselect": {
-				keys(c, ["type", "id", "label", "options", "default", "minItems", "maxItems", "visibleWhen"]);
+				keys(c, ["type", "id", "label", "options", "default", "visibleWhen", ...(kind === "ranking" ? [] : ["minItems", "maxItems"])]);
 				const label = text(c.label, 120, "label");
-				if (!Array.isArray(c.options) || c.options.length < 1 || c.options.length > 32) throw new Error("Invalid UI options");
+				if (!Array.isArray(c.options) || c.options.length < (kind === "ranking" ? 2 : 1) || c.options.length > (kind === "ranking" ? 12 : 32)) throw new Error("Invalid UI options");
 				const seen = new Set<string>();
 				const options = c.options.map(rawOption => {
 					const option = object(rawOption); keys(option, ["label", "value", "description"]);
@@ -504,6 +558,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 					seen.add(value);
 					return { label: text(option.label, 120, "option label"), value, ...(option.description === undefined ? {} : { description: text(option.description, 200, "option description") }) };
 				});
+				if (kind === "ranking") return { type: kind, id, label, options, default: selections(c.default === undefined ? options.map(o => o.value) : c.default, options, options.length, options.length), ...condProp };
 				const minItems = c.minItems === undefined ? 0 : integer(c.minItems, options.length), maxItems = c.maxItems === undefined ? options.length : integer(c.maxItems, options.length);
 				if (minItems > maxItems) throw new Error("Invalid multiselect limits");
 				return { type: kind, id, label, options, minItems, maxItems, default: selections(c.default === undefined ? [] : c.default, options, 0, maxItems), ...condProp };
@@ -575,6 +630,7 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 	} else {
 		// Interactive mode requires exactly one submit button
 		if (buttonCount !== 1) throw new Error("Interactive UI requires exactly one submit button");
+		if (components.some(c => c.type === "suggestions")) throw new Error("Suggestions are display-only");
 	}
 
 	const controlIds = new Set(components.filter(isUiControl).map(c => c.id));
@@ -583,9 +639,31 @@ export function normalizeUiSchema(value: unknown): UiSchema {
 			throw new Error(`Invalid visibleWhen target: ${c.visibleWhen.id}`);
 		}
 	}
+	let steps: UiStep[] | undefined;
+	if (schema.steps !== undefined) {
+		if (mode !== "interactive") throw new Error("UI steps are interactive-only");
+		if (!Array.isArray(schema.steps) || schema.steps.length < 2 || schema.steps.length > 6) throw new Error("UI requires 2–6 steps");
+		const stepIds = new Set<string>(), assigned = new Set<string>();
+		const eligible = new Set(components.filter(c => c.type !== "button").map(c => c.id));
+		steps = schema.steps.map(rawStep => {
+			const step = object(rawStep); keys(step, ["id", "title", "components"]);
+			const id = safeId(step.id, "step id");
+			if (stepIds.has(id)) throw new Error("Duplicate step id");
+			stepIds.add(id);
+			if (!Array.isArray(step.components) || step.components.length > 24) throw new Error("Invalid step components");
+			const refs = step.components.map(ref => {
+				const componentId = safeId(ref, "step component id");
+				if (!eligible.has(componentId) || assigned.has(componentId)) throw new Error("Step component must appear exactly once and must not be a button");
+				assigned.add(componentId);
+				return componentId;
+			});
+			return { id, title: text(step.title, 80, "step title"), components: refs };
+		});
+		if (assigned.size !== eligible.size) throw new Error("Every non-button component must belong to exactly one step");
+	}
 
 	if (textLength > 32768) throw new Error("UI text exceeds 32768 characters");
-	return { version: 1, mode, ...(title === undefined ? {} : { title }), layout, components };
+	return { version: 1, mode, ...(title === undefined ? {} : { title }), layout, components, ...(steps === undefined ? {} : { steps }) };
 }
 
 export function validateUiValues(schema: UiSchema, value: unknown): Record<string, UiValue> {
@@ -604,6 +682,10 @@ export function validateUiValues(schema: UiSchema, value: unknown): Record<strin
 			result[c.id] = boolean(val);
 		} else if (c.type === "multiselect" || c.type === "checkbox-group") {
 			result[c.id] = selections(val, c.options, c.minItems, c.maxItems);
+		} else if (c.type === "ranking") {
+			result[c.id] = selections(val, c.options, c.options.length, c.options.length);
+		} else if (c.type === "path-picker") {
+			result[c.id] = paths(val, c.multiple, c.maxItems, c.required);
 		} else if (c.type === "date" || c.type === "date-picker") {
 			const s = string(val, 10, c.id);
 			if (s === "") {

@@ -62,7 +62,7 @@ describe("UsageDashboardComponent.describe", () => {
 	): UsageDashboardComponent {
 		return new UsageDashboardComponent({
 			reports,
-			renderDetail: () => "",
+			loadAccountStats: async () => [],
 			// Pushes synchronously, so the activity is in place once constructed.
 			loadActivity: async push => push(activity),
 			refresh,

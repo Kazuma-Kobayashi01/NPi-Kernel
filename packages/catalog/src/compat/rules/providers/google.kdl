@@ -9,6 +9,18 @@ provider "google" {
 	web-search "gemini"
 	image-count-budget 200
 
+	// Public GenerateContent supports the documented synchronous 64K output cap.
+	// https://aistudio.google.com/docs/models/gemini-4-hydrogen
+	// https://aistudio.google.com/docs/pricing#gemini-4-hydrogen
+	seed api="google-generative-ai" base-url="https://generativelanguage.googleapis.com/v1beta" bundle="always" {
+		model "gemini-4-hydrogen" name="Gemini 4 Hydrogen" {
+			reasoning #true
+			input "text" "image"
+			cost input=1.5 output=7.5 cache-read=0.075 cache-write=0
+			limits context=1048576 max-tokens=65536
+		}
+	}
+
 	class "unknown" {
 		thinking-efforts "minimal" "low" "medium" "high"
 		thinking-mode "budget"

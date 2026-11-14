@@ -265,7 +265,11 @@ function antigravityWireProfileOf(model: AntigravityDiscoveryApiModel): Antigrav
 	const thinkingLevel =
 		model.thinkingLevel === undefined ? undefined : ANTIGRAVITY_THINKING_LEVELS[model.thinkingLevel];
 	if (thinkingLevel !== undefined) profile.thinkingLevel = thinkingLevel;
-	if (model.thinkingBudget !== undefined) profile.thinkingBudget = model.thinkingBudget;
+	// A reported level wins over the legacy budget even when its enum value
+	// is new to this decoder; the selected effort supplies the native level.
+	if (model.thinkingLevel === undefined && model.thinkingBudget !== undefined) {
+		profile.thinkingBudget = model.thinkingBudget;
+	}
 	return Object.keys(profile).length > 0 ? profile : undefined;
 }
 

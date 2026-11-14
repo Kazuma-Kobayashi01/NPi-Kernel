@@ -19,6 +19,7 @@ import {
 	type StoredAuthCredential,
 } from "@oh-my-pi/pi-ai/auth-storage";
 import { usageCacheIdentity } from "@oh-my-pi/pi-ai/auth/usage-cache";
+import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
 import type { UsageLimit, UsageProvider, UsageReport } from "@oh-my-pi/pi-ai/usage";
 import { alibabaTokenPlanUsageProvider } from "@oh-my-pi/pi-ai/usage/alibaba-token-plan";
 import * as claudeUsage from "@oh-my-pi/pi-ai/usage/claude";
@@ -545,6 +546,81 @@ describe("AuthStorage usage cache: explicit invalidation", () => {
 			expireCachePayloads(store);
 			expect(await storage.usage.reports()).toEqual([recovered]);
 			expect(calls).toBe(2);
+		} finally {
+			storage.close();
+		}
+	});
+
+	it("holds a refused credential off for hours, through invalidation, instead of re-probing every few seconds", async () => {
+		let now = 1_800_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		vi.spyOn(Math, "random").mockReturnValue(0.5);
+		let calls = 0;
+		const recovered = makeReport("a@example.com");
+		const usageProvider: UsageProvider = {
+			id: "anthropic",
+			supports: params => params.provider === "anthropic",
+			async fetchUsage() {
+				calls += 1;
+				if (calls === 1) throw new ProviderHttpError("This service has been disabled in this account", 403);
+				return recovered;
+			},
+		};
+		const storage = new AuthStorage(makeStore([oauthRow(1, "a@example.com")]), {
+			usageProviderResolver: provider => (provider === "anthropic" ? usageProvider : undefined),
+		});
+		try {
+			await storage.credentials.reload();
+			expect(await storage.usage.reports()).toEqual([]);
+			// A host refreshing after every turn (invalidate + read) must not reach the provider again soon.
+			for (const minutes of [1, 10, 60, 300]) {
+				now = 1_800_000_000_000 + minutes * 60_000;
+				await storage.usage.invalidate("anthropic");
+				expect(await storage.usage.reports()).toEqual([]);
+			}
+			expect(calls).toBe(1);
+
+			now = 1_800_000_000_000 + 7 * 60 * 60_000;
+			expect(await storage.usage.reports()).toEqual([recovered]);
+			expect(calls).toBe(2);
+		} finally {
+			storage.close();
+		}
+	});
+
+	it("holds off just as long when the provider answers a 403 with no report instead of an error", async () => {
+		let now = 1_800_000_000_000;
+		vi.spyOn(Date, "now").mockImplementation(() => now);
+		vi.spyOn(Math, "random").mockReturnValue(0.5);
+		let requests = 0;
+		const usageFetch = (async () => {
+			requests += 1;
+			return new Response("{}", { status: requests === 1 ? 403 : 200 });
+		}) as unknown as typeof fetch;
+		const recovered = makeReport("a@example.com");
+		const usageProvider: UsageProvider = {
+			id: "anthropic",
+			supports: params => params.provider === "anthropic",
+			async fetchUsage(_params, ctx) {
+				const response = await ctx.fetch("https://usage.example.test/quota");
+				return response.ok ? recovered : null;
+			},
+		};
+		const storage = new AuthStorage(makeStore([oauthRow(1, "a@example.com")]), {
+			usageFetch,
+			usageProviderResolver: provider => (provider === "anthropic" ? usageProvider : undefined),
+		});
+		try {
+			await storage.credentials.reload();
+			expect(await storage.usage.reports()).toEqual([]);
+			now += 60 * 60_000;
+			await storage.usage.invalidate("anthropic");
+			expect(await storage.usage.reports()).toEqual([]);
+			expect(requests).toBe(1);
+
+			now += 6 * 60 * 60_000;
+			expect(await storage.usage.reports()).toEqual([recovered]);
+			expect(requests).toBe(2);
 		} finally {
 			storage.close();
 		}

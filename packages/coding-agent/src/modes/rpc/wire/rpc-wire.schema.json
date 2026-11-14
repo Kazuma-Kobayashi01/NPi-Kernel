@@ -241,6 +241,17 @@
 				"clientOmit": []
 			},
 			{
+				"name": "set_approval_mode",
+				"doc": "Override the session's tool approval mode without persisting to config.",
+				"params": "SetApprovalModeParams",
+				"result": "SetApprovalModeResult",
+				"nullable": false,
+				"unwrap": "mode",
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "get_available_commands",
 				"doc": "List the slash-command catalog.",
 				"params": null,
@@ -2433,6 +2444,23 @@
 			],
 			"type": "string"
 		},
+		"ApprovalMode": {
+			"enum": [
+				"always-ask",
+				"always-ask-cached",
+				"write",
+				"yolo"
+			],
+			"type": "string"
+		},
+		"ToolTier": {
+			"enum": [
+				"read",
+				"write",
+				"exec"
+			],
+			"type": "string"
+		},
 		"QueuedMessageQueue": {
 			"enum": [
 				"steering",
@@ -3033,6 +3061,10 @@
 				},
 				"continuation_error": {
 					"type": "string"
+				},
+				"revision": {
+					"type": "integer",
+					"description": "Revision of an in-place updated display UI."
 				}
 			},
 			"required": [
@@ -3107,6 +3139,10 @@
 				},
 				"sessionFile": {
 					"type": "string"
+				},
+				"approvalMode": {
+					"$ref": "#/$defs/ApprovalMode",
+					"default": "yolo"
 				},
 				"sessionName": {
 					"type": "string"
@@ -6026,6 +6062,34 @@
 			],
 			"description": "One question of an `ask` request; hosts always offer free text besides `options`."
 		},
+		"ApprovalHunk": {
+			"type": "object",
+			"properties": {
+				"index": {
+					"type": "integer",
+					"description": "Zero-based across the whole proposal, not per file."
+				},
+				"path": {
+					"type": "string"
+				},
+				"header": {
+					"type": "string"
+				},
+				"lines": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				}
+			},
+			"required": [
+				"index",
+				"path",
+				"header",
+				"lines"
+			],
+			"description": "One independently approvable change of a file-mutating tool call."
+		},
 		"SelectUiRequest": {
 			"type": "object",
 			"properties": {
@@ -6052,6 +6116,22 @@
 					"items": {
 						"$ref": "#/$defs/SelectOptionDetail"
 					}
+				},
+				"toolCallId": {
+					"type": "string"
+				},
+				"toolName": {
+					"type": "string"
+				},
+				"tier": {
+					"$ref": "#/$defs/ToolTier"
+				},
+				"hunks": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/ApprovalHunk"
+					},
+					"description": "Approval of a file mutation: the hunks the host may accept separately."
 				},
 				"timeout": {
 					"type": "integer"
@@ -6444,6 +6524,13 @@
 				},
 				"value": {
 					"type": "string"
+				},
+				"selectedHunks": {
+					"type": "array",
+					"items": {
+						"type": "integer"
+					},
+					"description": "With `Approve` on a request carrying `hunks`: the accepted proper subset."
 				}
 			},
 			"required": [
@@ -7233,6 +7320,28 @@
 			},
 			"required": [
 				"enabled"
+			]
+		},
+		"SetApprovalModeParams": {
+			"type": "object",
+			"properties": {
+				"mode": {
+					"$ref": "#/$defs/ApprovalMode"
+				}
+			},
+			"required": [
+				"mode"
+			]
+		},
+		"SetApprovalModeResult": {
+			"type": "object",
+			"properties": {
+				"mode": {
+					"$ref": "#/$defs/ApprovalMode"
+				}
+			},
+			"required": [
+				"mode"
 			]
 		},
 		"GetAvailableCommandsResult": {

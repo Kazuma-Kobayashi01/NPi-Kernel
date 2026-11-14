@@ -4,6 +4,7 @@
 
 ### Added
 
+- Native Google `XHIGH` thinking for Gemini 4 Hydrogen, shared by API-key and Antigravity OAuth requests; a newly advertised roster level no longer falls back to a legacy thinking budget.
 - `AuthStorage.oauth.activate(provider, credentialId)` activates one stored OAuth account (`OAuthCredentials.activated`): while one is activated, OAuth selection uses only it (and an explicit session pin), leaving the provider's other accounts idle; `undefined` returns to rotation. `OAuthAccountSummary.activated` reports it; it survives refreshes and re-logins.
 - OAuth credentials take a user-given `label` (unique per provider, ignoring case) kept across refreshes and re-logins: `AuthStorage.oauth.setLabel(provider, credentialId, label)` sets or clears it, `oauth.accounts()` and `oauth.identity()` report it, `oauth.login()` returns the stored row's `credentialId`, and account policy selectors match `label`.
 - Added `waitForSibling` to `RotateCredentialOptions`; set it to `false` to skip the short sibling-unblock wait in `limits.rotate()` while still blocking the failed credential ([#17439](https://github.com/can1357/oh-my-pi/pull/17439) by [@wolfiesch](https://github.com/wolfiesch))
@@ -14,6 +15,7 @@
 
 ### Fixed
 
+- A provider that refuses a credential (401/403, e.g. an account barred from the service) is no longer asked for usage again every few seconds: usage probes for that account wait six hours, even through explicit invalidation, and Antigravity stops at the refused quota call instead of also trying the model catalog and the sandbox endpoint.
 - Alibaba(China) native-effort requests now use the catalog's reviewed Qwen3.8 contract to send top-level `reasoning_effort` and `enable_thinking`, without local chat-template parameters or a token-budget mapping; binary models retain the thinking toggle.
 - Fixed native judgment requests (TypeSafe, OpenRouter Decisions, OpenAI Decisions, Workers AI) sending credentials in their state unredacted while credential redaction was on ([#17443](https://github.com/can1357/oh-my-pi/pull/17443))
 - Fixed every new Codex session, including each subagent, losing a response and retrying when the native turn lane refuses live steering; once refused, later sessions on the same account, endpoint, and model queue follow-ups for four hours ([#14158](https://github.com/can1357/oh-my-pi/issues/14158), [#17438](https://github.com/can1357/oh-my-pi/pull/17438) by [@wolfiesch](https://github.com/wolfiesch))

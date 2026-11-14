@@ -77,6 +77,16 @@ _STREAMING_BEHAVIOR_VALUES: Final[frozenset[str]] = frozenset({"steer", "followU
 _decode_streaming_behavior = cast("Decoder[StreamingBehavior]", literal(_STREAMING_BEHAVIOR_VALUES))
 
 
+ApprovalMode: TypeAlias = Literal["always-ask", "always-ask-cached", "write", "yolo"]
+_APPROVAL_MODE_VALUES: Final[frozenset[str]] = frozenset({"always-ask", "always-ask-cached", "write", "yolo"})
+_decode_approval_mode = cast("Decoder[ApprovalMode]", literal(_APPROVAL_MODE_VALUES))
+
+
+ToolTier: TypeAlias = Literal["read", "write", "exec"]
+_TOOL_TIER_VALUES: Final[frozenset[str]] = frozenset({"read", "write", "exec"})
+_decode_tool_tier = cast("Decoder[ToolTier]", literal(_TOOL_TIER_VALUES))
+
+
 QueuedMessageQueue: TypeAlias = Literal["steering", "followUp"]
 _QUEUED_MESSAGE_QUEUE_VALUES: Final[frozenset[str]] = frozenset({"steering", "followUp"})
 _decode_queued_message_queue = cast("Decoder[QueuedMessageQueue]", literal(_QUEUED_MESSAGE_QUEUE_VALUES))
@@ -716,6 +726,8 @@ class UiState:
     reason: str | None = None
     continuation: Literal["pending", "admitted"] | None = None
     continuation_error: str | None = None
+    revision: int | None = None
+    """Revision of an in-place updated display UI."""
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -739,6 +751,7 @@ class SessionState:
     follow_up_mode: QueueMode = "one-at-a-time"
     interrupt_mode: InterruptMode = "immediate"
     session_file: str | None = None
+    approval_mode: ApprovalMode = "yolo"
     session_name: str | None = None
     pending_ui: PendingUi | None = None
     auto_compaction_enabled: bool = False
@@ -1721,6 +1734,16 @@ class AskQuestion:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class ApprovalHunk:
+    """One independently approvable change of a file-mutating tool call."""
+    index: int
+    """Zero-based across the whole proposal, not per file."""
+    path: str
+    header: str
+    lines: tuple[str, ...]
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class SelectUiRequest:
     type: Literal["extension_ui_request"] = "extension_ui_request"
     id: str
@@ -1728,6 +1751,11 @@ class SelectUiRequest:
     title: str
     options: tuple[str, ...]
     option_details: tuple[SelectOptionDetail, ...] | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tier: ToolTier | None = None
+    hunks: tuple[ApprovalHunk, ...] | None = None
+    """Approval of a file mutation: the hunks the host may accept separately."""
     timeout: int | None = None
 
 
@@ -1845,6 +1873,11 @@ class ExtensionUiRequest(ExtensionUiRequestMixin):
     title: str | None = None
     options: tuple[str, ...] | None = None
     option_details: tuple[SelectOptionDetail, ...] | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tier: ToolTier | None = None
+    hunks: tuple[ApprovalHunk, ...] | None = None
+    """Approval of a file mutation: the hunks the host may accept separately."""
     timeout: int | None = None
     message: str | None = None
     placeholder: str | None = None
@@ -2354,6 +2387,7 @@ def parse_ui_state(value: object, path: str = "UiState") -> UiState:
         reason=optional(payload, "reason", decode_str, path),
         continuation=optional(payload, "continuation", cast('Decoder[Literal["pending", "admitted"]]', literal(frozenset({"pending", "admitted"}))), path),
         continuation_error=optional(payload, "continuation_error", decode_str, path),
+        revision=optional(payload, "revision", decode_int, path),
     )
 
 
@@ -2381,6 +2415,7 @@ def parse_session_state(value: object, path: str = "SessionState") -> SessionSta
         follow_up_mode=defaulted(payload, "followUpMode", _decode_queue_mode, path, "one-at-a-time"),
         interrupt_mode=defaulted(payload, "interruptMode", _decode_interrupt_mode, path, "immediate"),
         session_file=optional(payload, "sessionFile", decode_str, path),
+        approval_mode=defaulted(payload, "approvalMode", _decode_approval_mode, path, "yolo"),
         session_name=optional(payload, "sessionName", decode_str, path),
         pending_ui=defaulted(payload, "pendingUi", nullable(parse_pending_ui), path, None),
         auto_compaction_enabled=defaulted(payload, "autoCompactionEnabled", decode_bool, path, False),
@@ -3464,6 +3499,16 @@ def parse_ask_question(value: object, path: str = "AskQuestion") -> AskQuestion:
     )
 
 
+def parse_approval_hunk(value: object, path: str = "ApprovalHunk") -> ApprovalHunk:
+    payload = expect_object(value, path)
+    return ApprovalHunk(
+        index=required(payload, "index", decode_int, path),
+        path=required(payload, "path", decode_str, path),
+        header=required(payload, "header", decode_str, path),
+        lines=required(payload, "lines", array(decode_str), path),
+    )
+
+
 def parse_select_ui_request(value: object, path: str = "SelectUiRequest") -> SelectUiRequest:
     payload = expect_object(value, path)
     required(payload, "type", cast('Decoder[Literal["extension_ui_request"]]', literal(frozenset({"extension_ui_request"}))), path)
@@ -3473,6 +3518,10 @@ def parse_select_ui_request(value: object, path: str = "SelectUiRequest") -> Sel
         title=required(payload, "title", decode_str, path),
         options=required(payload, "options", array(decode_str), path),
         option_details=optional(payload, "optionDetails", array(parse_select_option_detail), path),
+        tool_call_id=optional(payload, "toolCallId", decode_str, path),
+        tool_name=optional(payload, "toolName", decode_str, path),
+        tier=optional(payload, "tier", _decode_tool_tier, path),
+        hunks=optional(payload, "hunks", array(parse_approval_hunk), path),
         timeout=optional(payload, "timeout", decode_int, path),
     )
 
@@ -3610,6 +3659,10 @@ def parse_extension_ui_request(value: object, path: str = "ExtensionUiRequest") 
         title=optional(payload, "title", decode_str, path),
         options=optional(payload, "options", array(decode_str), path),
         option_details=optional(payload, "optionDetails", array(parse_select_option_detail), path),
+        tool_call_id=optional(payload, "toolCallId", decode_str, path),
+        tool_name=optional(payload, "toolName", decode_str, path),
+        tier=optional(payload, "tier", _decode_tool_tier, path),
+        hunks=optional(payload, "hunks", array(parse_approval_hunk), path),
         timeout=optional(payload, "timeout", decode_int, path),
         message=optional(payload, "message", decode_str, path),
         placeholder=optional(payload, "placeholder", decode_str, path),
@@ -3973,6 +4026,12 @@ class WireClient:
         params: dict[str, object] = {}
         params["enabled"] = enabled
         return required(expect_object(self._command("set_ask_dialog", params), "set_ask_dialog"), "enabled", decode_bool, "set_ask_dialog")
+
+    def set_approval_mode(self, mode: ApprovalMode) -> ApprovalMode:
+        """Override the session's tool approval mode without persisting to config."""
+        params: dict[str, object] = {}
+        params["mode"] = mode
+        return required(expect_object(self._command("set_approval_mode", params), "set_approval_mode"), "mode", _decode_approval_mode, "set_approval_mode")
 
     def get_available_commands(self) -> tuple[AvailableSlashCommand, ...]:
         """List the slash-command catalog."""
@@ -4649,6 +4708,8 @@ __all__ = [
     "AgentSource",
     "AgentStartEvent",
     "AnthropicServerToolContent",
+    "ApprovalHunk",
+    "ApprovalMode",
     "AskAnswer",
     "AskOption",
     "AskQuestion",
@@ -4859,6 +4920,7 @@ __all__ = [
     "ToolLoadMode",
     "ToolResultMessage",
     "ToolStreamUpdateEvent",
+    "ToolTier",
     "TtsrTriggeredEvent",
     "TurnEndEvent",
     "TurnStartEvent",
@@ -4878,6 +4940,7 @@ __all__ = [
     "parse_agent_message",
     "parse_agent_start_event",
     "parse_anthropic_server_tool_content",
+    "parse_approval_hunk",
     "parse_ask_answer",
     "parse_ask_option",
     "parse_ask_question",

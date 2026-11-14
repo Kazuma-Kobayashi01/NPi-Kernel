@@ -107,7 +107,7 @@ export function requireSupportedEffort<TApi extends Api>(model: ApiModel<TApi>, 
 export function mapEffortToGoogleThinkingLevel<TApi extends Api>(
 	effort: Effort,
 	model?: ApiModel<TApi>,
-): "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" {
+): "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" | "XHIGH" {
 	if (effort === Effort.Minimal) {
 		const routing = model?.thinking?.effortRouting;
 		if (routing?.[Effort.Minimal] && routing[Effort.Minimal] === routing[Effort.Low]) {
@@ -120,8 +120,9 @@ export function mapEffortToGoogleThinkingLevel<TApi extends Api>(
 			return "LOW";
 		case Effort.Medium:
 			return "MEDIUM";
-		case Effort.High:
 		case Effort.XHigh:
+			return model?.thinking?.efforts.includes(Effort.XHigh) ? "XHIGH" : "HIGH";
+		case Effort.High:
 		case Effort.Max:
 			return "HIGH";
 	}
@@ -177,9 +178,8 @@ export function minimumSupportedEffort<TApi extends Api>(model: ApiModel<TApi>):
  * (`requestModelId`), so a collapsed row clamps to the tier it already
  * advertises as its default rather than the numerically lowest supported tier
  * (e.g. Cursor Grok 4.5/4.6 default to `medium`, the only tier the Start plan
- * serves). Falls back to {@link minimumSupportedEffort} when no route matches
- * the default id — families whose default already is the minimum, or that
- * expose no routing, are unaffected.
+ * serves). Otherwise uses the declared supported default, then
+ * {@link minimumSupportedEffort}.
  */
 export function defaultSupportedEffort<TApi extends Api>(model: ApiModel<TApi>): Effort | undefined {
 	const routing = model.thinking?.effortRouting;
@@ -190,5 +190,7 @@ export function defaultSupportedEffort<TApi extends Api>(model: ApiModel<TApi>):
 			if (efforts?.includes(effort) && routing[effort] === defaultWireId) return effort;
 		}
 	}
+	const declaredDefault = model.thinking?.defaultLevel;
+	if (declaredDefault !== undefined && getSupportedEfforts(model).includes(declaredDefault)) return declaredDefault;
 	return minimumSupportedEffort(model);
 }

@@ -13,6 +13,8 @@ export const stateDefs = {
 	QueueMode: "'all' | 'one-at-a-time'",
 	InterruptMode: "'immediate' | 'wait'",
 	StreamingBehavior: "'steer' | 'followUp'",
+	ApprovalMode: "'always-ask' | 'always-ask-cached' | 'write' | 'yolo'",
+	ToolTier: "'read' | 'write' | 'exec'",
 	QueuedMessageQueue: "'steering' | 'followUp'",
 	CacheWarmingMode: "'off' | 'streaming' | 'idle'",
 	MessageUpdates: doc(
@@ -155,6 +157,7 @@ export const stateDefs = {
 		"reason?": "string",
 		"continuation?": "'pending' | 'admitted'",
 		"continuation_error?": "string",
+		"revision?": doc("number.integer", "Revision of an in-place updated display UI."),
 	},
 	PendingUi: {
 		ui_id: "string",
@@ -173,6 +176,7 @@ export const stateDefs = {
 		followUpMode: absentAs("QueueMode", "one-at-a-time"),
 		interruptMode: absentAs("InterruptMode", "immediate"),
 		"sessionFile?": "string",
+		approvalMode: absentAs("ApprovalMode", "yolo"),
 		sessionId: "string",
 		"sessionName?": "string",
 		pendingUi: absentAs("PendingUi | null", null),

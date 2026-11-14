@@ -334,7 +334,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	// The welcome header retires to terminal history exactly once, after the
 	// intro settles; until then it renders as mutable viewport chrome.
 	#headerRetired = false;
-	// The night-city backdrop behind the home screen; it plays while the
+	// The night-street backdrop behind the home screen; it plays while the
 	// welcome's ambient loop runs and freezes with it.
 	#homeScene = new HomeScene();
 	// Exact hard rows accepted into native history. Transient resize-alt
@@ -635,7 +635,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	}
 
 	/**
-	 * The home screen's `rows` over the night-city backdrop ({@link HomeScene}),
+	 * The home screen's `rows` over the night-street backdrop ({@link HomeScene}),
 	 * edge to edge: every cell without a background of its own shows the scene,
 	 * and blank cells may carry faint signboard lettering or a star. Unchanged off the home screen, on a
 	 * native surface, without truecolor, or when the theme reports no exact

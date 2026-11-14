@@ -55,6 +55,8 @@ import type { ToolSession } from "../sdk";
 import { routeWriteThroughBridge, shouldRouteWriteThroughBridge } from "./acp-bridge";
 import { formatApprovalArguments, truncateForPrompt } from "./approval";
 import { approvalTargetKey } from "./approval-targets";
+import { createHunkApproval, type HunkApprovalProposal } from "./approval-hunks";
+import { writeFileWithFallback } from "./file-write-fallback";
 import { assertEditableFile } from "./auto-generated-guard";
 
 import { isReadTruncationNotice } from "@oh-my-pi/pi-tui/tools/hashline-format";
@@ -622,6 +624,51 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 
 	constructor(private readonly session: ToolSession) {
 		this.#deferredDiagnostics = session.queueDeferredDiagnostics ? new DeferredDiagnostics(session) : undefined;
+	}
+
+	async prepareHunkApproval(args: unknown, signal?: AbortSignal): Promise<HunkApprovalProposal | undefined> {
+		const { path: rawPath, content: rawContent } = args as WriteParams;
+		const router = InternalUrlRouter.instance();
+		const writePath = recoverConflictUriPrefix(router.peelWriteSelector(unwrapHashlineHeaderPath(rawPath), "write")).path;
+		const target = router.writeTarget(writePath);
+		if (target && target.spec.write?.via !== "file") return undefined;
+		// Archive members and database rows are structured resources, not text-file replacements.
+		if (await this.#resolveArchiveWritePath(writePath, signal) || await this.#resolveSqliteWritePath(writePath, signal)) {
+			return undefined;
+		}
+		const absolutePath = target
+			? await router.requireLocal(writePath, "write", sessionResolveContext(this.session, { signal }), { create: false })
+			: await resolvePlanPath(this.session, writePath, signal);
+		if (this.session.deviceOnlyWrite && !(await targetsLocalSandbox(this.session, absolutePath, signal))) return undefined;
+		const { text: cleanContent } = stripWriteContent(this.session, rawContent ?? "");
+		assertWriteTargetAddressable(writePath, router);
+		await assertNotReadSelectorMisfire(writePath, cleanContent, this.session.cwd);
+		await enforcePlanModeWrite(this.session, absolutePath, { op: "create", signal });
+		let before: string;
+		try {
+			const file = Bun.file(absolutePath);
+			const stat = await file.stat();
+			if (!stat.isFile()) return undefined;
+			await assertEditableFile(absolutePath, writePath, this.session.settings);
+			const bytes = await file.bytes();
+			const decoded = decodeUtf8Text(bytes);
+			if (decoded === null) return undefined;
+			before = bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? `\uFEFF${decoded}` : decoded;
+			await assertNotTruncatedFileReadProjection(this.session, writePath, absolutePath, writePath, rawContent ?? "", cleanContent);
+		} catch (error) {
+			if (isEnoent(error)) return undefined;
+			throw error;
+		}
+		const stat = await Bun.file(absolutePath).stat();
+		const convention = await readTextFileConvention(absolutePath, stat.size, signal);
+		const after = applyTextFileConvention(cleanContent, convention).text;
+		return createHunkApproval([{ path: absolutePath, before, after }], async (file, content, applySignal) => {
+			applySignal?.throwIfAborted();
+			// No formatter/auto-repair/ACP format-on-save: partial approval must write exactly the chosen slices.
+			await writeFileWithFallback(file.path, content!);
+			maybeWriteSnapshotHeader(this.session, file.path, content!, writePath);
+			this.session.bumpFileMutationVersion?.(file.path);
+		});
 	}
 
 	/** Resolves the LSP writethrough from the current `lsp.*` settings so changes apply to the next write. */

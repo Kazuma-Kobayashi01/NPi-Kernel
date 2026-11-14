@@ -16,6 +16,7 @@ import type { BashResult } from "../../exec/bash-executor";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
 import type { CacheWarmingMode } from "../../session/cache-warmer";
 import type { SessionEntry, SessionTreeNode } from "../../session/session-entries";
+import type { ApprovalMode } from "../../tools/approval";
 import type { SessionLeaseReport } from "../../session/session-storage";
 import { MAX_RPC_FRAME_BYTES, MAX_RPC_REASSEMBLED_BYTES, RpcFrameDecoder, type RpcProtocolVersion } from "./rpc-frame";
 import type { RpcGoalOp, RpcGoalResult } from "./rpc-goal";
@@ -44,6 +45,7 @@ import type {
 	RpcHostToolUpdate,
 	RpcLiveFrame,
 	RpcNavigateTreeResult,
+	RpcMessageUpdates,
 	RpcOpenSessionResult,
 	RpcPromptResultFrame,
 	RpcRemoveQueuedMessageResult,
@@ -90,6 +92,8 @@ export interface RpcClientOptions {
 	 * Takes precedence over {@link command}.
 	 */
 	spawn?: (agentArgs: string[]) => RpcAgentProcess | Promise<RpcAgentProcess>;
+	/** RPC mode flag passed when launching the child CLI (`"rpc"` by default). */
+	mode?: "rpc" | "rpc-ui";
 	/** Working directory for the agent */
 	cwd?: string;
 	/** Environment variables */
@@ -389,7 +393,7 @@ export class RpcClient {
 		this.#protocolVersion = 1;
 
 		const cliPath = this.options.cliPath ?? "dist/cli.js";
-		const args = ["--mode", "rpc"];
+		const args = ["--mode", this.options.mode ?? "rpc"];
 
 		if (this.options.provider) {
 			args.push("--provider", this.options.provider);
@@ -675,6 +679,19 @@ export class RpcClient {
 		return () => this.#btwRecordListeners.delete(listener);
 	}
 
+	/** Subscribe to extension UI requests (`select`, `confirm`, `input`, `editor`, `ask`, `cancel`, `open_url`, ...). */
+	onExtensionUIRequest(listener: (req: RpcExtensionUIRequest) => void): () => void {
+		this.#extensionUiListeners.add(listener);
+		return () => {
+			this.#extensionUiListeners.delete(listener);
+		};
+	}
+
+	/** Send an extension UI response back to the RPC server. */
+	sendExtensionUIResponse(response: RpcExtensionUIResponse): void {
+		this.#writeFrame(response);
+	}
+
 	/** Subscribe to `prompt_result` frames: the terminal outcome of each prompt, correlated by request id. */
 	onPromptResult(listener: RpcPromptResultListener): () => void {
 		this.#promptResultListeners.add(listener);
@@ -810,9 +827,30 @@ export class RpcClient {
 	 * Forward only the listed session event types (`null` forwards all).
 	 * Responses, prompt results, and UI/host frames are never filtered.
 	 */
-	async setEventFilter(events: string[] | null): Promise<string[] | null> {
-		const response = await this.#send({ type: "set_event_filter", events });
+	async setEventFilter(events: string[] | null, messageUpdates?: RpcMessageUpdates): Promise<string[] | null> {
+		const response = await this.#send({
+			type: "set_event_filter",
+			events,
+			...(messageUpdates !== undefined ? { messageUpdates } : {}),
+		});
 		return this.#getData<{ events: string[] | null }>(response).events;
+	}
+
+	/** Enable or disable rich `ask` dialog emission over RPC. */
+	async setAskDialog(enabled: boolean): Promise<boolean> {
+		const response = await this.#send({ type: "set_ask_dialog", enabled });
+		return this.#getData<{ enabled: boolean }>(response).enabled;
+	}
+
+	/** Override the session's tool approval mode for this process without persisting to config. */
+	async setApprovalMode(mode: ApprovalMode): Promise<ApprovalMode> {
+		const response = await this.#send({ type: "set_approval_mode", mode });
+		return this.#getData<{ mode: ApprovalMode }>(response).mode;
+	}
+
+	/** Forward an arbitrary RPC command and return the raw response frame. */
+	sendCommand(command: RpcCommandBody, timeoutMs?: number): Promise<RpcResponse> {
+		return this.#send(command, timeoutMs);
 	}
 
 	/**

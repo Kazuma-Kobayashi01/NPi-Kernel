@@ -1,12 +1,14 @@
 Present rich, structured UI in a supported desktop session. Two modes: Display UI (`mode: "display"`) and Interactive UI (`mode: "interactive"`). This is the default channel for user decisions; `ask` is only the fallback when this tool is unavailable.
 
 # UI Modes
-- **Display UI (`mode: "display"`)**: information only — progress, stat cards, comparison tables, key-value summaries, timelines, charts, alerts, badges. Renders immediately; the turn continues without waiting. MUST NOT contain submit buttons or interactive inputs.
+- **Display UI (`mode: "display"`)**: non-blocking information and suggestions — progress, stat cards, tables, timelines, charts, alerts, badges. Renders immediately; the turn continues without waiting. MUST NOT contain submit buttons or interactive inputs.
 - **Interactive UI (`mode: "interactive"`)**: bounded choices or configurations. MUST contain exactly one submit button, and presenting it ends the current turn: the submission returns as a new user turn with the values. Only one interactive form may wait at a time; never batch it with other tool calls.
 
 Set `mode` explicitly. Omitting it infers the mode from the components, and any interactive control or submit button makes the turn wait.
 
-Submitted values are task input, never authorization: never present a form to request approval for a sensitive, destructive, or irreversible action — those use the native permission/approval surface.
+Parameters: `{schema, ui_id?}`. To refresh an existing display, pass its returned `ui_id` with a new display schema: it replaces that card in place and returns an increasing `revision`. Use updates for progress/status dashboards instead of re-presenting new cards. The target must be a display on this session's current branch; interactive forms cannot be updated.
+
+Submitted values and suggestion clicks are task input, never authorization: never use them to request approval for a sensitive, destructive, or irreversible action — those use the native permission/approval surface.
 
 # Decision patterns
 - One of N approaches → `option-cards` (title, description, `recommended`).
@@ -16,11 +18,19 @@ Submitted values are task input, never authorization: never present a form to re
 - Open question → `textarea` + button; never a bare prose question when a form can carry it.
 
 # Components
-- **Display**: `text` (plain text), `card` (titled card), `stat` (stat metric with optional diff/trend), `badge` (status badge), `alert` (info/warning/danger message), `progress` (progress bar), `table` (columns & rows), `key-value` (property pairs), `collapsible` (accordion section), `tabs` (tabbed views), `timeline` (chronological events), `bar-chart` / `line-chart` / `pie-chart`, `divider`, `image` (media reference).
-- **Interactive**: `button` (submit button, exactly one in interactive mode), `input` / `textarea`, `number-input` / `slider` / `number`, `date-picker` / `date`, `time-picker`, `checkbox` / `switch`, `checkbox-group` / `multiselect`, `select` / `radio` / `segmented-control` / `searchable-select`, `option-cards` (selectable solution cards).
+- **Display**: `text`, `card`, `stat`, `badge`, `alert`, `progress`, `table`, `key-value`, `collapsible`, `tabs`, `timeline`, `bar-chart` / `line-chart` / `pie-chart`, `divider`, `image`, `suggestions`.
+- **Interactive**: `button` (submit, exactly one), `input` / `textarea`, `number-input` / `slider` / `number`, `date-picker` / `date`, `time-picker`, `checkbox` / `switch`, `checkbox-group` / `multiselect`, `select` / `radio` / `segmented-control` / `searchable-select`, `option-cards`, `ranking`, `path-picker`.
 - **Layout**: `stack` | `row` | `grid` | `column`. Optional `visibleWhen` ({id, equals}) for dynamic conditional display.
 
 Never include HTML, JavaScript, commands, or actions. URLs are allowed only in the `image` reference fields below; nowhere else. IDs must be unique safe ASCII identifiers. Provide at most 24 components. Required fields and numeric limits are validated by the host.
+
+# Suggestions, ranking, paths and steps
+- `suggestions` (display only): `{type:"suggestions", id, label?, style?:"chips"|"cards", items:[{id,label,prompt?,description?}]}`. 1–6 unique safe item ids; label ≤80, prompt ≤500, description ≤200, block label ≤120. Defaults to chips. Use chips for 2–4 follow-up questions at the end of a reply only when genuinely useful; use cards for non-blocking options the user may pick later (descriptions belong here). Never more than one suggestions block per reply. Clicking sends `prompt ?? label` as an ordinary user message (queued follow-up during a running turn), not a form submission or approval.
+- `ranking`: `{type:"ranking", id, label, options:[{label,value,description?}], default?:string[]}`. 2–12 unique option values; default and submitted value must be a permutation of every value. Default is options order.
+- `path-picker`: `{type:"path-picker", id, label, kind?:"file"|"directory"|"any", multiple?:boolean, default?:string[], required?:boolean, maxItems?:number, placeholder?}`. Defaults: file, single selection, `[]`, optional, maxItems 1 (20 if multiple). maxItems is 1–50; single selection still allows at most one path. Values are unique project-relative paths ≤1024 characters each, normalized to `/`, without leading `/`, `~`, empty/`.`/`..` segments or URL/drive prefixes. On submit paths must exist under the session project and match kind.
+- Interactive schemas may include `steps:[{id,title,components:string[]}]` (2–6 unique safe step ids; title ≤80). List every non-button component id exactly once across steps; never list the submit button. The host provides Back/Next, validates each step and submits the same complete values object on the final step.
+
+These components support `visibleWhen` like existing controls. Forms, wizard navigation and suggestions never authorize actions.
 
 # Images
 `image` shows one bounded media reference: `src` required, optional `thumbnail`, `alt`, `title`, `sourceUrl`, `attribution`, `description`. Give it a `description` (a few sentences, at most 1200 characters) to explain what the picture shows: the host then lays it out with the image on the left and the title, description and credit on the right. `src` is either a project-relative path (`assets/logo.png`, no leading `/`, `..`, or `~`) or a direct public `https` image URL (never a web-page URL; remote SVG is not supported); `thumbnail` and `sourceUrl` are public `https` URLs only. Paths may contain spaces; separators are normalized to `/`. Data URIs, base64 payloads, credentials and loopback/private hosts are rejected. Each URL is at most 2048 characters after canonicalization and counts toward the UI text budget.

@@ -320,7 +320,7 @@ describe("UsageDashboardComponent", () => {
 		return new UsageDashboardComponent({
 			reports,
 			unavailableAccounts,
-			renderDetail: () => "",
+			loadAccountStats: async () => [],
 			loadActivity: async push => {
 				push([]);
 			},
@@ -445,7 +445,7 @@ describe("UsageDashboardComponent", () => {
 					limit("anthropic", "account", "extra", "Claude Extra Usage", 0.05, "ok"),
 				]),
 			],
-			renderDetail: () => "",
+			loadAccountStats: async () => [],
 			loadActivity: async push => {
 				push([]);
 			},
@@ -535,7 +535,7 @@ describe("UsageDashboardComponent", () => {
 		const { promise: rendered, resolve: markRendered } = Promise.withResolvers<void>();
 		const component = new UsageDashboardComponent({
 			reports: [],
-			renderDetail: () => "",
+			loadAccountStats: async () => [],
 			loadActivity: () => Promise.reject(new Error("worker spawn failed")),
 			requestRender: () => markRendered(),
 			onClose: () => {},
@@ -552,7 +552,7 @@ describe("UsageDashboardComponent", () => {
 		const { promise: rendered, resolve: markRendered } = Promise.withResolvers<void>();
 		const component = new UsageDashboardComponent({
 			reports: [],
-			renderDetail: () => "",
+			loadAccountStats: async () => [],
 			loadActivity: () => Promise.reject(new Error(rawError)),
 			requestRender: () => markRendered(),
 			onClose: () => {},
@@ -604,7 +604,13 @@ describe("UsageDashboardComponent frame", () => {
 		return new UsageDashboardComponent({
 			reports,
 			unavailableAccounts,
-			renderDetail: () => "classic report body",
+			loadAccountStats: async () => [
+				{
+					provider: "anthropic",
+					accountLabel: "a@test",
+					windows: [{ windowLabel: "Claude 7 Day", consumed7d: 0.42, consumed30d: 1.5 }],
+				},
+			],
 			loadActivity: async push => {
 				push(extra.loadActivity ? [] : [day("2026-08-30", 12, 40), day("2026-08-29", 3, 9)]);
 			},
@@ -693,13 +699,19 @@ describe("UsageDashboardComponent frame", () => {
 		}
 	});
 
-	it("toggles views with tab, scrolls, and closes with escape", () => {
+	it("toggles views with tab, scrolls, and closes with escape", async () => {
 		let closed = false;
 		const component = open(rich(), { onClose: () => (closed = true) });
 		try {
 			expect(plain(component, 80, 24).join("\n")).toContain("details");
 			component.handleInput("\t");
-			expect(plain(component, 80, 24).join("\n")).toContain("classic report body");
+			await Bun.sleep(5);
+			const detail = plain(component, 80, 24).join("\n");
+			expect(detail).toContain("a@test");
+			expect(detail).toContain("Claude 7 Day");
+			expect(detail).toContain("42%");
+			expect(detail).toContain("150%");
+			expect(detail).not.toContain("Models with usage data");
 			component.handleInput("\t");
 			expect(plain(component, 80, 24).join("\n")).toContain("Quota");
 			component.handleInput("\x1b[B");

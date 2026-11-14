@@ -26,6 +26,7 @@ import type { KeyOverrides } from "./cascade";
 import {
 	buildUsageCredential,
 	oauthUsageRequest,
+	USAGE_AUTH_REFUSED_BACKOFF_MS,
 	USAGE_FAILURE_BACKOFF_MS,
 	USAGE_HEADER_INGEST_INTERVAL_MS,
 	usageCacheIdentity,
@@ -118,6 +119,8 @@ export class UsageService implements UsageApi {
 	#runtimeUsageProviderOverrides: Map<Provider, { provider: UsageProvider; apiKey?: string }> = new Map();
 	/** One probe per credential report key, tagged with the refresh epoch it can answer. */
 	#usageRequestInFlight: Map<string, { refreshEpoch: number; promise: Promise<UsageReport | null> }> = new Map();
+	/** Report keys whose last probe the provider refused (401/403); read once by the cooldown that follows. */
+	#authRefused = new Set<string>();
 	#usageHeaderIngestAt: Map<string, number> = new Map();
 	#usageReportsInFlight: Map<string, Promise<UsageReport[] | null>> = new Map();
 	readonly fetch: typeof fetch;
@@ -275,11 +278,20 @@ export class UsageService implements UsageApi {
 			const previousReport = this.#deps.cache.getStale<UsageReport | null>(
 				this.#deps.cache.reportKey(request),
 			)?.value;
+			// Providers that answer a refused credential with `null` instead of a 401/403 error get the
+			// same long hold-off as those that throw: the probe's own responses tell.
+			let refused = false;
+			const fetchObserved = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+				const response = await this.fetch(input, init);
+				if (response.status === 401 || response.status === 403) refused = true;
+				return response;
+			}) as typeof fetch;
 			const report = await providerImpl.fetchUsage(params, {
-				fetch: this.fetch,
+				fetch: fetchObserved,
 				logger: this.logger,
 				...(previousReport ? { previousReport } : {}),
 			});
+			if (report === null && refused) this.#markAuthRefused(request);
 			// Attribute the report to the credential's organization. The orgId and
 			// orgName fallbacks apply independently: Claude's usage endpoint stamps
 			// orgId from the `anthropic-organization-id` response header but never
@@ -301,14 +313,7 @@ export class UsageService implements UsageApi {
 			return report;
 		} catch (error) {
 			if (error instanceof AIError.ProviderHttpError && (error.status === 401 || error.status === 403)) {
-				// Definitive auth failure (revoked key, lapsed subscription): purge
-				// the last-good report so #fetchUsageCached's failure branch can't
-				// keep rendering and ranking from stale quota the way it does for
-				// transient failures. Mirrors the definitive-OAuth-refresh path.
-				this.#deps.cache.set(this.#deps.cache.reportKey(request), {
-					value: null,
-					expiresAt: 0,
-				});
+				this.#markAuthRefused(request);
 			}
 			logger.debug("AuthStorage usage fetch failed", {
 				provider: request.provider,
@@ -316,6 +321,18 @@ export class UsageService implements UsageApi {
 			});
 			return null;
 		}
+	}
+
+	/**
+	 * The provider refused the credential (401/403: revoked key, lapsed subscription, account barred from the
+	 * service): hold further probes off for {@link USAGE_AUTH_REFUSED_BACKOFF_MS} and purge the last-good
+	 * report so #fetchUsageCached's failure branch can't keep rendering and ranking from stale quota the way
+	 * it does for transient failures. Mirrors the definitive-OAuth-refresh path.
+	 */
+	#markAuthRefused(request: UsageRequestDescriptor): void {
+		const key = this.#deps.cache.reportKey(request);
+		this.#authRefused.add(key);
+		this.#deps.cache.set(key, { value: null, expiresAt: 0 });
 	}
 
 	/** Cache a credential report with jitter and failure cooldown. */
@@ -380,7 +397,10 @@ export class UsageService implements UsageApi {
 			const providerImpl = this.providerFor(request.provider);
 			const retainLastGood = !invalidated && providerImpl?.retainLastGoodOnFailure !== false;
 			const lastGood = retainLastGood ? this.#deps.cache.lastGood(cacheKey) : null;
-			const failureBackoffMs = providerImpl?.failureBackoffMs ?? USAGE_FAILURE_BACKOFF_MS;
+			const authRefused = this.#authRefused.delete(cacheKey);
+			const failureBackoffMs = authRefused
+				? USAGE_AUTH_REFUSED_BACKOFF_MS
+				: (providerImpl?.failureBackoffMs ?? USAGE_FAILURE_BACKOFF_MS);
 			const backoffJitter = failureBackoffMs * (Math.random() * 0.5 - 0.25);
 			const coolDown = Date.now() + failureBackoffMs + backoffJitter;
 			// Dropping snapshots is not recovery from a failed endpoint. Persist its

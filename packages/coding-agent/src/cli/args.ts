@@ -95,6 +95,10 @@ export interface Args {
 	noRules?: boolean;
 	noContextFiles?: boolean;
 	noTitle?: boolean;
+	/** Disable computer-use prelude and `/computer on` overrides for this process. */
+	noComputerUse?: boolean;
+	/** Disable voice (`live_*`, `dictation_*`) commands in RPC mode. */
+	noVoice?: boolean;
 	/** RPC modes only: run extensions without a UI; `rpc-ui` tool UI remains enabled. */
 	noUi?: boolean;
 	autoApprove?: boolean;
@@ -392,6 +396,10 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.noContextFiles = true;
 		} else if (arg === "--no-title") {
 			result.noTitle = true;
+		} else if (arg === "--no-computer-use") {
+			result.noComputerUse = true;
+		} else if (arg === "--no-voice") {
+			result.noVoice = true;
 		} else if (arg === "--no-ui") {
 			result.noUi = true;
 		} else if (arg === "--auto-approve" || arg === "--yolo") {

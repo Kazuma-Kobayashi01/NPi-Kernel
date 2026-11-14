@@ -961,6 +961,8 @@ export interface CreateAgentSessionOptions {
 
 	/** Whether to auto-approve all tool calls (--auto-approve CLI flag). Default: false */
 	autoApprove?: boolean;
+	/** Hard-lock computer use off for this session so `/computer on` and RPC toggles cannot re-enable it. */
+	disableComputerUse?: boolean;
 }
 
 /** Saved models were exhausted without permission to substitute another model. */
@@ -2593,6 +2595,10 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		let computerPrelude: EvalPreludeDefinition | undefined;
 		let ratchetPrelude: EvalPreludeDefinition | undefined;
 		let archivePrelude: EvalPreludeDefinition | undefined;
+		const computerUseDisabled = options.disableComputerUse === true || $env.PI_NO_COMPUTER_USE === "1";
+		if (computerUseDisabled) {
+			cfgComputerEnabled.override(settings, false);
+		}
 		const getEvalPreludes = (): readonly EvalPreludeDefinition[] => {
 			if (restrictToolNames || !toolRegistry.has("eval") || !activeToolNames.has("eval")) return [];
 			const builtins: EvalPreludeDefinition[] = [];
@@ -2600,7 +2606,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				browserPrelude ??= createBrowserPrelude(toolSession);
 				builtins.push(browserPrelude);
 			}
-			if (cfgComputerEnabled.get(settings)) {
+			if (!computerUseDisabled && cfgComputerEnabled.get(settings)) {
 				computerPrelude ??= createComputerPrelude(toolSession);
 				builtins.push(computerPrelude);
 			}
@@ -2618,7 +2624,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 		registerDelegationContext(toolSession);
 		initializeComputerUse(
 			toolSession,
-			() => !restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"),
+			() => !computerUseDisabled && !restrictToolNames && toolRegistry.has("eval") && activeToolNames.has("eval"),
 		);
 		// SessionTools owns the advertised snapshot; before it exists the base
 		// prompt is built from, and therefore advertises, the live set.

@@ -13,6 +13,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Writable } from "node:stream";
 import { type AgentMessage, type AgentTool, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
 import type { Model } from "@oh-my-pi/pi-ai";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
@@ -22,6 +23,8 @@ import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
 import { $env, isRecord, logger, Snowflake, toError } from "@oh-my-pi/pi-utils";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
+	type ExtensionApprovalAnswer,
+	type ExtensionApprovalPrompt,
 	type ExtensionAskDialogQuestion,
 	type ExtensionAskDialogResult,
 	type ExtensionAskDialogSubmitResult,
@@ -79,6 +82,13 @@ import {
 	SUBAGENT_THINKING_LEVELS,
 } from "../../task/settings";
 import { defaultLoadModeForToolName } from "../../tools/essential-tools";
+import {
+	approvalAnswerForChoice,
+	approvalChoiceLabels,
+	isApprovalMode,
+	resolveApprovalFromContext,
+} from "../../tools/approval";
+import { cfgToolsApprovalMode } from "../../tools/settings";
 import { USER_TODO_EDIT_CUSTOM_TYPE } from "../../tools/todo";
 import type { EventBus } from "../../utils/event-bus";
 import { selectRpcEntries } from "./rpc-compat";
@@ -1101,6 +1111,9 @@ export function requestRpcSelect(
 			title,
 			options: labels,
 			...(optionDetails ? { optionDetails } : {}),
+			...(dialogOptions?.toolCallId ? { toolCallId: dialogOptions.toolCallId } : {}),
+			...(dialogOptions?.toolName ? { toolName: dialogOptions.toolName } : {}),
+			...(dialogOptions?.tier ? { tier: dialogOptions.tier } : {}),
 			timeout: dialogOptions?.timeout,
 		},
 		response => parseValueDialogResponse(response, dialogOptions),
@@ -1398,6 +1411,8 @@ export function registerRpcPersistenceSurface(
 export interface RpcModeOptions {
 	/** `--mode rpc-ui`: route tool UI (e.g. ask) over the protocol, independently of headless extensions. */
 	setToolUIContext?: (uiContext: ExtensionUIContext, hasUI: boolean) => void;
+	/** Disable `live_*` and `dictation_*` voice commands for headless remote hosts. */
+	disableVoice?: boolean;
 	/** `--no-ui`: extensions run with `hasUI=false` and no UI frames; tool UI and host-issued login are unaffected. */
 	headless?: boolean;
 	subagentEventBus?: EventBus;
@@ -1408,39 +1423,70 @@ export interface RpcModeOptions {
 	createDictationController?: RpcDictationControllerFactory;
 	/** The session's MCP manager, so `/mcp` builtins resolve and reconnect live servers. */
 	mcpManager?: MCPManager;
+	/** Serve the protocol inside another mode's process over its live session (`/rc`); see {@link RpcEmbedding}. */
+	embedded?: RpcEmbedding;
+}
+
+/**
+ * Serving RPC beside the interactive TUI, over the session it is running (`/rc`). The TUI keeps owning the
+ * session and the terminal: frames go to {@link output} instead of stdout, the session's extensions and goal
+ * turns are left to the TUI, nothing is written to stderr, and when the input ends the server only stops
+ * listening, without disposing the session or exiting the process.
+ */
+export interface RpcEmbedding {
+	output: Writable;
+	/**
+	 * The protocol's dialog context, handed over without becoming the session's tool UI, so the TUI can offer
+	 * its own dialogs to the client too (first answer wins).
+	 */
+	onUiContext?: (uiContext: ExtensionUIContext) => void;
 }
 
 /**
  * Run in RPC mode.
  * Listens for JSON commands on stdin, outputs events and responses on stdout.
  */
-export async function runRpcMode(session: AgentSession, options: RpcModeOptions = {}): Promise<never> {
+export async function runRpcMode(
+	session: AgentSession,
+	options: RpcModeOptions & { embedded: RpcEmbedding },
+): Promise<void>;
+export async function runRpcMode(session: AgentSession, options?: RpcModeOptions): Promise<never>;
+export async function runRpcMode(session: AgentSession, options: RpcModeOptions = {}): Promise<void> {
 	const {
 		setToolUIContext,
 		headless = false,
+		disableVoice = false,
 		subagentEventBus,
 		input = claimRpcInput(),
 		createLiveSession,
 		createDictationController,
+		embedded,
 	} = options;
+	const voiceDisabled = disableVoice || embedded !== undefined || $env.PI_NO_VOICE === "1";
+	// Listeners on process-wide sources, released when an embedded server stops.
+	const releaseOnStop: Array<() => void> = [];
 	// Signal to RPC clients that the server is ready to accept commands
 	// Suppress terminal notifications: they write \x07 (BEL) or OSC sequences directly to
 	// process.stdout with no newline, which the reader merges with the next JSON line and
 	// breaks JSON.parse. In RPC mode stdout is the JSON protocol channel — nothing else
 	// may write there.
-	process.env.PI_NOTIFICATIONS = "off";
+	if (!embedded) process.env.PI_NOTIFICATIONS = "off";
 
 	const frameEncoder = new RpcFrameEncoder();
 	// Bun on Windows writes a piped process.stdout with a blocking WriteFile on the
 	// JS thread and never reports backpressure, so a client that stops reading
 	// stdout froze the whole worker, stdin reader included. An fd write stream
 	// writes from the threadpool and reports backpressure, letting the writer spool.
-	const stdout = process.platform === "win32" ? fs.createWriteStream("", { fd: 1, autoClose: false }) : process.stdout;
+	const stdout =
+		embedded?.output ??
+		(process.platform === "win32" ? fs.createWriteStream("", { fd: 1, autoClose: false }) : process.stdout);
 	// The writer can fail before the bridge is constructed.
 	let dictationBridge: RpcDictationBridge | undefined = undefined;
 	const outputWriter = new RpcOutputWriter(stdout, failure => {
 		logger.error("RPC output delivery failed", { error: String(failure) });
 		dictationBridge?.dispose();
+		// The embedding owns the session; its transport ends this server instead.
+		if (embedded) return;
 		void session.dispose().finally(() => process.exit(1));
 	});
 	outputWriter.write(
@@ -1497,7 +1543,11 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	let generativeUiEnabled = false;
 	let externalHostTools: AgentTool[] = [];
 	const generativeUi = session.generativeUi;
-	generativeUi.setAvailable(() => generativeUiEnabled && sessionChangesInProgress === 0 && !shutdownState.requested);
+	if (!embedded) {
+		generativeUi.setAvailable(
+			() => generativeUiEnabled && sessionChangesInProgress === 0 && !shutdownState.requested,
+		);
+	}
 	const uiPresentTool = new UiPresentTool(generativeUi);
 	const refreshHostTools = (uiEnabled = generativeUiEnabled) =>
 		session.refreshRpcHostTools([...externalHostTools, ...(uiEnabled ? [uiPresentTool] : [])]);
@@ -1589,6 +1639,37 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			dialogOptions?: ExtensionUIDialogOptions,
 		): Promise<string | undefined> {
 			return requestRpcSelect(this.pendingRequests, this.output, title, options, dialogOptions);
+		}
+
+		approve(approval: ExtensionApprovalPrompt, dialogOptions?: ExtensionUIDialogOptions): Promise<ExtensionApprovalAnswer> {
+			const hunks = approval.hunks?.length ? approval.hunks : undefined;
+			return requestRpcDialog<ExtensionApprovalAnswer>(
+				this.pendingRequests, this.output, dialogOptions, "deny",
+				{
+					method: "select",
+					title: approval.full,
+					options: hunks ? ["Approve", "Deny"] : approvalChoiceLabels(approval),
+					...(hunks ? { hunks } : {}),
+					// Remote clients bind the prompt to its tool card by these.
+					...(dialogOptions?.toolCallId ? { toolCallId: dialogOptions.toolCallId } : {}),
+					...(dialogOptions?.toolName ? { toolName: dialogOptions.toolName } : {}),
+					...(dialogOptions?.tier ? { tier: dialogOptions.tier } : {}),
+					timeout: dialogOptions?.timeout,
+				},
+				response => {
+					if (!("value" in response)) return "deny";
+					if (hunks && response.value === "Approve") {
+						if (response.selectedHunks !== undefined) {
+							if (!Array.isArray(response.selectedHunks) || response.selectedHunks.some(index => !Number.isInteger(index))) {
+								throw new Error("Invalid approval hunk selection");
+							}
+							return { selectedHunks: response.selectedHunks };
+						}
+						return "once";
+					}
+					return approvalAnswerForChoice(approval, response.value);
+				},
+			);
 		}
 
 		confirm(title: string, message: string, dialogOptions?: ExtensionUIDialogOptions): Promise<boolean> {
@@ -1768,7 +1849,8 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	// A single shared instance routes all responses received on stdin to the
 	// correct waiting promise regardless of which code path created the request.
 	const rpcUiContext = new RpcExtensionUIContext(pendingExtensionRequests, output);
-	setToolUIContext?.(rpcUiContext, true);
+	if (embedded) embedded.onUiContext?.(rpcUiContext);
+	else setToolUIContext?.(rpcUiContext, true);
 	const setAskDialog = (command: RpcCommand & { type: "set_ask_dialog" }): RpcResponse => {
 		rpcUiContext.askDialogEnabled = command.enabled === true;
 		return success(command.id, "set_ask_dialog", { enabled: rpcUiContext.askDialogEnabled });
@@ -1799,8 +1881,9 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	};
 	inputRead.then(rejectStartupDialogs, rejectStartupDialogs);
 
-	// Set up extensions with RPC-based UI context
-	await initializeExtensions(session, {
+	// Set up extensions with RPC-based UI context (an embedding's host has already set them up)
+	const setUpExtensions: typeof initializeExtensions = embedded ? async () => {} : initializeExtensions;
+	await setUpExtensions(session, {
 		mode: "rpc",
 		// Extension-initiated session changes get the same goal quiesce/reattach as the commands below.
 		wrapSessionChange: <T extends { cancelled: boolean }>(
@@ -1857,7 +1940,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 		officeUsage.clear();
 		for (const frame of frames) output({ type: "office_usage", ...frame } satisfies RpcOfficeUsageFrame);
 	};
-	onOfficeUsage(booking => {
+	const releaseOfficeUsage = onOfficeUsage(booking => {
 		if (!cfgOfficeEnabled.get(session.settings)) return;
 		const key = `${booking.checkout}\0${booking.day}\0${booking.member}`;
 		let frame = officeUsage.get(key);
@@ -1892,32 +1975,47 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 		}, 150);
 		officePush.unref?.();
 	};
-	onOfficeChange(pushOfficeState);
-	cfgOfficeEnabled.listen(session, pushOfficeState);
-	cfgOfficeScale.listen(session, pushOfficeState);
-	cfgOfficeOffices.listen(session, pushOfficeState);
+	releaseOnStop.push(
+		releaseOfficeUsage,
+		onOfficeChange(pushOfficeState),
+		cfgOfficeEnabled.listen(session, pushOfficeState),
+		cfgOfficeScale.listen(session, pushOfficeState),
+		cfgOfficeOffices.listen(session, pushOfficeState),
+		() => {
+			if (officePush) clearTimeout(officePush);
+			if (officeUsagePush) clearTimeout(officeUsagePush);
+		},
+	);
 
 	// Output all agent events as JSON; prompt results follow the frame that settled them.
-	session.subscribe(event => {
-		sessionEvents.forward(event);
-		// Before the prompt-result and settle reports: a goal continuation decided at this
-		// agent_end is scheduled (and reported as pending) before either reads settlement.
-		goalController.observe(event);
-		promptResults.observe(event);
-		settleWatcher.observe(event);
-	});
-	await goalController.reconcile();
-	await goalController.settled();
+	releaseOnStop.push(
+		session.subscribe(event => {
+			sessionEvents.forward(event);
+			// Before the prompt-result and settle reports: a goal continuation decided at this
+			// agent_end is scheduled (and reported as pending) before either reads settlement.
+			// An embedding's host schedules its own goal turns: a second scheduler would double them.
+			if (!embedded) goalController.observe(event);
+			promptResults.observe(event);
+			settleWatcher.observe(event);
+		}),
+	);
+	if (!embedded) {
+		await goalController.reconcile();
+		await goalController.settled();
+	}
 
 	// Discriminates a store failure from any other dispose rejection below.
 	let persistenceFailure: Error | undefined;
-	registerRpcPersistenceSurface(
-		session,
-		frame => output(frame),
-		error => {
-			persistenceFailure = error;
-		},
-	);
+	// An embedding's host reports persistence itself (and its terminal is not ours to write to).
+	if (!embedded) {
+		registerRpcPersistenceSurface(
+			session,
+			frame => output(frame),
+			error => {
+				persistenceFailure = error;
+			},
+		);
+	}
 
 	/**
 	 * Dispose the session, then end the process. A store failure still latched
@@ -2393,6 +2491,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 					interruptMode: session.interruptMode,
 					sessionFile: session.sessionFile,
 					sessionId: session.sessionId,
+					approvalMode: resolveApprovalFromContext({ settings: session.settings }).approvalMode,
 					sessionName: session.sessionName,
 					pendingUi: generativeUi.pendingUi,
 					autoCompactionEnabled: session.autoCompactionEnabled,
@@ -2485,6 +2584,17 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "set_ask_dialog":
 				return setAskDialog(command);
+			case "set_approval_mode": {
+				if (!isApprovalMode(command.mode)) {
+					return error(
+						id,
+						"set_approval_mode",
+						`Invalid approval mode: ${String(command.mode)}. Expected one of: always-ask, always-ask-cached, write, yolo.`,
+					);
+				}
+				cfgToolsApprovalMode.override(session.settings, command.mode);
+				return success(id, "set_approval_mode", { mode: command.mode });
+			}
 
 			case "get_available_commands": {
 				return success(id, "get_available_commands", { commands: await getAvailableCommands() });
@@ -2592,6 +2702,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "live_start":
 			case "live_connect": {
+				if (voiceDisabled) return error(id, command.type, "Voice features are disabled in this session");
 				const sdpOffer = command.type === "live_connect" ? command.sdpOffer : undefined;
 				// The frame is untyped input: without an offer, live_connect would open the host microphone.
 				if (command.type === "live_connect" && (typeof sdpOffer !== "string" || !sdpOffer.trim())) {
@@ -2612,11 +2723,13 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			}
 
 			case "live_stop": {
+				if (voiceDisabled) return error(id, "live_stop", "Voice features are disabled in this session");
 				await liveBridge.stop();
 				return success(id, "live_stop");
 			}
 
 			case "live_mute": {
+				if (voiceDisabled) return error(id, "live_mute", "Voice features are disabled in this session");
 				try {
 					return success(id, "live_mute", liveBridge.setMuted(command.muted));
 				} catch (err) {
@@ -2625,6 +2738,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			}
 
 			case "dictation_start": {
+				if (voiceDisabled) return error(id, "dictation_start", "Voice features are disabled in this session");
 				if (liveBridge.active) return error(id, "dictation_start", "End live voice before starting dictation");
 				if (sessionChangesInProgress > 0 || shutdownState.requested)
 					return error(id, "dictation_start", "Session is changing or shutting down");
@@ -2635,6 +2749,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			}
 
 			case "dictation_stop": {
+				if (voiceDisabled) return error(id, "dictation_stop", "Voice features are disabled in this session");
 				return success(id, "dictation_stop", await dictationBridge.stop());
 			}
 
@@ -3191,6 +3306,7 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	const shutdownCoordinator = new RpcShutdownCoordinator({
 		isShutdownRequested: () => shutdownState.requested,
 		performShutdown: async () => {
+			if (embedded) return;
 			// Route through the idempotent session.dispose() so the browser
 			// reaper (releaseTabsForOwner) and other bounded teardown run before
 			// the process exits. dispose() also emits `session_shutdown`, so we
@@ -3243,6 +3359,14 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 	abortBuiltinCommands("RPC client disconnected");
 	await shutdownCoordinator.drain();
 	subagentRegistry?.dispose();
+	if (embedded) {
+		for (const release of releaseOnStop.splice(0)) release();
+		// The session stays with the host that embedded this server: stop listening, flush, and leave.
+		await btw.close().catch(() => {});
+		await outputWriter.close().catch(() => {});
+		embedded.output.end();
+		return;
+	}
 	// Dispose the main session before exiting so the browser reaper and other
 	// bounded teardown run on the stdin-EOF path too (#5643). Idempotent: a
 	// prior pi.shutdown() through the coordinator makes this await settle

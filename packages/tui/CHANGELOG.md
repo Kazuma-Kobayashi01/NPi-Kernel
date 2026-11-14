@@ -4,6 +4,8 @@
 
 ### Changed
 
+- `/usage` Details shows each account's quota consumption per limit window over the last 7 and 30 days instead of the classic report with model lists, reset counts and gauges.
+- The home screen backdrop no longer runs a self-playing shooter: it is a night street now, with a crescent moon, street lamps on poles strung with power lines, a wet road mirroring the neon, lane markings rushing past, pools of lamplight and cars with their headlights on.
 - The side panel shows a Spend section right after Context, from the first frame: this conversation's estimated USD (four decimals under $1), total tokens, input, output and cache reads. While a reply streams, its output is estimated from the streamed text at the model's output price and added on top, marked "~", until its usage is booked. It replaces the "This conversation" block below the plan.
 - `/usage` Overview draws each provider's quota and the activity heatmap as framed cards; cards in a row share a height and a pressured card's border turns yellow or red.
 

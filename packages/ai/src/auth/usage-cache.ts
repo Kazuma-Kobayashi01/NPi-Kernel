@@ -18,6 +18,13 @@ const USAGE_LAST_GOOD_RETENTION_MS = 24 * 60 * 60_000;
  * cooldown expires. Report invalidation does not bypass this cooldown.
  */
 export const USAGE_FAILURE_BACKOFF_MS = 10_000;
+
+/**
+ * Cooldown after a provider refuses the credential outright (401/403: revoked, or the account barred from
+ * the service). Probing again every few seconds cannot help and keeps knocking on a door that was closed on
+ * purpose; a new login under another identity gets a fresh cache key and is not held back.
+ */
+export const USAGE_AUTH_REFUSED_BACKOFF_MS = 6 * 60 * 60_000;
 /**
  * A manual invalidation persists across the next CLI process and serializes
  * same-provider probes, avoiding a cold-account burst against IP-limited

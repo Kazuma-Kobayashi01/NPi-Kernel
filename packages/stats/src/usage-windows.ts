@@ -399,3 +399,79 @@ function peakConcurrentFraction(group: WindowGroup): number {
 	}
 	return peak;
 }
+
+/** Quota consumed by one account in one limit window over the trailing 7 and 30 days. */
+export interface AccountWindowConsumption {
+	windowLabel: string;
+	/** Window-equivalents consumed in the last 7 days (1.0 = one full window burned). */
+	consumed7d: number;
+	/** Window-equivalents consumed in the last 30 days. */
+	consumed30d: number;
+	/** Used-fraction drops (window resets) observed in the last 30 days. */
+	cycles30d: number;
+}
+
+/** Trailing 7d / 30d quota consumption of one account, per limit window. */
+export interface AccountConsumption {
+	provider: string;
+	accountKey: string;
+	/** Email/account id when known, else the stable account key. */
+	accountLabel: string;
+	windows: AccountWindowConsumption[];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Per-account quota consumption over the trailing 7 and 30 days, from the
+ * recorded `usage_history` snapshots (`rows` must cover at least 30 days, oldest
+ * first). Consumption is the sum of positive used-fraction deltas between
+ * consecutive snapshots of one account's window, counted by the later
+ * snapshot's timestamp. Providers do not report tokens per account, so this is
+ * the per-account figure the quota history can support.
+ */
+export function computeAccountConsumption(rows: readonly UsageSnapshotRow[], nowMs: number): AccountConsumption[] {
+	const since7d = nowMs - 7 * DAY_MS;
+	const since30d = nowMs - 30 * DAY_MS;
+	const accounts = new Map<string, AccountConsumption>();
+	const windows = new Map<string, AccountWindowConsumption>();
+	const previous = new Map<string, number>();
+	for (const row of rows) {
+		const accountId = `${row.provider}\u0000${row.accountKey}`;
+		let account = accounts.get(accountId);
+		if (!account) {
+			account = { provider: row.provider, accountKey: row.accountKey, accountLabel: row.accountKey, windows: [] };
+			accounts.set(accountId, account);
+		}
+		if (row.email || row.accountId) account.accountLabel = row.email ?? row.accountId ?? row.accountKey;
+		const windowId = `${accountId}\u0000${windowKeyOf(row)}`;
+		let window = windows.get(windowId);
+		if (!window) {
+			window = { windowLabel: windowDisplayLabel(row), consumed7d: 0, consumed30d: 0, cycles30d: 0 };
+			windows.set(windowId, window);
+			account.windows.push(window);
+		}
+		window.windowLabel = windowDisplayLabel(row);
+		if (row.usedFraction === null) continue;
+		const prev = previous.get(windowId);
+		previous.set(windowId, row.usedFraction);
+		if (prev === undefined || row.recordedAt < since30d) continue;
+		const delta = row.usedFraction - prev;
+		if (delta > 0) {
+			window.consumed30d += delta;
+			if (row.recordedAt >= since7d) window.consumed7d += delta;
+		} else if (delta < -RESET_DROP_THRESHOLD) {
+			window.cycles30d++;
+		}
+	}
+	const result = [...accounts.values()];
+	for (const account of result) account.windows.sort((a, b) => b.consumed30d - a.consumed30d);
+	result.sort((a, b) => a.provider.localeCompare(b.provider) || a.accountLabel.localeCompare(b.accountLabel));
+	return result;
+}
+
+/** Load the trailing-30-day per-account quota consumption (broker history when configured, else local). */
+export async function loadAccountConsumption(nowMs = Date.now()): Promise<AccountConsumption[]> {
+	const { rows } = await fetchUsageData(nowMs - 30 * DAY_MS);
+	return computeAccountConsumption(rows, nowMs);
+}

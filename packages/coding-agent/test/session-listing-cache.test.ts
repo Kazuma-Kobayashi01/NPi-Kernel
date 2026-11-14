@@ -88,3 +88,26 @@ describe("session listing scan cache", () => {
 		expect(readSpy).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("session listing names", () => {
+	it("never shows a character cut by the prefix window as garbage", async () => {
+		const storage = new MemorySessionStorage();
+		const file = `${SESSION_DIR}/long-cjk.jsonl`;
+		// longer than the 4096-byte prefix, so the first prompt is cut mid-character at every possible offset
+		for (let pad = 0; pad < 3; pad++) {
+			const prompt = `${"a".repeat(pad)}${"你好世界😀".repeat(900)}`;
+			storage.writeTextSync(
+				file,
+				[
+					JSON.stringify({ type: "session", id: "cjk-id", cwd: "/repo", timestamp: "2026-06-27T00:00:00.000Z" }),
+					JSON.stringify({ type: "message", message: { role: "user", content: prompt } }),
+					"",
+				].join("\n"),
+			);
+			const [info] = await listSessions(SESSION_DIR, storage);
+			expect(info?.firstMessage).not.toContain("�");
+			expect(info?.firstMessage.toWellFormed()).toBe(info?.firstMessage);
+			expect(info?.firstMessage.startsWith("a".repeat(pad) + "你好世界")).toBe(true);
+		}
+	});
+});

@@ -126,7 +126,11 @@ async function approvePreludeInvocation(
 		);
 	}
 	const answer = await untilAborted(context.signal, () =>
-		requestApproval(ui, subject, parameters, { reason: resolved.reason }),
+		requestApproval(ui, subject, parameters, {
+			reason: resolved.reason,
+			toolCallId: context.toolCallId,
+			tier: resolved.tier,
+		}),
 	);
 	if (answer === "deny") throw new Error(`Eval prelude call denied by user: ${definition.name}`);
 }

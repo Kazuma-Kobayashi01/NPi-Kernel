@@ -19,6 +19,7 @@ import type {
 	ExtensionApprovalGrant,
 	ExtensionApprovalPrompt,
 	ExtensionUIContext,
+	ExtensionUIDialogOptions,
 } from "../extensibility/extensions/types";
 
 import {
@@ -28,6 +29,7 @@ import {
 	approvalGrantKey,
 } from "./approval-cache";
 import { cfgToolsApproval, cfgToolsApprovalMode, cfgToolsRestrictedFolders } from "./settings";
+import { type ApprovalHunk, validateHunkSelection } from "./approval-hunks";
 import {
 	approvalFolderListing,
 	type ApprovalFolderListing,
@@ -69,7 +71,7 @@ type ApprovalSubject = Pick<
 };
 
 /** Whether a runtime value names a supported approval mode. */
-function isApprovalMode(value: unknown): value is ApprovalMode {
+export function isApprovalMode(value: unknown): value is ApprovalMode {
 	return typeof value === "string" && APPROVAL_MODES.some(mode => mode === value);
 }
 
@@ -840,7 +842,15 @@ export async function requestApproval(
 	ui: Pick<ExtensionUIContext, "select" | "approve">,
 	tool: ApprovalSubject,
 	args: unknown,
-	options: { reason?: string; appendix?: readonly string[]; sessionSubject?: string; grants?: boolean } = {},
+	options: {
+		reason?: string;
+		appendix?: readonly string[];
+		sessionSubject?: string;
+		grants?: boolean;
+		toolCallId?: string;
+		tier?: ToolTier;
+		hunks?: readonly ApprovalHunk[];
+	} = {},
 ): Promise<ExtensionApprovalAnswer> {
 	const { reason, appendix = [], sessionSubject } = options;
 	const header = approvalHeader(tool, reason);
@@ -852,6 +862,14 @@ export async function requestApproval(
 	const listing = folder ? await approvalFolderListing(folder.key, APPROVAL_FOLDER_FULL_LISTING) : undefined;
 	const folderBlock = approvalFolderPromptBlock(folder?.label, listing, APPROVAL_FOLDER_FULL_LISTING);
 	const full = [...header, ...details, ...(folderBlock ? [folderBlock] : []), ...appendix].join("\n");
+	const dialogOptions: ExtensionUIDialogOptions | undefined =
+		tool.name || options.toolCallId || options.tier
+			? {
+					...(tool.name ? { toolName: tool.name } : {}),
+					...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+					...(options.tier ? { tier: options.tier } : {}),
+				}
+			: undefined;
 	if (ui.approve) {
 		const summary = approvalSummary(details);
 		const compactBlock = approvalFolderPromptBlock(folder?.label, listing, APPROVAL_FOLDER_COMPACT_LISTING);
@@ -861,20 +879,29 @@ export async function requestApproval(
 			...(compactBlock ? [compactBlock] : []),
 			...appendix,
 		].join("\n");
-		const answer = await ui.approve({
-			full,
-			compact,
-			...(session ? { session } : {}),
-			...(grants.length > 0 ? { grants } : {}),
-		});
+		const answer = await ui.approve(
+			{
+				full,
+				compact,
+				...(options.hunks?.length ? { hunks: options.hunks } : {}),
+				...(session ? { session } : {}),
+				...(grants.length > 0 ? { grants } : {}),
+			},
+			dialogOptions,
+		);
 		if (answer === "once" || (answer === "session" && session)) return answer;
-		if (typeof answer === "object" && answer !== null && grants.some(grant => grant.scope === answer.grant)) {
+		if (typeof answer === "object" && answer !== null && "selectedHunks" in answer && options.hunks) {
+			validateHunkSelection(options.hunks, answer.selectedHunks);
+			if (answer.selectedHunks.length === 0) return "deny";
+			return answer.selectedHunks.length === options.hunks.length ? "once" : answer;
+		}
+		if (typeof answer === "object" && answer !== null && "grant" in answer && grants.some(grant => grant.scope === answer.grant)) {
 			return { grant: answer.grant, always: answer.always === true };
 		}
 		return "deny";
 	}
 	const choices = { ...(session ? { session } : {}), ...(grants.length > 0 ? { grants } : {}) };
-	return approvalAnswerForChoice(choices, await ui.select(full, approvalChoiceLabels(choices)));
+	return approvalAnswerForChoice(choices, await ui.select(full, approvalChoiceLabels(choices), dialogOptions));
 }
 
 /** The approve-this-call-only label: "Approve", or "Approve Once" beside grants that remember more. */

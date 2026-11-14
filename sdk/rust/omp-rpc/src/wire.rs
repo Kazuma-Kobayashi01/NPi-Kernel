@@ -2642,6 +2642,51 @@ impl StreamingBehavior {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ApprovalMode {
+	#[serde(rename = "always-ask")]
+	AlwaysAsk,
+	#[serde(rename = "always-ask-cached")]
+	AlwaysAskCached,
+	#[serde(rename = "write")]
+	Write,
+	#[serde(rename = "yolo")]
+	Yolo,
+}
+
+impl ApprovalMode {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::AlwaysAsk => "always-ask",
+			Self::AlwaysAskCached => "always-ask-cached",
+			Self::Write => "write",
+			Self::Yolo => "yolo",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToolTier {
+	#[serde(rename = "read")]
+	Read,
+	#[serde(rename = "write")]
+	Write,
+	#[serde(rename = "exec")]
+	Exec,
+}
+
+impl ToolTier {
+	/// Wire value.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Read => "read",
+			Self::Write => "write",
+			Self::Exec => "exec",
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum QueuedMessageQueue {
 	#[serde(rename = "steering")]
 	Steering,
@@ -3139,6 +3184,9 @@ pub struct UiState {
 	pub continuation: Option<UiStateContinuation>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub continuation_error: Option<String>,
+	/// Revision of an in-place updated display UI.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub revision: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -3171,6 +3219,8 @@ pub struct SessionState {
 	pub interrupt_mode: InterruptMode,
 	#[serde(rename = "sessionFile", default, skip_serializing_if = "Option::is_none")]
 	pub session_file: Option<String>,
+	#[serde(rename = "approvalMode", default = "default_session_state_approval_mode")]
+	pub approval_mode: ApprovalMode,
 	#[serde(rename = "sessionName", default, skip_serializing_if = "Option::is_none")]
 	pub session_name: Option<String>,
 	#[serde(rename = "pendingUi", default = "default_session_state_pending_ui")]
@@ -4740,6 +4790,16 @@ pub struct AskQuestion {
 	pub recommended: Option<i64>,
 }
 
+/// One independently approvable change of a file-mutating tool call.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalHunk {
+	/// Zero-based across the whole proposal, not per file.
+	pub index: i64,
+	pub path: String,
+	pub header: String,
+	pub lines: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SelectUiRequest {
 	pub id: String,
@@ -4747,6 +4807,15 @@ pub struct SelectUiRequest {
 	pub options: Vec<String>,
 	#[serde(rename = "optionDetails", default, skip_serializing_if = "Option::is_none")]
 	pub option_details: Option<Vec<SelectOptionDetail>>,
+	#[serde(rename = "toolCallId", default, skip_serializing_if = "Option::is_none")]
+	pub tool_call_id: Option<String>,
+	#[serde(rename = "toolName", default, skip_serializing_if = "Option::is_none")]
+	pub tool_name: Option<String>,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub tier: Option<ToolTier>,
+	/// Approval of a file mutation: the hunks the host may accept separately.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub hunks: Option<Vec<ApprovalHunk>>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub timeout: Option<i64>,
 }
@@ -4933,6 +5002,9 @@ pub struct AskAnswer {
 pub struct ValueUiResponse {
 	pub id: String,
 	pub value: String,
+	/// With `Approve` on a request carrying `hunks`: the accepted proper subset.
+	#[serde(rename = "selectedHunks", default, skip_serializing_if = "Option::is_none")]
+	pub selected_hunks: Option<Vec<i64>>,
 }
 
 /// Answers a `confirm` request.
@@ -5561,6 +5633,16 @@ pub struct SetAskDialogParams {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SetAskDialogResult {
 	pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetApprovalModeParams {
+	pub mode: ApprovalMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetApprovalModeResult {
+	pub mode: ApprovalMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -6721,6 +6803,10 @@ fn default_session_state_interrupt_mode() -> InterruptMode {
 	serde_json::from_str("\"immediate\"").expect("valid wire default")
 }
 
+fn default_session_state_approval_mode() -> ApprovalMode {
+	serde_json::from_str("\"yolo\"").expect("valid wire default")
+}
+
 fn default_session_state_pending_ui() -> Option<PendingUi> {
 	serde_json::from_str("null").expect("valid wire default")
 }
@@ -7165,6 +7251,22 @@ impl Command for SetAskDialogCommand {
 
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		serde_json::from_value::<SetAskDialogResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.enabled)
+	}
+}
+
+/// Override the session's tool approval mode without persisting to config.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetApprovalModeCommand {
+	pub mode: ApprovalMode,
+}
+
+impl Command for SetApprovalModeCommand {
+	const NAME: &'static str = "set_approval_mode";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = ApprovalMode;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<SetApprovalModeResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.mode)
 	}
 }
 

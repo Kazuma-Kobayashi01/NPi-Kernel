@@ -1805,6 +1805,9 @@ export async function buildSessionOptions(
 			options.disableExtensionDiscovery = true;
 		}
 	}
+	if (parsed.noComputerUse || $env.PI_NO_COMPUTER_USE === "1") {
+		options.disableComputerUse = true;
+	}
 
 	return options;
 }
@@ -2831,6 +2834,7 @@ export async function runRootCommand(
 				await runRpcMode(session, {
 					setToolUIContext: mode === "rpc-ui" ? setToolUIContext : undefined,
 					headless: parsedArgs.noUi === true,
+					disableVoice: parsedArgs.noVoice === true || $env.PI_NO_VOICE === "1",
 					subagentEventBus,
 					mcpManager,
 					input: rpcInput,

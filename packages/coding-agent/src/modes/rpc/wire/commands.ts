@@ -134,6 +134,13 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 		unwrap: "enabled",
 	},
 	{
+		name: "set_approval_mode",
+		doc: "Override the session's tool approval mode without persisting to config.",
+		params: { mode: "ApprovalMode" },
+		result: { mode: "ApprovalMode" },
+		unwrap: "mode",
+	},
+	{
 		name: "get_available_commands",
 		doc: "List the slash-command catalog.",
 		result: { commands: "AvailableSlashCommand[]" },

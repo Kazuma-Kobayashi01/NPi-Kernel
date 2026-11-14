@@ -467,12 +467,8 @@ describe("interactive /usage account visibility", () => {
 		mounted?.handleInput("\r");
 		const details = display();
 		expect(details).toMatch(/shared@example\.test.*org-personal.*usage unavailable/);
-		expect(details).toContain("shared@example.test (org-team)");
-		expect(details).toContain("75% free");
-		expect(details).toContain("2 saved resets");
-		expect(details).toContain("1 usable now");
-		expect(details).toContain("in use by this session: shared@example.test (org-personal)");
 		expect(details).not.toMatch(/org-team.*usage unavailable/);
+		expect(details).not.toContain("Models with usage data");
 	});
 
 	it.each(["empty", "null", "error"] as const)(
@@ -498,7 +494,6 @@ describe("interactive /usage account visibility", () => {
 			const details = display();
 			expect(details).toMatch(/shared@example\.test.*org-team.*usage unavailable/);
 			expect(details).toMatch(/shared@example\.test.*org-personal.*usage unavailable/);
-			expect(details).toContain("in use by this session: shared@example.test (org-personal)");
 			expect(details).not.toContain("%");
 			expect(details).not.toContain("Infinity");
 

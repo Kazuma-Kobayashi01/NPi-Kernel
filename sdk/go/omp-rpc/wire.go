@@ -1911,6 +1911,49 @@ func (v *StreamingBehavior) UnmarshalJSON(data []byte) error {
 	return unknownValue("StreamingBehavior", s)
 }
 
+type ApprovalMode string
+
+const (
+	ApprovalModeAlwaysAsk       ApprovalMode = "always-ask"
+	ApprovalModeAlwaysAskCached ApprovalMode = "always-ask-cached"
+	ApprovalModeWrite           ApprovalMode = "write"
+	ApprovalModeYolo            ApprovalMode = "yolo"
+)
+
+func (v *ApprovalMode) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ApprovalMode")
+	if err != nil {
+		return err
+	}
+	switch value := ApprovalMode(s); value {
+	case ApprovalModeAlwaysAsk, ApprovalModeAlwaysAskCached, ApprovalModeWrite, ApprovalModeYolo:
+		*v = value
+		return nil
+	}
+	return unknownValue("ApprovalMode", s)
+}
+
+type ToolTier string
+
+const (
+	ToolTierRead  ToolTier = "read"
+	ToolTierWrite ToolTier = "write"
+	ToolTierExec  ToolTier = "exec"
+)
+
+func (v *ToolTier) UnmarshalJSON(data []byte) error {
+	s, err := decodeString(data, "ToolTier")
+	if err != nil {
+		return err
+	}
+	switch value := ToolTier(s); value {
+	case ToolTierRead, ToolTierWrite, ToolTierExec:
+		*v = value
+		return nil
+	}
+	return unknownValue("ToolTier", s)
+}
+
 type QueuedMessageQueue string
 
 const (
@@ -2730,6 +2773,8 @@ type UiState struct {
 	Reason            *string              `json:"reason,omitempty"`
 	Continuation      *UiStateContinuation `json:"continuation,omitempty"`
 	ContinuationError *string              `json:"continuation_error,omitempty"`
+	// Revision of an in-place updated display UI.
+	Revision *int64 `json:"revision,omitempty"`
 }
 
 func (v *UiState) UnmarshalJSON(data []byte) error {
@@ -2748,6 +2793,7 @@ func (v *UiState) decodeFrom(raw map[string]json.RawMessage) error {
 	d.optional("reason", &out.Reason)
 	d.optional("continuation", &out.Continuation)
 	d.optional("continuation_error", &out.ContinuationError)
+	d.optional("revision", &out.Revision)
 	if d.err != nil {
 		return d.err
 	}
@@ -2841,6 +2887,7 @@ type SessionState struct {
 	FollowUpMode          QueueMode      `json:"followUpMode"`
 	InterruptMode         InterruptMode  `json:"interruptMode"`
 	SessionFile           *string        `json:"sessionFile,omitempty"`
+	ApprovalMode          ApprovalMode   `json:"approvalMode"`
 	SessionName           *string        `json:"sessionName,omitempty"`
 	PendingUI             *PendingUi     `json:"pendingUi"`
 	AutoCompactionEnabled bool           `json:"autoCompactionEnabled"`
@@ -2887,6 +2934,7 @@ func (v *SessionState) decodeFrom(raw map[string]json.RawMessage) error {
 	d.defaulted("followUpMode", &out.FollowUpMode, `"one-at-a-time"`)
 	d.defaulted("interruptMode", &out.InterruptMode, `"immediate"`)
 	d.optional("sessionFile", &out.SessionFile)
+	d.defaulted("approvalMode", &out.ApprovalMode, `"yolo"`)
 	d.optional("sessionName", &out.SessionName)
 	d.defaulted("pendingUi", &out.PendingUI, `null`)
 	d.defaulted("autoCompactionEnabled", &out.AutoCompactionEnabled, `false`)
@@ -6459,12 +6507,44 @@ func (v *AskQuestion) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+// One independently approvable change of a file-mutating tool call.
+type ApprovalHunk struct {
+	// Zero-based across the whole proposal, not per file.
+	Index  int64    `json:"index"`
+	Path   string   `json:"path"`
+	Header string   `json:"header"`
+	Lines  []string `json:"lines"`
+}
+
+func (v *ApprovalHunk) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ApprovalHunk", v.decodeFrom)
+}
+
+func (v *ApprovalHunk) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ApprovalHunk
+	d := fieldDecoder{raw: raw, owner: "ApprovalHunk"}
+	d.required("index", &out.Index)
+	d.required("path", &out.Path)
+	d.required("header", &out.Header)
+	d.required("lines", &out.Lines)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type SelectUiRequest struct {
 	ID            string               `json:"id"`
 	Title         string               `json:"title"`
 	Options       []string             `json:"options"`
 	OptionDetails []SelectOptionDetail `json:"optionDetails,omitempty"`
-	Timeout       *int64               `json:"timeout,omitempty"`
+	ToolCallID    *string              `json:"toolCallId,omitempty"`
+	ToolName      *string              `json:"toolName,omitempty"`
+	Tier          *ToolTier            `json:"tier,omitempty"`
+	// Approval of a file mutation: the hunks the host may accept separately.
+	Hunks   []ApprovalHunk `json:"hunks,omitempty"`
+	Timeout *int64         `json:"timeout,omitempty"`
 }
 
 func (v *SelectUiRequest) UnmarshalJSON(data []byte) error {
@@ -6480,6 +6560,10 @@ func (v *SelectUiRequest) decodeFrom(raw map[string]json.RawMessage) error {
 	d.required("title", &out.Title)
 	d.required("options", &out.Options)
 	d.optional("optionDetails", &out.OptionDetails)
+	d.optional("toolCallId", &out.ToolCallID)
+	d.optional("toolName", &out.ToolName)
+	d.optional("tier", &out.Tier)
+	d.optional("hunks", &out.Hunks)
 	d.optional("timeout", &out.Timeout)
 	if d.err != nil {
 		return d.err
@@ -6933,6 +7017,8 @@ func (v *AskAnswer) decodeFrom(raw map[string]json.RawMessage) error {
 type ValueUiResponse struct {
 	ID    string `json:"id"`
 	Value string `json:"value"`
+	// With `Approve` on a request carrying `hunks`: the accepted proper subset.
+	SelectedHunks []int64 `json:"selectedHunks,omitempty"`
 }
 
 func (v *ValueUiResponse) UnmarshalJSON(data []byte) error {
@@ -6945,6 +7031,7 @@ func (v *ValueUiResponse) decodeFrom(raw map[string]json.RawMessage) error {
 	d.constant("type", "extension_ui_response")
 	d.required("id", &out.ID)
 	d.required("value", &out.Value)
+	d.optional("selectedHunks", &out.SelectedHunks)
 	if d.err != nil {
 		return d.err
 	}
@@ -8029,6 +8116,25 @@ func (v *SetAskDialogResult) decodeFrom(raw map[string]json.RawMessage) error {
 	return nil
 }
 
+type SetApprovalModeResult struct {
+	Mode ApprovalMode `json:"mode"`
+}
+
+func (v *SetApprovalModeResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "SetApprovalModeResult", v.decodeFrom)
+}
+
+func (v *SetApprovalModeResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out SetApprovalModeResult
+	d := fieldDecoder{raw: raw, owner: "SetApprovalModeResult"}
+	d.required("mode", &out.Mode)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
 type GetAvailableCommandsResult struct {
 	Commands []AvailableSlashCommand `json:"commands"`
 }
@@ -8913,6 +9019,18 @@ func (c Commands) SetAskDialog(ctx context.Context, p SetAskDialogCommand) (bool
 	var out SetAskDialogResult
 	err := c.call(ctx, "set_ask_dialog", p, 0, &out)
 	return out.Enabled, err
+}
+
+// SetApprovalModeCommand holds the parameters of "set_approval_mode".
+type SetApprovalModeCommand struct {
+	Mode ApprovalMode `json:"mode"`
+}
+
+// SetApprovalMode sends "set_approval_mode": Override the session's tool approval mode without persisting to config.
+func (c Commands) SetApprovalMode(ctx context.Context, p SetApprovalModeCommand) (ApprovalMode, error) {
+	var out SetApprovalModeResult
+	err := c.call(ctx, "set_approval_mode", p, 0, &out)
+	return out.Mode, err
 }
 
 // GetAvailableCommands sends "get_available_commands": List the slash-command catalog.

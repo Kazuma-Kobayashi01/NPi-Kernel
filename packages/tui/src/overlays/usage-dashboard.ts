@@ -3,7 +3,7 @@
  * on the alternate screen so it takes no transcript space. Shows a compact
  * subscriptions grid (one card per provider, worst window per quota bucket)
  * above a GitHub-style daily activity heatmap fed by the local stats DB.
- * Enter flips into the classic full per-account report, scrollable in place.
+ * Enter flips into per-account 7d/30d quota consumption, scrollable in place.
  */
 import * as os from "node:os";
 import { resolveUsedFraction, type UsageLimit, type UsageReport } from "@oh-my-pi/pi-ai";
@@ -631,17 +631,29 @@ function formatActivityTotals(layout: HeatmapLayout): string {
 // Component
 // =============================================================================
 
+/** Quota one account consumed in one limit window over the trailing 7 and 30 days. */
+export interface AccountUsageWindowStat {
+	windowLabel: string;
+	/** Window-equivalents consumed in the last 7 days (1.0 = one full window burned). */
+	consumed7d: number;
+	consumed30d: number;
+}
+
+/** Trailing 7d/30d quota consumption of one account. */
+export interface AccountUsageStat {
+	provider: string;
+	accountLabel: string;
+	windows: AccountUsageWindowStat[];
+}
+
 /** Callbacks and data sources for {@link UsageDashboardComponent}. */
 export interface UsageDashboardOptions {
 	reports: UsageReport[];
 	unavailableAccounts?: readonly UnavailableUsageAccount[];
 	/** The name to show for the account a report belongs to (the user's name for it); default: its email or id. */
 	accountName?: (report: UsageReport) => string | undefined;
-	/**
-	 * Full classic `/usage` report of `reports` (the latest refresh) for the
-	 * expanded detail view; re-invoked per terminal width.
-	 */
-	renderDetail: (width: number, reports: UsageReport[]) => string;
+	/** Per-account trailing 7d/30d quota consumption for the Details view. */
+	loadAccountStats: () => Promise<AccountUsageStat[]>;
 	/**
 	 * Stream daily activity into the heatmap: push cached DB rows immediately,
 	 * then push again after an incremental session sync. Resolves when the sync
@@ -690,6 +702,13 @@ function sectionLine(title: string, meta: string, innerWidth: number): string {
 }
 
 /** `Dec 8, 2025`: the ends of the heatmap range. */
+/** Window-equivalents consumed as a percentage of one full window. */
+function formatConsumed(fraction: number): string {
+	const percent = fraction * 100;
+	if (percent < 0.05) return "—";
+	return `${percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
+}
+
 function formatDay(date: Date): string {
 	return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
@@ -721,6 +740,8 @@ export class UsageDashboardComponent implements Component {
 	#activityError: string | null = null;
 	#syncing = true;
 	#detailCache: { width: number; lines: string[] } | null = null;
+	#accountStats: AccountUsageStat[] | null = null;
+	#accountStatsError: string | null = null;
 	/** ANSI overview rows; rebuilt when the revision or width changes. */
 	#overviewCache: { revision: number; width: number; lines: string[] } | null = null;
 	#lastViewportRows = 10;
@@ -749,6 +770,18 @@ export class UsageDashboardComponent implements Component {
 		this.#panel.addChild(new PanelDivider());
 		this.#panel.addChild(this.#footer);
 		void this.#loadActivity();
+		void this.#loadAccountStats();
+	}
+
+	async #loadAccountStats(): Promise<void> {
+		try {
+			this.#accountStats = await this.#options.loadAccountStats();
+		} catch (error) {
+			this.#accountStatsError = error instanceof Error ? error.message : String(error);
+		}
+		if (this.#closed) return;
+		this.#detailCache = null;
+		this.#changed();
 	}
 
 	async #loadActivity(): Promise<void> {
@@ -1140,14 +1173,54 @@ export class UsageDashboardComponent implements Component {
 		return lines;
 	}
 
+	/**
+	 * Details: each account's quota consumption over the last 7 and 30 days, per
+	 * limit window, with accounts whose usage could not be fetched named below.
+	 */
 	#detailLines(innerWidth: number): string[] {
-		if (this.#detailCache?.width !== innerWidth) {
-			this.#detailCache = {
-				width: innerWidth,
-				lines: this.#options.renderDetail(innerWidth, this.#reports).split("\n"),
-			};
+		if (this.#detailCache?.width === innerWidth) return this.#detailCache.lines;
+		const lines: string[] = [];
+		const stats = this.#accountStats ?? [];
+		const unavailable = this.#options.unavailableAccounts ?? [];
+		if (this.#accountStatsError) {
+			const detail = formatActivityErrorDetail(this.#accountStatsError);
+			lines.push(theme.fg("dim", detail ? `Usage history unavailable (${detail}).` : "Usage history unavailable."));
+		} else if (!this.#accountStats) {
+			lines.push(theme.fg("dim", "Loading usage history…"));
+		} else if (stats.length === 0) {
+			lines.push(theme.fg("dim", "No usage history recorded yet. Open /usage again after a few refreshes."));
+		} else {
+			lines.push(theme.fg("dim", "Quota consumed per limit window; 100% = one full window."));
 		}
-		return this.#detailCache.lines;
+		const providers = [...new Set([...stats.map(a => a.provider), ...unavailable.map(a => a.provider)])].sort();
+		const colWidth = 8;
+		const labelWidth = Math.max(10, innerWidth - 4 - colWidth * 2);
+		for (const provider of providers) {
+			lines.push("", theme.bold(theme.fg("accent", formatProviderName(provider))));
+			for (const account of stats) {
+				if (account.provider !== provider) continue;
+				lines.push(`  ${theme.bold(truncateToWidth(sanitizeText(account.accountLabel), innerWidth - 2))}`);
+				lines.push(theme.fg("dim", `    ${"".padEnd(labelWidth)}${"7d".padStart(colWidth)}${"30d".padStart(colWidth)}`));
+				for (const window of account.windows) {
+					const label = truncateToWidth(sanitizeText(window.windowLabel), labelWidth);
+					const pad = " ".repeat(Math.max(0, labelWidth - visibleWidth(label)));
+					lines.push(
+						`    ${label}${pad}${formatConsumed(window.consumed7d).padStart(colWidth)}${formatConsumed(window.consumed30d).padStart(colWidth)}`,
+					);
+				}
+			}
+			for (const account of unavailable) {
+				if (account.provider !== provider) continue;
+				const suffix = " — usage unavailable";
+				const label = truncateToWidth(
+					replaceTabs(sanitizeText(account.label.replace(/[\r\n]+/g, " "))),
+					Math.max(0, innerWidth - 2 - visibleWidth(suffix)),
+				);
+				lines.push(theme.fg("dim", `  ${label}${suffix}`));
+			}
+		}
+		this.#detailCache = { width: innerWidth, lines };
+		return lines;
 	}
 
 	render(width: number): readonly string[] {
@@ -1914,7 +1987,7 @@ export class UsageDashboardComponent implements Component {
 				this.#reports = reports;
 				this.#nowMs = Date.now();
 				this.#cards = buildProviderCards(reports, this.#nowMs, this.#options.unavailableAccounts, this.#options.accountName);
-				this.#detailCache = null;
+				void this.#loadAccountStats();
 			}
 		} catch (error) {
 			this.#refreshError = error instanceof Error ? error.message : String(error);

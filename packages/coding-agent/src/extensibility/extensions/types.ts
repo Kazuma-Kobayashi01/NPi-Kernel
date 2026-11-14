@@ -28,6 +28,7 @@ export {
 	type AssistantTextRenderer,
 } from "@oh-my-pi/pi-tui/chat/extension-types";
 import type { type as ArkType } from "@oh-my-pi/omptype";
+import type { ApprovalHunk } from "../../tools/approval-hunks";
 import type * as TypeBox from "@oh-my-pi/omptype/typebox";
 import type * as zod from "@oh-my-pi/omptype/zod";
 import type {
@@ -37,6 +38,7 @@ import type {
 	ThinkingLevel,
 	ToolApproval,
 	ToolLoadMode,
+	ToolTier,
 } from "@oh-my-pi/pi-agent-core";
 import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
 import type { ContextUsage } from "@oh-my-pi/pi-tui/status-line/types";
@@ -245,6 +247,10 @@ export interface ExtensionUIDialogOptions {
 	markableCount?: number;
 	/** Allow image pastes in rich ask-dialog custom-answer and note prompts. */
 	acceptImages?: boolean;
+	/** Optional tool-call metadata forwarded on approval `select` requests for remote hosts. */
+	toolCallId?: string;
+	toolName?: string;
+	tier?: ToolTier;
 }
 
 /** Raw terminal input listener for extensions. */
@@ -275,6 +281,8 @@ export type AutocompleteProviderFactory = (current: AutocompleteProvider) => Aut
 export interface ExtensionApprovalPrompt {
 	full: string;
 	compact: string;
+	/** Optional frozen file-change proposal; hosts without hunk controls can still approve the whole call. */
+	hunks?: readonly ApprovalHunk[];
 	/** Label of the "approve for this session" choice; absent when the call must be approved each time. */
 	session?: string;
 	/**
@@ -302,6 +310,7 @@ export type ExtensionApprovalAnswer =
 	| "once"
 	| "session"
 	| "deny"
+	| { selectedHunks: number[] }
 	| { grant: ExtensionApprovalGrant["scope"]; always: boolean };
 
 /**

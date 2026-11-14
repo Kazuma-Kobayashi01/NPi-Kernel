@@ -295,6 +295,7 @@ describe("RpcInputDispatcher", () => {
 						isStreaming: false,
 						isCompacting: false,
 						steeringMode: "all",
+						approvalMode: "write",
 						followUpMode: "all",
 						interruptMode: "immediate",
 						sessionId: "session-1",

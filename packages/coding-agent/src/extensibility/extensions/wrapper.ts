@@ -24,6 +24,7 @@ import {
 	truncateForPrompt,
 } from "../../tools/approval";
 import { getApprovalGrants } from "../../tools/approval-cache";
+import type { HunkApprovalProposal, HunkApprovalTool } from "../../tools/approval-hunks";
 import { defaultLoadModeForToolName } from "../../tools/essential-tools";
 import { withFileMutationSession } from "../../tools/file-write-fallback";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
@@ -393,6 +394,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				(resolved.policy === "prompt" && !acpBypass && !sessionApproved && (explicitPrompt || !xdevBypass)),
 			reason: resolved.reason,
 		};
+		let partialApproval: { proposal: HunkApprovalProposal; selected: number[] } | undefined;
 
 		if (approvalCheck.required) {
 			const scheduledCall = context?.toolCall?.toolCalls[context.toolCall.index];
@@ -460,16 +462,24 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			const safetyAppendix =
 				pendingSafetyChecks.length > 0 ? ["Provider safety checks:", ...safetyCheckLines(pendingSafetyChecks)] : [];
 			let approved: boolean;
+			let proposal: HunkApprovalProposal | undefined;
 			try {
+				proposal = await (this.tool as AgentTool<TParameters, TDetails> & Partial<HunkApprovalTool>).prepareHunkApproval?.(resolvedArgs, signal);
 				const answer = await requestApproval(uiContext, this.tool, resolvedArgs, {
 					reason: approvalCheck.reason,
 					appendix: safetyAppendix,
 					sessionSubject: sessionScope?.subject,
 					grants: cacheTargets,
+					toolCallId,
+					tier: resolved.tier,
+					hunks: proposal?.hunks,
 				});
 				approved = answer !== "deny";
+				if (typeof answer === "object" && "selectedHunks" in answer) {
+					partialApproval = { proposal: proposal!, selected: answer.selectedHunks };
+				}
 				if (answer === "session" && sessionScope) this.runner.grantSessionApproval(sessionScope.key);
-				if (typeof answer === "object" && approvalGrants) {
+				if (typeof answer === "object" && "grant" in answer && approvalGrants) {
 					recordApprovalGrant(this.tool, resolvedArgs, approvalGrants, resolved.tier, answer);
 				}
 			} catch (err) {
@@ -502,7 +512,9 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 			// a runner exists.
 			result = await this.runner.runScoped(() =>
 				withFileMutationSession(this.runner.sessionId, () =>
-					this.tool.execute(toolCallId, effectiveParams, signal, onUpdate, context),
+					partialApproval
+						? partialApproval.proposal.apply(partialApproval.selected, signal) as Promise<AgentToolResult<TDetails, TParameters>>
+						: this.tool.execute(toolCallId, effectiveParams, signal, onUpdate, context),
 				),
 			);
 		} catch (err) {

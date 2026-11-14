@@ -2,7 +2,7 @@ import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { Component, OverlayHandle, TUI } from "@oh-my-pi/pi-tui";
 import { Container, Spacer, Text } from "@oh-my-pi/pi-tui";
 import type { CollabUiRequestDraft, CollabUiSelectItem } from "@oh-my-pi/pi-wire";
-import type { CollabHost } from "../../collab/host";
+import { combineGuestUiPeers, type GuestUiPeer } from "./guest-ui-peers";
 import { formatKeyHint, formatKeyHints, KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import type {
 	CompactOptions,
@@ -807,7 +807,7 @@ export class ExtensionUiController {
 		// strings/arrays here instead of throwing inside `sanitizeCarriageReturns`
 		// on the guest path or taking down the local render.
 		const normalized = normalizeDialogQuestions(questions);
-		const host = this.ctx.collabHost;
+		const host = this.#guestPeer();
 		if (!host) return this.#showLocalAskDialog(normalized, dialogOptions);
 		const localAbort = new AbortController();
 		const remoteAbort = new AbortController();
@@ -966,12 +966,17 @@ export class ExtensionUiController {
 	 * keeps running — the host user may be mid-keystroke in it — and its
 	 * eventual result is returned.
 	 */
+	/** Collab guests and the `/rc` phone, whoever is there to answer alongside the terminal. */
+	#guestPeer(): GuestUiPeer | undefined {
+		return combineGuestUiPeers([this.ctx.collabHost, this.ctx.remoteControl]);
+	}
+
 	async #raceCollabDialog(
 		request: CollabUiRequestDraft,
 		signal: AbortSignal | undefined,
 		local: (signal: AbortSignal | undefined) => Promise<string | undefined>,
 	): Promise<string | undefined> {
-		const host = this.ctx.collabHost;
+		const host = this.#guestPeer();
 		if (!host) return local(signal);
 		const localAbort = new AbortController();
 		const remoteAbort = new AbortController();
@@ -994,7 +999,7 @@ export class ExtensionUiController {
 	}
 
 	async #runGuestAskDialog(
-		host: CollabHost,
+		host: GuestUiPeer,
 		questions: ExtensionAskDialogQuestion[],
 		signal: AbortSignal,
 	): Promise<ExtensionAskDialogResult | "unavailable" | undefined> {
@@ -1009,7 +1014,7 @@ export class ExtensionUiController {
 	}
 
 	async #runGuestAskQuestion(
-		host: CollabHost,
+		host: GuestUiPeer,
 		question: ExtensionAskDialogQuestion,
 		signal: AbortSignal,
 	): Promise<ExtensionAskDialogResultItem | "chat" | "unavailable" | undefined> {
@@ -1136,7 +1141,7 @@ export class ExtensionUiController {
 	}
 
 	async #requestGuestUiString(
-		host: CollabHost,
+		host: GuestUiPeer,
 		request: CollabUiRequestDraft,
 		signal: AbortSignal,
 	): Promise<GuestUiResult> {

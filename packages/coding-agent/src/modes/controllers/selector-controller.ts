@@ -75,7 +75,7 @@ import { loadPinnedSessionIds, setSessionPinned } from "../../session/session-pi
 import { FileSessionStorage } from "../../session/session-storage";
 import { listAccountRows } from "../../slash-commands/helpers/accounts";
 import { listAllLogoutAccounts, listLogoutAccounts, logoutCredential } from "../../slash-commands/helpers/logout";
-import { type AccountRow, accountRowKey } from "@oh-my-pi/pi-tui/overlays/account-manager";
+import { AccountManagerComponent, type AccountRow, accountRowKey } from "@oh-my-pi/pi-tui/overlays/account-manager";
 import type { LogoutAccount } from "@oh-my-pi/pi-tui/overlays/logout-account-selector";
 import { describeRedeemOutcome, toResetUsageAccounts } from "../../slash-commands/helpers/reset-usage";
 import { toSessionPinAccounts } from "../../slash-commands/helpers/session-pin";
@@ -87,6 +87,7 @@ import {
 	selectReportableAccounts,
 } from "../../slash-commands/helpers/usage-accounts";
 import { loadDailyActivity } from "../../stats/activity-client";
+import { loadAccountConsumption as loadAccountStats } from "@oh-my-pi/omp-stats/usage-windows";
 import {
 	AUTO_THINKING,
 	type ConfiguredThinkingLevel,
@@ -134,7 +135,6 @@ import { ThinkingSelectorComponent } from "@oh-my-pi/pi-tui/overlays/thinking-se
 import { UsageDashboardComponent } from "@oh-my-pi/pi-tui/overlays/usage-dashboard";
 import { OfficePanelComponent, type OfficePanelOptions } from "@oh-my-pi/pi-tui/overlays/office-panel";
 import { RankDashboardComponent, type RankDashboardOptions } from "@oh-my-pi/pi-tui/overlays/rank-dashboard";
-import { renderUsageReports } from "./command-controller";
 import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 
 import { cfgAdvisorSyncBacklog } from "../../advisor/settings";
@@ -454,11 +454,6 @@ export class SelectorController {
 			provider: account.provider,
 			label: accountIdentityLabel(account),
 		}));
-		const currentProvider = this.ctx.session.model?.provider;
-		const activeAccount = currentProvider
-			? this.ctx.session.modelRegistry.authStorage.oauth.identity(currentProvider, this.ctx.session.sessionId)
-			: undefined;
-		const usageModelSelectors = this.ctx.session.getUsageReportingModelSelectors(reports);
 		const done = () => {
 			menu.handle?.hide();
 			this.#releaseMenu("usage-dashboard", menu);
@@ -474,16 +469,7 @@ export class SelectorController {
 			reports,
 			unavailableAccounts,
 			accountName,
-			renderDetail: (width, current) =>
-				renderUsageReports(
-					current,
-					theme,
-					Date.now(),
-					width,
-					provider => (provider === currentProvider ? activeAccount : undefined),
-					usageModelSelectors,
-					unavailableAccounts,
-				),
+			loadAccountStats: () => loadAccountStats(),
 			loadActivity: loadDailyActivity,
 			refresh: () => this.ctx.session.fetchUsageReports(),
 			requestRender: () => this.ctx.ui.requestRender(),
@@ -2392,7 +2378,6 @@ export class SelectorController {
 			this.ctx.showStatus("No OAuth accounts are signed in. Use /login to add one.");
 			return;
 		}
-		const { AccountManagerComponent } = await import("@oh-my-pi/pi-tui/overlays/account-manager");
 		this.showSelector(done => {
 			const panel = new AccountManagerComponent(
 				rows,
