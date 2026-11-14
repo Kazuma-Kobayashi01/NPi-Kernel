@@ -20,6 +20,7 @@
 ### Changed
 
 - Paused Google Antigravity (`google-antigravity`): it no longer offers a login and stored credentials are not used until it is re-enabled; use `GEMINI_API_KEY` (AI Studio) or `google-vertex` instead ([#18341](https://github.com/can1357/oh-my-pi/issues/18341))
+- Fixed Gemini 4 Argon, Carbon and Hydrogen on the Gemini API and Vertex AI stopping long answers at 32,768 or 65,536 output tokens, often before any visible text; they now allow up to 262,144, so long answers continue past the first segment ([#19081](https://github.com/can1357/oh-my-pi/pull/19081) by [@eggpeat](https://github.com/eggpeat)).
 
 ## [18.20.0] - 2026-11-12
 

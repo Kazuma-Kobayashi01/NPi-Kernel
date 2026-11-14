@@ -14,7 +14,7 @@ import {
 	getAntigravityModelWireProfile,
 	getGeminiCliHeaders,
 } from "@oh-my-pi/pi-catalog/wire/gemini-headers";
-import { extractHttpStatusFromError, fetchWithRetry, readSseJson } from "@oh-my-pi/pi-utils";
+import { extractHttpStatusFromError, fetchWithRetry, readSseJson, type SseEventObserver } from "@oh-my-pi/pi-utils";
 import * as AIError from "../error";
 import { oauthAccountKey } from "../auth/types";
 import type {
@@ -45,7 +45,10 @@ import type { Content, FunctionCallingConfigMode, ThinkingConfig } from "./googl
 import {
 	convertMessages,
 	convertTools,
+	CONTINUATION_MAX_ATTEMPTS,
 	EMPTY_STREAM_BASE_DELAY_MS,
+	followGoogleContinuations,
+	GoogleTextBlocks,
 	type GoogleThinkingLevel,
 	hasMeaningfulGoogleContent,
 	isThinkingPart,
@@ -444,6 +447,8 @@ interface CloudCodeAssistRequest {
 			};
 		};
 		labels?: Record<string, string>;
+		/** Resumes a generation Google split into segments (`followGoogleContinuations`). */
+		continuationToken?: string;
 	};
 	requestType?: string;
 	userAgent?: string;
@@ -674,6 +679,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 			const streamResponse = async (
 				activeResponse: Response,
+				streamUrl: string,
 			): Promise<{ meaningful: boolean; strippedPlanningLeak: boolean }> => {
 				if (!activeResponse.body) {
 					throw new AIError.ProviderResponseError("No response body", {
@@ -782,15 +788,54 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					? AbortSignal.any([options.signal, responseAbortController.signal])
 					: responseAbortController.signal;
 				const onSseEvent = options?.onSseEvent;
+				// Attach the observer only when a diagnostic listener exists: any
+				// observer turns on per-line raw capture in `readSseJson`.
+				const sseObserver: SseEventObserver | undefined = onSseEvent
+					? event => onSseEvent({ event: event.event, data: event.data, raw: [...event.raw] }, model)
+					: undefined;
+				const resumeSegment = async (continuationToken: string) => {
+					// Same transport contract as the initial POST (retry schedule, no absolute
+					// fetch timeout that would cut off a segment still decoding), with
+					// `CONTINUATION_MAX_ATTEMPTS` and a pre-response watchdog per attempt,
+					// cleared once headers arrive.
+					let clearWatchdog: (() => void) | undefined;
+					let resumed: Response;
+					try {
+						resumed = await fetchWithRetry(streamUrl, {
+							method: "POST",
+							headers: requestHeaders,
+							body: JSON.stringify({ ...requestBody, request: { ...requestBody.request, continuationToken } }),
+							signal: responseSignal,
+							prepareInit: () => {
+								clearWatchdog?.();
+								const watchdog = armPreResponseTimeout(responseSignal, firstEventTimeoutMs);
+								clearWatchdog = watchdog.clear;
+								return { signal: watchdog.signal };
+							},
+							maxAttempts: CONTINUATION_MAX_ATTEMPTS,
+							defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+							maxDelayMs: options?.maxRetryDelayMs ?? RATE_LIMIT_BUDGET_MS,
+							fetch: options?.fetch,
+							timeout: false,
+						});
+						if (!resumed.ok || !resumed.body) {
+							const errorText = await resumed.text();
+							throw new AIError.GeminiCliApiError(
+								`Cloud Code Assist API error (${resumed.status}) resuming a long generation: ${errorText}`,
+								resumed.status,
+								{ headers: resumed.headers },
+							);
+						}
+					} finally {
+						clearWatchdog?.();
+					}
+					return readSseJson<CloudCodeAssistResponseChunk>(resumed.body, responseSignal, sseObserver);
+				};
 				const chunks = iterateWithIdleTimeout(
-					// Attach the observer only when a diagnostic listener exists: any
-					// observer turns on per-line raw capture in `readSseJson`.
-					readSseJson<CloudCodeAssistResponseChunk>(
-						activeResponse.body,
-						responseSignal,
-						onSseEvent
-							? event => onSseEvent({ event: event.event, data: event.data, raw: [...event.raw] }, model)
-							: undefined,
+					followGoogleContinuations(
+						readSseJson<CloudCodeAssistResponseChunk>(activeResponse.body, responseSignal, sseObserver),
+						chunk => chunk.response,
+						resumeSegment,
 					),
 					{
 						firstItemTimeoutMs: firstEventTimeoutMs,
@@ -953,6 +998,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 			for (let i = 0; i < endpoints.length; i++) {
 				const endpoint = endpoints[i];
+				const streamUrl = `${endpoint}/v1internal:streamGenerateContent?alt=sse`;
 				const isLastEndpoint = i === endpoints.length - 1;
 				try {
 					started = false;
@@ -964,7 +1010,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 					const watchdog = armPreResponseTimeout(callerSignal, firstEventTimeoutMs);
 					let response: Response;
 					try {
-						response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+						response = await fetchWithRetry(() => streamUrl, {
 							method: "POST",
 							headers: requestHeaders,
 							body: requestBodyJson,
@@ -1038,7 +1084,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							}
 						}
 
-						const streamed = await streamResponse(currentResponse);
+						const streamed = await streamResponse(currentResponse, streamUrl);
 						// Eventless silence may fail over to the alternate Antigravity
 						// endpoint. Once thinking has streamed, the endpoint is already
 						// committed downstream; Advisor mode may accept that silence,

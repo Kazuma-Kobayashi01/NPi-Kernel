@@ -1,7 +1,8 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { streamSimple } from "@oh-my-pi/pi-ai/stream";
 import type { Context } from "@oh-my-pi/pi-ai/types";
 import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import * as compatAuth from "@oh-my-pi/pi-catalog/compat/auth";
 import { resolveVariantSelector } from "@oh-my-pi/pi-catalog/compat/collapse";
 import { fetchAntigravityDiscoveryModels } from "@oh-my-pi/pi-catalog/discovery/antigravity";
 import { fetchGeminiModels } from "@oh-my-pi/pi-catalog/discovery/gemini";
@@ -77,6 +78,10 @@ async function discoverHydrogen() {
 }
 
 describe("Gemini 4 Hydrogen", () => {
+	// Antigravity is paused in its auth rules; its transport stays for when it is turned back on.
+	beforeEach(() => vi.spyOn(compatAuth, "providerDisabledReason").mockReturnValue(undefined));
+	afterEach(() => vi.restoreAllMocks());
+
 	it("repairs neutral API discovery metadata and defaults to high", () => {
 		const model = buildModel({
 			id: ID,
@@ -118,7 +123,8 @@ describe("Gemini 4 Hydrogen", () => {
 				includeThoughts: true,
 				thinkingLevel: (effort ?? Effort.High).toUpperCase(),
 			});
-			expect(body.generationConfig?.maxOutputTokens).toBeLessThanOrEqual(65_536);
+			// Above one 65,536-token segment, so long answers continue across segments (upstream #19081).
+			expect(body.generationConfig?.maxOutputTokens).toBe(262_144);
 		}
 	});
 
