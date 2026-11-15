@@ -4,6 +4,8 @@
 
 ### Added
 
+- Added `RunOptions.components`: `[name, version]` pairs that `--version --all` prints as `name/version` lines after the usual one
+- Added `KERNEL_VERSION`, the NPi kernel line of the build (`kernel.x.y.z-platform`)
 - Added `isFileLockHeld`, which reports whether a file lock is held without acquiring it ([#17428](https://github.com/can1357/oh-my-pi/pull/17428) by [@andrebrait](https://github.com/andrebrait))
 
 ## [18.14.0] - 2026-10-29

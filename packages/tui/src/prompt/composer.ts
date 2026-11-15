@@ -300,6 +300,7 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	#onSidePanelShown: ((shown: boolean) => void) | undefined;
 	#sidePanelShown = false;
 	#homeStatus: string | undefined;
+	#homeBadge: string | undefined;
 	#version = "";
 	#headerBefore: readonly Component[] = [];
 	#headerAfter: readonly Component[] = [];
@@ -463,12 +464,15 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 		this.#rebuildHeader();
 		this.#statusHost.homeFooter = width => {
 			if (this.editor.getBorderStyle() !== "rail" || !this.#onHomeScreen()) return undefined;
-			const version = this.#version ? `v${this.#version}` : "";
+			const version = this.#version ? theme.fg("dim", `v${this.#version}`) : "";
+			const badge = this.#homeBadge ? theme.fg("success", this.#homeBadge) : "";
+			const tail = [badge, version].filter(Boolean).join("  ");
+			const tailWidth = visibleWidth(tail);
 			const status = this.#homeStatus ? `  ${this.#homeStatus}` : "";
-			const room = Math.max(0, width - version.length - visibleWidth(status) - 2);
+			const room = Math.max(0, width - tailWidth - visibleWidth(status) - 2);
 			const path = truncateToWidth(shortenPath(getProjectDir()), room);
-			const gap = " ".repeat(Math.max(0, width - visibleWidth(path) - visibleWidth(status) - version.length));
-			return this.#revealHomeChrome(`${theme.fg("dim", path)}${status}${gap}${theme.fg("dim", version)}`);
+			const gap = " ".repeat(Math.max(0, width - visibleWidth(path) - visibleWidth(status) - tailWidth));
+			return this.#revealHomeChrome(`${theme.fg("dim", path)}${status}${gap}${tail}`);
 		};
 		this.editor.footerHintReveal = hint => this.#revealHomeChrome(hint);
 		this.editor.tallComposer = () => this.#onHomeScreen();
@@ -530,6 +534,13 @@ export class Composer implements TerminalFrameProvider, NativeSurfaceProvider {
 	/** A short status for the home footer, such as connected MCP servers. */
 	setHomeStatus(status: string | undefined): void {
 		this.#homeStatus = status;
+		this.ui.requestRender();
+	}
+
+	/** A short green label left of the version in the home footer, such as `/rc` while remote control is on. */
+	setHomeBadge(badge: string | undefined): void {
+		if (this.#homeBadge === badge) return;
+		this.#homeBadge = badge;
 		this.ui.requestRender();
 	}
 

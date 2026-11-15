@@ -263,6 +263,7 @@ export async function startRemoteControl(
 	}
 	ctx.remoteControl = control;
 	if (transport.kind === "relay" && args) cfgRemoteRelayUrl.set(ctx.settings, transport.url);
-	ctx.showStatus(remoteControlStatus(control), { dim: options.auto === true });
+	// At launch the footer's green `/rc` says it all; a typed `/rc` gets the details.
+	if (!options.auto) ctx.showStatus(remoteControlStatus(control));
 	return control;
 }

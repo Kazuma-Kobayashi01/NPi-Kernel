@@ -819,6 +819,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	#collabStatus: CollabStatus | null = null;
 	#streamStatus: { viewers: number } | null = null;
 	#recording = false;
+	#remoteControl = false;
 	#focusedAgentId: string | undefined;
 	#activeRepoCache: ActiveRepoCache | undefined;
 
@@ -1282,6 +1283,13 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	setStreamStatus(status: { viewers: number } | null): void {
 		if (this.#streamStatus?.viewers === status?.viewers) return;
 		this.#streamStatus = status;
+		this.#invalidateStatusLineRenderCache();
+	}
+
+	/** Toggle the green `/rc` badge at the right end, shown while paired phones can drive the session. */
+	setRemoteControl(on: boolean): void {
+		if (this.#remoteControl === on) return;
+		this.#remoteControl = on;
 		this.#invalidateStatusLineRenderCache();
 	}
 
@@ -3139,6 +3147,9 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			}
 			if (subagentBadge) rightParts.unshift(subagentBadge);
 		}
+		// Badge/job parts unshifted ahead of the tracked segment ids; `/rc` goes after them all, in the corner.
+		const rightLeadParts = rightParts.length - rightSegIds.length;
+		if (layout !== "plain-left" && this.#remoteControl) rightParts.push(theme.fg("success", "/rc"));
 		const topFillWidth = Math.max(0, width);
 		// These arrays are local to this render; overflow handling can mutate them.
 		const left = leftParts;
@@ -3194,8 +3205,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			// without any title.
 			const nameSegIdx = rightSegIds.indexOf("session_name");
 			if (nameSegIdx >= 0 && totalWidth() > topFillWidth) {
-				// Badge/job parts were unshifted ahead of the tracked segment ids.
-				const nameIdx = nameSegIdx + (right.length - rightSegIds.length);
+				const nameIdx = nameSegIdx + rightLeadParts;
 				const currentNameVW = rightWidths[nameIdx];
 				const minNameVW = 8;
 				const shrinkBy = Math.min(Math.max(0, currentNameVW - minNameVW), totalWidth() - topFillWidth);

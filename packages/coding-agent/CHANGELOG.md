@@ -4,9 +4,15 @@
 
 ### Added
 
+- `--version --all` adds one `name/version` line each for the omp core and the kernel line after the usual `npi/<version>`; plain `--version` still prints the one line
+- `/version` shows the logo with the NPi version, the omp core version it is built from and the kernel line (`kernel.x.y.z-platform`); outside the terminal UI it answers with the three versions as plain text
 - `.npix` plugin packages: `plugin pack [dir]` writes one (an npm-pack style tar.gz with its dependencies inside), `plugin inspect <file>.npix` shows what it declares, and `plugin install <file>.npix` unpacks and links it without downloading anything; `plugin uninstall` removes the unpacked copy too. Archives with entries outside `package/` or with symlinks are refused. Every `.npix` names its developer in `developer.json`, which `inspect` and `plugin list --json` show
 - Extensions can serve RPC hosts: `pi.registerRpcCommand("<plugin>/<command>", { handler })` answers `extension_command` frames with the handler's result (errors and unknown names answer as failures), and `ctx.ui.emitEvent?.(name, data)` pushes `extension_event` frames
 - `--mode rpc-ui --side-agent <id>` serves an external ACP agent (an id from the ACP registry, e.g. `antigravity-acp`, `claude-acp`) to RPC hosts: its turns stream like omp's own, its permission requests arrive as approval dialogs, and it signs in with its own account. An installed `agy` is preferred over the registry build for Antigravity; registry binaries install only when their SHA-256 is pinned
+
+### Changed
+
+- `remote.autoStart` no longer prints the remote control notice at launch: a green `/rc` at the right end of the home footer and the status line shows it is on, for as long as it is. A typed `/rc` and `/rc status` still print the details
 
 ### Fixed
 

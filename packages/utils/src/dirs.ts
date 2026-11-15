@@ -18,6 +18,7 @@ import { expandWindowsLongPath } from "@oh-my-pi/pi-natives/path";
 import { engines, version } from "../package.json" with { type: "json" };
 
 const NPI_VERSION = "3.1.0.105";
+const NPI_KERNEL_VERSION = "kernel.2.1.3-universal";
 import { isEnoent, isEnotdir } from "./fs-error";
 import { isBunTestRuntime } from "./test-runtime";
 
@@ -50,6 +51,8 @@ export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 export const VERSION: string = NPI_VERSION;
 /** The omp core this build is made from (the packages' own version). */
 export const CORE_VERSION: string = version;
+/** The NPi kernel line this build belongs to (`kernel.x.y.z-platform`), kept in step with the release branch. */
+export const KERNEL_VERSION: string = NPI_KERNEL_VERSION;
 
 /** Default User-Agent header string (e.g. "omp/17.2.12") */
 export const USER_AGENT = `omp/${VERSION}`;

@@ -520,6 +520,11 @@ function plainLockup(version: string): string[] {
 	});
 }
 
+/** The logo with the wordmark beside it in the theme's gradient, for surfaces that list the version themselves. */
+export function brandLockup(): string[] {
+	return gradientLogo(plainLockup(""));
+}
+
 /**
  * `lines` indented as one block whose widest line is centered in `width`
  * columns; pass a single line to center it on its own.

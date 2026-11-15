@@ -1767,8 +1767,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	/** Owned room; use {@link collabController}.host for current-session reuse and links. */
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
-	/** Paired phones following and driving this session (`/rc`). */
-	remoteControl?: RemoteControl;
+	#remoteControl: RemoteControl | undefined;
 	#streamPublisher: StreamPublisher | undefined;
 	#recorder: SessionRecorder | undefined;
 	#recorderStarting = false;
@@ -8379,6 +8378,17 @@ export class InteractiveMode implements InteractiveModeContext {
 			return;
 		}
 		await this.shutdown();
+	}
+
+	/** Paired phones following and driving this session (`/rc`); the footers show a green `/rc` while set. */
+	get remoteControl(): RemoteControl | undefined {
+		return this.#remoteControl;
+	}
+
+	set remoteControl(control: RemoteControl | undefined) {
+		this.#remoteControl = control;
+		this.statusLine.setRemoteControl(control !== undefined);
+		this.composer.setHomeBadge(control ? "/rc" : undefined);
 	}
 
 	/** `remote.autoStart`: `/rc` at launch, in the background; a missing relay or phone only warns. */

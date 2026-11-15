@@ -1,4 +1,8 @@
+import { isNativeRendering } from "@oh-my-pi/pi-tui/native/state";
 import { type PauseWorkStatus, runPauseScreen } from "@oh-my-pi/pi-tui/overlays/pause-screen";
+import { brandLockup } from "@oh-my-pi/pi-tui/prompt/welcome";
+import { theme } from "@oh-my-pi/pi-tui/theme";
+import { CORE_VERSION, KERNEL_VERSION, VERSION } from "@oh-my-pi/pi-utils/dirs";
 import { AgentRegistry } from "../registry/agent-registry";
 import type { AgentSession } from "../session/agent-session";
 import { clearApprovalGrants } from "../tools/approval-cache";
@@ -36,6 +40,27 @@ function pauseWorkStatus(root: AgentSession): PauseWorkStatus {
 			?.running.filter(job => job.type !== "task" || job.agentId === undefined || !liveSubagentIds.has(job.agentId))
 			.length ?? 0;
 	return { unsettledTurns, unfinishedJobs };
+}
+
+/** What `/version` reports: the product, the omp core it is built from, and the kernel line. */
+const VERSION_ROWS: ReadonlyArray<readonly [label: string, value: string]> = [
+	["NPi", VERSION],
+	["omp", CORE_VERSION],
+	["Kernel", KERNEL_VERSION],
+];
+
+/** `/version` as plain text, one aligned row per version. */
+export function formatVersions(): string {
+	return VERSION_ROWS.map(([label, value]) => `${label.padEnd(8)}${value}`).join("\n");
+}
+
+/** `/version` for the terminal: the gradient logo and wordmark above the same rows, the NPi version standing out. */
+export function renderVersions(): string {
+	const rows = VERSION_ROWS.map(([label, value], index) => {
+		const shown = index === 0 ? theme.bold(theme.fg("accent", value)) : value;
+		return `${theme.fg("muted", label.padEnd(8))}${shown}`;
+	});
+	return [...brandLockup(), "", ...rows].join("\n");
 }
 
 export const BUILTIN_CONTROL_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
@@ -125,6 +150,21 @@ export const BUILTIN_CONTROL_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpec> = [
 			clearApprovalGrants(runtime.settings.getAgentDir());
 			await runtime.output("Remembered approvals forgotten; the next read or write asks again.");
 			return commandConsumed();
+		},
+	},
+	{
+		name: "version",
+		description: "Show the NPi, omp core and kernel versions",
+		acpDescription: "Show the NPi, omp core and kernel versions",
+		handle: async (_command, runtime) => {
+			await runtime.output(formatVersions());
+			return commandConsumed();
+		},
+		handleTui: (_command, runtime) => {
+			clearSubmittedText(runtime);
+			// A native terminal shows notices as plain-text toasts, where block art would only be noise.
+			if (isNativeRendering()) runtime.ctx.showStatus(formatVersions(), { dim: false });
+			else runtime.ctx.showStatus(renderVersions(), { dim: false, toast: false });
 		},
 	},
 	{

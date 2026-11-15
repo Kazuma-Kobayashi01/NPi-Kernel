@@ -21,7 +21,9 @@ import type * as Postmortem from "@oh-my-pi/pi-utils/postmortem";
 import {
 	APP_NAME,
 	BIN_NAME,
+	CORE_VERSION,
 	getActiveProfile,
+	KERNEL_VERSION,
 	MIN_BUN_VERSION,
 	migrateLegacyCaches,
 	resolveProfileEnv,
@@ -586,7 +588,17 @@ export async function runCli(argv: string[]): Promise<void> {
 			return;
 		}
 		runningCommand = resolved.argv[0];
-		await run({ bin: BIN_NAME, version: VERSION, argv: resolved.argv, commands, metadataHelp: showHelp });
+		await run({
+			bin: BIN_NAME,
+			version: VERSION,
+			components: [
+				["omp", CORE_VERSION],
+				["kernel", KERNEL_VERSION],
+			],
+			argv: resolved.argv,
+			commands,
+			metadataHelp: showHelp,
+		});
 	} finally {
 		stopStartupComposer?.();
 	}

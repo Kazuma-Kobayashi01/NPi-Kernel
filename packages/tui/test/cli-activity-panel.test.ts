@@ -291,6 +291,17 @@ describe("home screen", () => {
 		}
 	});
 
+	it("puts a badge left of the version in the footer", async () => {
+		const c = await home(140, 40);
+		try {
+			c.setHomeBadge("/rc");
+			const footer = c.renderFrame({ columns: 140, rows: 40 }).viewport.find(row => row.includes("v9.9.9"));
+			expect(Bun.stripANSI(footer!).trimEnd().endsWith("/rc  v9.9.9")).toBe(true);
+		} finally {
+			c.stop();
+		}
+	});
+
 	it("widens back to the conversation column after the first message", async () => {
 		const c = await home(140, 40);
 		try {

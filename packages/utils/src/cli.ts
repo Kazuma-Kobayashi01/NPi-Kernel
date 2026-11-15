@@ -416,6 +416,8 @@ export interface CommandEntry {
 export interface RunOptions {
 	bin: string;
 	version: string;
+	/** What the build is made of, as `[name, version]`; `--version --all` prints one `name/version` line each. */
+	components?: ReadonlyArray<readonly [name: string, version: string]>;
 	argv: string[];
 	commands: CommandEntry[];
 	/** Custom help renderer with the fully loaded command constructors. */
@@ -459,6 +461,10 @@ export async function run(opts: RunOptions): Promise<void> {
 	// Version
 	if (commandId === "--version" || commandId === "-v") {
 		process.stdout.write(`${bin}/${version}\n`);
+		// Extra lines only on request: callers that read `--version` expect the one line.
+		if (commandArgv.includes("--all")) {
+			for (const [name, value] of opts.components ?? []) process.stdout.write(`${name}/${value}\n`);
+		}
 		return;
 	}
 

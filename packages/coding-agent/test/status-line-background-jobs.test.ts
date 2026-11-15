@@ -119,6 +119,16 @@ describe("status-line background-job badge", () => {
 		expect(top()).toContain(`${theme.icon.job} 2 50 tok/s ▲ 15% ▅█▃`);
 	});
 
+	it("ends the line with /rc while remote control is on", () => {
+		const component = makeComponent([runningJob("bash", 1)]);
+		const top = () => stripVTControlCharacters(component.getTopBorder(120).content).trimEnd();
+		component.setRemoteControl(true);
+		expect(top()).toContain(`${theme.icon.job} 1`);
+		expect(top().endsWith("/rc")).toBe(true);
+		component.setRemoteControl(false);
+		expect(top()).not.toContain("/rc");
+	});
+
 	it("counts queued task jobs before their subagent is registered", () => {
 		const component = makeComponent([runningJob("task", 0)]);
 		component.setRunningSubagents([]);

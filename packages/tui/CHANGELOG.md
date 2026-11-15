@@ -11,6 +11,8 @@
 
 ### Added
 
+- `brandLockup()` returns the gradient logo and wordmark without a version line
+- `Composer.setHomeBadge()` puts a short green label left of the version in the home footer, and `StatusLineComponent.setRemoteControl()` shows a green `/rc` at the right end of the status line
 - `OfficePanelComponent` takes `thinkingLevels`, `watch` and `loadReport`, draws office activity, spend and recent assignments when the state carries them, and has a Reports tab instead of pull requests.
 
 ### Fixed
