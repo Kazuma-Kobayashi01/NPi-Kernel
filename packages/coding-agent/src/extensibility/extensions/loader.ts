@@ -52,6 +52,7 @@ import type {
 	PreparedExtension,
 	ProviderConfig,
 	RegisteredCommand,
+	RegisteredRpcCommand,
 	SourceInfo,
 	ToolDefinition,
 	ToolInfo,
@@ -64,6 +65,8 @@ type LoadedExtensionModule = ExtensionFactory | { default?: ExtensionFactory };
 
 /** RFC 3986 scheme syntax, lowercased, two characters at least so `c` cannot capture `C:/` paths. */
 const LINK_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]+$/;
+/** `registerRpcCommand` names: `<plugin>/<command>`. */
+const RPC_COMMAND_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/;
 
 /** Standard schemes an extension may not claim: web, file and mail links. npi's internal URLs are refused too. */
 const STANDARD_LINK_SCHEMES: Readonly<Record<string, true>> = {
@@ -320,6 +323,15 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		if (!this.extension.linkSchemes.includes(normalized)) this.extension.linkSchemes.push(normalized);
 	}
 
+	registerRpcCommand(name: string, options: { description?: string; handler: RegisteredRpcCommand["handler"] }): void {
+		if (!RPC_COMMAND_NAME_PATTERN.test(name)) {
+			throw new Error(
+				`registerRpcCommand: "${name}" is not "<plugin>/<command>" (lowercase letters, digits, "-", ".", "_")`,
+			);
+		}
+		(this.extension.rpcCommands ??= new Map()).set(name, { name, ...options });
+	}
+
 	registerComposerShape(definition: ComposerShapeDefinition): void {
 		const id = definition.style.id;
 		if (id.length === 0 || id !== id.trim()) {
@@ -433,6 +445,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		messageRenderers: new Map(),
 		composerShapes: new Map(),
 		commands: new Map(),
+		rpcCommands: new Map(),
 		flags: new Map(),
 		shortcuts: new Map(),
 	};

@@ -147,6 +147,13 @@ export const rpcCommands: readonly RpcCommandSpec[] = [
 		unwrap: "commands",
 	},
 	{
+		name: "extension_command",
+		doc: "Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`, unknown names answer `unsupported`.",
+		params: { name: "string", "params?": "unknown" },
+		result: { result: "unknown" },
+		unwrap: "result",
+	},
+	{
 		name: "get_entries",
 		doc: "Read the append-history; with `since`, only entries strictly after that durable entry id.",
 		params: { "since?": "string" },

@@ -1733,6 +1733,10 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 			} as RpcExtensionUIRequest);
 		}
 
+		emitEvent(name: string, data?: unknown): void {
+			this.output({ type: "extension_event", name, data: data ?? null });
+		}
+
 		setWorkingMessage(_message?: string): void {
 			// Not supported in RPC mode
 		}
@@ -2598,6 +2602,18 @@ export async function runRpcMode(session: AgentSession, options: RpcModeOptions 
 
 			case "get_available_commands": {
 				return success(id, "get_available_commands", { commands: await getAvailableCommands() });
+			}
+
+			case "extension_command": {
+				const runner = session.extensionRunner;
+				const registered = typeof command.name === "string" ? runner?.getRpcCommand(command.name) : undefined;
+				if (!runner || !registered) {
+					return error(id, "extension_command", `No extension serves "${String(command.name)}"`, "unsupported");
+				}
+				const result = await runner.runScoped(() =>
+					registered.handler(command.params, runner.createCommandContext()),
+				);
+				return success(id, "extension_command", { result: result ?? null });
 			}
 
 			case "get_entries": {

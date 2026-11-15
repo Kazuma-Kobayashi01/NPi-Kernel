@@ -5697,6 +5697,34 @@ func (v ExtensionError) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), `"type":"extension_error"`, nil)
 }
 
+// Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`.
+type ExtensionEvent struct {
+	Name string          `json:"name"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (v *ExtensionEvent) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ExtensionEvent", v.decodeFrom)
+}
+
+func (v *ExtensionEvent) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ExtensionEvent
+	d := fieldDecoder{raw: raw, owner: "ExtensionEvent"}
+	d.constant("type", "extension_event")
+	d.required("name", &out.Name)
+	d.required("data", &out.Data)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+func (v ExtensionEvent) MarshalJSON() ([]byte, error) {
+	type plain ExtensionEvent
+	return encodeObject(plain(v), `"type":"extension_event"`, nil)
+}
+
 // Slash-command catalog, pushed at startup and whenever command metadata changes.
 type AvailableCommandsUpdateEvent struct {
 	Commands []AvailableSlashCommand `json:"commands"`
@@ -7637,6 +7665,7 @@ func (ComputerActivityEvent) isRpcNotification()        {}
 func (PromptResultEvent) isRpcNotification()            {}
 func (SessionSettledEvent) isRpcNotification()          {}
 func (ExtensionError) isRpcNotification()               {}
+func (ExtensionEvent) isRpcNotification()               {}
 func (ExtensionUiRequest) isRpcNotification()           {}
 func (AvailableCommandsUpdateEvent) isRpcNotification() {}
 func (SubagentLifecycleEvent) isRpcNotification()       {}
@@ -7716,6 +7745,8 @@ func (v *RpcNotification) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SessionSettledEvent](raw)
 	case "extension_error":
 		value, err = decodeVariant[ExtensionError](raw)
+	case "extension_event":
+		value, err = decodeVariant[ExtensionEvent](raw)
 	case "extension_ui_request":
 		value, err = decodeVariant[ExtensionUiRequest](raw)
 	case "available_commands_update":
@@ -7854,6 +7885,7 @@ func (ComputerActivityEvent) isRpcServerFrame()        {}
 func (PromptResultEvent) isRpcServerFrame()            {}
 func (SessionSettledEvent) isRpcServerFrame()          {}
 func (ExtensionError) isRpcServerFrame()               {}
+func (ExtensionEvent) isRpcServerFrame()               {}
 func (ExtensionUiRequest) isRpcServerFrame()           {}
 func (AvailableCommandsUpdateEvent) isRpcServerFrame() {}
 func (SubagentLifecycleEvent) isRpcServerFrame()       {}
@@ -7943,6 +7975,8 @@ func (v *RpcServerFrame) UnmarshalJSON(data []byte) error {
 		value, err = decodeVariant[SessionSettledEvent](raw)
 	case "extension_error":
 		value, err = decodeVariant[ExtensionError](raw)
+	case "extension_event":
+		value, err = decodeVariant[ExtensionEvent](raw)
 	case "extension_ui_request":
 		value, err = decodeVariant[ExtensionUiRequest](raw)
 	case "available_commands_update":
@@ -8147,6 +8181,25 @@ func (v *GetAvailableCommandsResult) decodeFrom(raw map[string]json.RawMessage) 
 	var out GetAvailableCommandsResult
 	d := fieldDecoder{raw: raw, owner: "GetAvailableCommandsResult"}
 	d.required("commands", &out.Commands)
+	if d.err != nil {
+		return d.err
+	}
+	*v = out
+	return nil
+}
+
+type ExtensionCommandResult struct {
+	Result json.RawMessage `json:"result"`
+}
+
+func (v *ExtensionCommandResult) UnmarshalJSON(data []byte) error {
+	return decodeWith(data, "ExtensionCommandResult", v.decodeFrom)
+}
+
+func (v *ExtensionCommandResult) decodeFrom(raw map[string]json.RawMessage) error {
+	var out ExtensionCommandResult
+	d := fieldDecoder{raw: raw, owner: "ExtensionCommandResult"}
+	d.required("result", &out.Result)
 	if d.err != nil {
 		return d.err
 	}
@@ -9038,6 +9091,19 @@ func (c Commands) GetAvailableCommands(ctx context.Context) ([]AvailableSlashCom
 	var out GetAvailableCommandsResult
 	err := c.call(ctx, "get_available_commands", nil, 0, &out)
 	return out.Commands, err
+}
+
+// ExtensionCommandCommand holds the parameters of "extension_command".
+type ExtensionCommandCommand struct {
+	Name   string          `json:"name"`
+	Params json.RawMessage `json:"params,omitempty"`
+}
+
+// ExtensionCommand sends "extension_command": Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`, unknown names answer `unsupported`.
+func (c Commands) ExtensionCommand(ctx context.Context, p ExtensionCommandCommand) (json.RawMessage, error) {
+	var out ExtensionCommandResult
+	err := c.call(ctx, "extension_command", p, 0, &out)
+	return out.Result, err
 }
 
 // GetEntriesCommand holds the parameters of "get_entries".

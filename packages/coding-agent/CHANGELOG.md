@@ -4,6 +4,7 @@
 
 ### Added
 
+- Extensions can serve RPC hosts: `pi.registerRpcCommand("<plugin>/<command>", { handler })` answers `extension_command` frames with the handler's result (errors and unknown names answer as failures), and `ctx.ui.emitEvent?.(name, data)` pushes `extension_event` frames
 - `--mode rpc-ui --side-agent <id>` serves an external ACP agent (an id from the ACP registry, e.g. `antigravity-acp`, `claude-acp`) to RPC hosts: its turns stream like omp's own, its permission requests arrive as approval dialogs, and it signs in with its own account. An installed `agy` is preferred over the registry build for Antigravity; registry binaries install only when their SHA-256 is pinned
 
 ### Fixed

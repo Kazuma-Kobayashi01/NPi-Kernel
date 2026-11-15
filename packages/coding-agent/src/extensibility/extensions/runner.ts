@@ -87,6 +87,7 @@ import type {
 	McpNotificationEvent,
 	MessageRenderer,
 	RegisteredCommand,
+	RegisteredRpcCommand,
 	RegisteredTool,
 	ResourcesDiscoverEvent,
 	ResourcesDiscoverResult,
@@ -1543,6 +1544,15 @@ export class ExtensionRunner {
 
 	getCommandDiagnostics(): Array<{ type: string; message: string; path: string }> {
 		return this.#commandDiagnostics;
+	}
+
+	/** The extension RPC command `name`; the later-loaded extension wins, as for slash commands. */
+	getRpcCommand(name: string): RegisteredRpcCommand | undefined {
+		for (let index = this.extensions.length - 1; index >= 0; index -= 1) {
+			const command = this.extensions[index]?.rpcCommands?.get(name);
+			if (command) return command;
+		}
+		return undefined;
 	}
 
 	getCommand(name: string): RegisteredCommand | undefined {

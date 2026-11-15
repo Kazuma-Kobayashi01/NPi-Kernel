@@ -1289,6 +1289,13 @@ export interface ExtensionError {
 	error: string;
 }
 
+/** Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`. */
+export interface ExtensionEvent {
+	type: "extension_event";
+	name: string;
+	data: unknown;
+}
+
 /** Slash-command catalog, pushed at startup and whenever command metadata changes. */
 export interface AvailableCommandsUpdateEvent {
 	type: "available_commands_update";
@@ -1753,7 +1760,7 @@ export interface HostUriSchemeDefinition {
 }
 
 /** Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`. */
-export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
+export type RpcNotification = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionEvent | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent;
 
 /** Any frame the server writes to stdout (after reassembling `rpc_chunk` sequences), discriminated by `type`. */
 export type RpcServerFrame = RpcResponse | RpcHostRequest | RpcNotification;
@@ -1859,6 +1866,15 @@ export interface SetApprovalModeResult {
 
 export interface GetAvailableCommandsResult {
 	commands: AvailableSlashCommand[];
+}
+
+export interface ExtensionCommandParams {
+	name: string;
+	params?: unknown;
+}
+
+export interface ExtensionCommandResult {
+	result: unknown;
 }
 
 export interface GetEntriesParams {
@@ -2256,6 +2272,7 @@ export interface RpcWireCommands {
 	set_ask_dialog: { params: SetAskDialogParams; result: SetAskDialogResult };
 	set_approval_mode: { params: SetApprovalModeParams; result: SetApprovalModeResult };
 	get_available_commands: { params: undefined; result: GetAvailableCommandsResult };
+	extension_command: { params: ExtensionCommandParams; result: ExtensionCommandResult };
 	get_entries: { params: GetEntriesParams; result: SessionEntries };
 	get_tree: { params: undefined; result: SessionTree };
 	set_todos: { params: SetTodosParams; result: SetTodosResult };

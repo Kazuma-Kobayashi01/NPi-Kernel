@@ -1530,6 +1530,14 @@ class ExtensionError:
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
+class ExtensionEvent:
+    """Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`."""
+    type: Literal["extension_event"] = "extension_event"
+    name: str
+    data: JsonValue
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
 class AvailableCommandsUpdateEvent:
     """Slash-command catalog, pushed at startup and whenever command metadata changes."""
     type: Literal["available_commands_update"] = "available_commands_update"
@@ -1990,7 +1998,7 @@ RpcAgentEvent: TypeAlias = AgentStartEvent | AgentEndEvent | TurnStartEvent | Tu
 """A session event, discriminated by `type`; `set_event_filter` selects which are sent."""
 
 
-RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
+RpcNotification: TypeAlias = ReadyEvent | ComputerUseStateEvent | ComputerActivityEvent | PromptResultEvent | SessionSettledEvent | ExtensionError | ExtensionEvent | ExtensionUiRequest | AvailableCommandsUpdateEvent | SubagentLifecycleEvent | SubagentProgressEvent | SubagentEvent | OfficeStateEvent | OfficeUsageEvent | LivePhaseEvent | LiveLevelsEvent | LiveTranscriptEvent | LiveEndEvent | DictationStateEvent | DictationTranscriptEvent | DictationEndEvent | BtwDeltaEvent | BtwRecordEvent | CommandOutputEvent | SessionInfoUpdateEvent | ConfigUpdateEvent | RpcFrameErrorEvent | RpcAgentEvent | UnknownNotification
 """Unsolicited outbound frame (everything except responses and host tool/URI requests), discriminated by `type`."""
 
 
@@ -3273,6 +3281,15 @@ def parse_extension_error(value: object, path: str = "ExtensionError") -> Extens
     )
 
 
+def parse_extension_event(value: object, path: str = "ExtensionEvent") -> ExtensionEvent:
+    payload = expect_object(value, path)
+    required(payload, "type", cast('Decoder[Literal["extension_event"]]', literal(frozenset({"extension_event"}))), path)
+    return ExtensionEvent(
+        name=required(payload, "name", decode_str, path),
+        data=required(payload, "data", decode_json, path),
+    )
+
+
 def parse_available_commands_update_event(value: object, path: str = "AvailableCommandsUpdateEvent") -> AvailableCommandsUpdateEvent:
     payload = expect_object(value, path)
     required(payload, "type", cast('Decoder[Literal["available_commands_update"]]', literal(frozenset({"available_commands_update"}))), path)
@@ -3841,6 +3858,7 @@ _RPC_NOTIFICATION_CASES: Final[dict[str, Decoder[RpcNotification]]] = {
         "prompt_result": parse_prompt_result_event,
         "session_settled": parse_session_settled_event,
         "extension_error": parse_extension_error,
+        "extension_event": parse_extension_event,
         "extension_ui_request": parse_extension_ui_request,
         "available_commands_update": parse_available_commands_update_event,
         "subagent_lifecycle": parse_subagent_lifecycle_event,
@@ -4037,6 +4055,14 @@ class WireClient:
         """List the slash-command catalog."""
         params: dict[str, object] = {}
         return required(expect_object(self._command("get_available_commands", params), "get_available_commands"), "commands", array(parse_available_slash_command), "get_available_commands")
+
+    def extension_command(self, name: str, *, params: JsonValue | None = None) -> JsonValue:
+        """Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`, unknown names answer `unsupported`."""
+        params: dict[str, object] = {}
+        params["name"] = name
+        if params is not None:
+            params["params"] = params
+        return required(expect_object(self._command("extension_command", params), "extension_command"), "result", decode_json, "extension_command")
 
     def get_entries(self, since: str | None = None) -> SessionEntries:
         """Read the append-history; with `since`, only entries strictly after that durable entry id."""
@@ -4486,6 +4512,10 @@ class WireClient:
         """Subscribe to `extension_error` frames."""
         return self._listen("extension_error", listener)
 
+    def on_extension_event(self, listener: Callable[[ExtensionEvent], None]) -> Callable[[], None]:
+        """Subscribe to `extension_event`: Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`."""
+        return self._listen("extension_event", listener)
+
     def on_ui_request(self, listener: Callable[[ExtensionUiRequest], None]) -> Callable[[], None]:
         """Subscribe to `extension_ui_request`: Extension UI request, discriminated by `method`."""
         return self._listen("extension_ui_request", listener)
@@ -4780,6 +4810,7 @@ __all__ = [
     "EditorUiRequest",
     "Effort",
     "ExtensionError",
+    "ExtensionEvent",
     "ExtensionUiMethod",
     "ExtensionUiRequest",
     "FallbackContent",
@@ -5002,6 +5033,7 @@ __all__ = [
     "parse_dictation_transcript_event",
     "parse_editor_ui_request",
     "parse_extension_error",
+    "parse_extension_event",
     "parse_extension_ui_request",
     "parse_fallback_content",
     "parse_fast_mode_result",

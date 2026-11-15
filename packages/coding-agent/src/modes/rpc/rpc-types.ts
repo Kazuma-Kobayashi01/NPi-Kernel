@@ -88,6 +88,8 @@ export type RpcCommand =
 	| { id?: string; type: "set_ask_dialog"; enabled: boolean }
 	| { id?: string; type: "set_approval_mode"; mode: ApprovalMode }
 	| { id?: string; type: "get_available_commands" }
+	/** Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`. */
+	| { id?: string; type: "extension_command"; name: string; params?: unknown }
 	| { id?: string; type: "get_entries"; since?: string }
 	| { id?: string; type: "get_tree" }
 	| { id?: string; type: "set_todos"; phases: TodoPhase[] }
@@ -518,6 +520,7 @@ export type RpcResponse =
 			success: true;
 			data: { commands: RpcAvailableSlashCommand[] };
 	  }
+	| { id?: string; type: "response"; command: "extension_command"; success: true; data: { result: unknown } }
 	| {
 			id?: string;
 			type: "response";

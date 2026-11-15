@@ -54,6 +54,10 @@ export const frameDefs = {
 		"The session went quiet: the last run yielded and no background work can wake it.",
 	),
 	ExtensionError: { type: "'extension_error'", extensionPath: "string", event: "string", error: "string" },
+	ExtensionEvent: doc(
+		{ type: "'extension_event'", name: "string", data: "unknown" },
+		"Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`.",
+	),
 	AvailableCommandsUpdateEvent: doc(
 		{ type: "'available_commands_update'", commands: "AvailableSlashCommand[]" },
 		"Slash-command catalog, pushed at startup and whenever command metadata changes.",

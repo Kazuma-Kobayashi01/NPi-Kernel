@@ -263,6 +263,17 @@
 				"clientOmit": []
 			},
 			{
+				"name": "extension_command",
+				"doc": "Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`, unknown names answer `unsupported`.",
+				"params": "ExtensionCommandParams",
+				"result": "ExtensionCommandResult",
+				"nullable": false,
+				"unwrap": "result",
+				"timeoutMs": null,
+				"completion": null,
+				"clientOmit": []
+			},
+			{
 				"name": "get_entries",
 				"doc": "Read the append-history; with `since`, only entries strictly after that durable entry id.",
 				"params": "GetEntriesParams",
@@ -5500,6 +5511,24 @@
 				"error"
 			]
 		},
+		"ExtensionEvent": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"const": "extension_event"
+				},
+				"name": {
+					"type": "string"
+				},
+				"data": {}
+			},
+			"required": [
+				"type",
+				"name",
+				"data"
+			],
+			"description": "Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`."
+		},
 		"AvailableCommandsUpdateEvent": {
 			"type": "object",
 			"properties": {
@@ -6987,6 +7016,9 @@
 					"$ref": "#/$defs/ExtensionError"
 				},
 				{
+					"$ref": "#/$defs/ExtensionEvent"
+				},
+				{
 					"$ref": "#/$defs/ExtensionUiRequest"
 				},
 				{
@@ -7356,6 +7388,27 @@
 			},
 			"required": [
 				"commands"
+			]
+		},
+		"ExtensionCommandParams": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"params": {}
+			},
+			"required": [
+				"name"
+			]
+		},
+		"ExtensionCommandResult": {
+			"type": "object",
+			"properties": {
+				"result": {}
+			},
+			"required": [
+				"result"
 			]
 		},
 		"GetEntriesParams": {

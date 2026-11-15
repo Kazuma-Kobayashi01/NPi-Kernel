@@ -385,6 +385,13 @@ export interface ExtensionUIContext {
 	/** Set status text in the footer/status bar. Pass undefined to clear. */
 	setStatus(key: string, text: string | undefined): void;
 
+	/**
+	 * Push `data` to the RPC host as an `extension_event` frame named `name` (`<plugin>/<event>`), for a
+	 * host UI that talks to this extension through {@link ExtensionAPI.registerRpcCommand}. Present only
+	 * where an RPC host is attached; call it as `ctx.ui.emitEvent?.(…)`.
+	 */
+	emitEvent?(name: string, data?: unknown): void;
+
 	/** Set the working/loading message shown during streaming. Call with no argument to restore default. */
 	setWorkingMessage(message?: string): void;
 
@@ -1782,6 +1789,15 @@ export interface RegisteredCommand {
 	handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 }
 
+/** An RPC command an extension serves to RPC hosts (`extension_command` frames). */
+export interface RegisteredRpcCommand {
+	/** `<plugin>/<command>`, lowercase. */
+	name: string;
+	description?: string;
+	/** Receives the frame's `params` as sent (validate them); the return value becomes the response's `result`. */
+	handler: (params: unknown, ctx: ExtensionCommandContext) => unknown;
+}
+
 // ============================================================================
 // Extension API
 // ============================================================================
@@ -2031,6 +2047,15 @@ export interface ExtensionAPI {
 	 * characters, or not URL scheme syntax) or a reserved one (`http`, `https`, `file`, `mailto`, …).
 	 */
 	registerLinkScheme(scheme: string): void;
+
+	/**
+	 * Serve an RPC command to RPC hosts (Desktop, phones): an `extension_command` frame with this `name`
+	 * runs `handler`, whose (awaited) return value is answered as `{ result }`; a throw answers an error.
+	 * `name` is `<plugin>/<command>` (lowercase letters, digits, `-`, `.`, `_`), so extensions cannot
+	 * collide; when two register the same name the later-loaded one serves it. Push data the other way
+	 * with `ctx.ui.emitEvent`.
+	 */
+	registerRpcCommand(name: string, options: { description?: string; handler: RegisteredRpcCommand["handler"] }): void;
 
 	/**
 	 * Register a composer shape for the interactive editor.
@@ -2420,6 +2445,8 @@ export interface Extension {
 	messageRenderers: Map<string, MessageRenderer>;
 	composerShapes: Map<string, ComposerShapeDefinition>;
 	commands: Map<string, RegisteredCommand>;
+	/** Optional so hand-built extension records (tests, embedders) need not declare it. */
+	rpcCommands?: Map<string, RegisteredRpcCommand>;
 	flags: Map<string, ExtensionFlag>;
 	shortcuts: Map<KeyId, ExtensionShortcut>;
 	/** Set once the extension calls `registerProvider`; providers feed startup model resolution. */

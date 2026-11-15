@@ -4451,6 +4451,14 @@ pub struct ExtensionError {
 	pub error: String,
 }
 
+/// Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionEvent {
+	pub name: String,
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub data: Value,
+}
+
 /// Slash-command catalog, pushed at startup and whenever command metadata changes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AvailableCommandsUpdateEvent {
@@ -5344,6 +5352,8 @@ pub enum RpcNotification {
 	/// The session went quiet: the last run yielded and no background work can wake it.
 	SessionSettled(SessionSettledEvent),
 	ExtensionError(ExtensionError),
+	/// Data an extension pushed with `ctx.ui.emitEvent`; `name` is `<plugin>/<event>`.
+	ExtensionEvent(ExtensionEvent),
 	/// Extension UI request, discriminated by `method`.
 	ExtensionUiRequest(ExtensionUiRequest),
 	/// Slash-command catalog, pushed at startup and whenever command metadata changes.
@@ -5399,6 +5409,7 @@ impl RpcNotification {
 			Some("prompt_result") => |value| serde_json::from_value(value).map(Self::PromptResult),
 			Some("session_settled") => |value| serde_json::from_value(value).map(Self::SessionSettled),
 			Some("extension_error") => |value| serde_json::from_value(value).map(Self::ExtensionError),
+			Some("extension_event") => |value| serde_json::from_value(value).map(Self::ExtensionEvent),
 			Some("extension_ui_request") => |value| serde_json::from_value(value).map(Self::ExtensionUiRequest),
 			Some("available_commands_update") => |value| serde_json::from_value(value).map(Self::AvailableCommandsUpdate),
 			Some("subagent_lifecycle") => |value| serde_json::from_value(value).map(Self::SubagentLifecycle),
@@ -5435,6 +5446,7 @@ impl Serialize for RpcNotification {
 			Self::PromptResult(member) => serialize_tagged(member, &[("type", "prompt_result")], serializer),
 			Self::SessionSettled(member) => serialize_tagged(member, &[("type", "session_settled")], serializer),
 			Self::ExtensionError(member) => serialize_tagged(member, &[("type", "extension_error")], serializer),
+			Self::ExtensionEvent(member) => serialize_tagged(member, &[("type", "extension_event")], serializer),
 			Self::ExtensionUiRequest(member) => member.serialize(serializer),
 			Self::AvailableCommandsUpdate(member) => serialize_tagged(member, &[("type", "available_commands_update")], serializer),
 			Self::SubagentLifecycle(member) => serialize_tagged(member, &[("type", "subagent_lifecycle")], serializer),
@@ -5486,7 +5498,7 @@ impl RpcServerFrame {
 		let decode: fn(Value) -> Result<Self, serde_json::Error> = match value.get("type").and_then(Value::as_str) {
 			Some("response") => |value| serde_json::from_value(value).map(Self::Response),
 			Some("host_tool_call" | "host_tool_cancel" | "host_uri_request" | "host_uri_cancel") => |value| serde_json::from_value(value).map(Self::RpcHostRequest),
-			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "office_state" | "office_usage" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
+			Some("ready" | "computer_use_state" | "computer_activity" | "prompt_result" | "session_settled" | "extension_error" | "extension_event" | "extension_ui_request" | "available_commands_update" | "subagent_lifecycle" | "subagent_progress" | "subagent_event" | "office_state" | "office_usage" | "live_phase" | "live_levels" | "live_transcript" | "live_end" | "dictation_state" | "dictation_transcript" | "dictation_end" | "btw_delta" | "btw_record" | "command_output" | "session_info_update" | "config_update" | "rpc_frame_error" | "agent_start" | "agent_end" | "turn_start" | "turn_end" | "message_start" | "message_update" | "message_end" | "tool_execution_start" | "tool_execution_update" | "tool_stream_update" | "tool_execution_end" | "auto_compaction_start" | "auto_compaction_end" | "manual_compaction_start" | "manual_compaction_end" | "auto_retry_start" | "auto_retry_end" | "cache_warming_start" | "cache_warming_end" | "retry_fallback_applied" | "retry_fallback_succeeded" | "model_changed" | "config_warnings_changed" | "advisor_cost_changed" | "advisor_yielded" | "ttsr_triggered" | "todo_reminder" | "todo_auto_clear" | "irc_message" | "notice" | "thinking_level_changed" | "goal_updated" | "queue_update") => |value| serde_json::from_value(value).map(Self::RpcNotification),
 			_ => |value| Ok(Self::Unknown(value)),
 		};
 		decode(value)
@@ -5648,6 +5660,19 @@ pub struct SetApprovalModeResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GetAvailableCommandsResult {
 	pub commands: Vec<AvailableSlashCommand>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionCommandParams {
+	pub name: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub params: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionCommandResult {
+	#[serde(deserialize_with = "Deserialize::deserialize")]
+	pub result: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -7281,6 +7306,24 @@ impl Command for GetAvailableCommandsCommand {
 
 	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
 		serde_json::from_value::<GetAvailableCommandsResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.commands)
+	}
+}
+
+/// Run an extension's RPC command (`registerRpcCommand`); `name` is `<plugin>/<command>`, unknown names answer `unsupported`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionCommandCommand {
+	pub name: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub params: Option<Value>,
+}
+
+impl Command for ExtensionCommandCommand {
+	const NAME: &'static str = "extension_command";
+	const TIMEOUT_MS: Option<u64> = None;
+	type Output = Value;
+
+	fn decode(data: Option<Value>) -> Result<Self::Output, serde_json::Error> {
+		serde_json::from_value::<ExtensionCommandResult>(data.unwrap_or_else(|| Value::Object(Map::new()))).map(|result| result.result)
 	}
 }
 
