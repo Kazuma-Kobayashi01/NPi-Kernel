@@ -51,7 +51,7 @@ const SHELL_METACHARS = /[;&|`$(){}<>\\\n\r\t]/;
  * {@link validateGitSpec} instead because they contain characters npm rejects
  * (`:`, `/`, `#`, `+`, `@` in non-version positions).
  */
-function validatePackageName(name: string): void {
+export function validatePackageName(name: string): void {
 	// Remove version specifier for validation
 	const baseName = extractPackageName(name);
 	if (!VALID_PACKAGE_NAME.test(baseName)) {

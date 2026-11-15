@@ -18,6 +18,15 @@ import {
 	MarketplaceManager,
 	parsePluginId,
 } from "../extensibility/plugins/marketplace/index.js";
+import {
+	inspectNpix,
+	installedDetails,
+	installNpix,
+	NPIX_EXTENSION,
+	type NpixInfo,
+	packNpix,
+	removeNpixInstall,
+} from "../extensibility/plugins/npix";
 import type { InstalledPlugin } from "../extensibility/plugins/types";
 import { theme } from "@oh-my-pi/pi-tui/theme";
 
@@ -37,7 +46,9 @@ export type PluginAction =
 	| "disable"
 	| "marketplace"
 	| "discover"
-	| "upgrade";
+	| "upgrade"
+	| "pack"
+	| "inspect";
 
 export interface PluginCommandArgs {
 	action: PluginAction;
@@ -52,6 +63,8 @@ export interface PluginCommandArgs {
 		disable?: string;
 		set?: string;
 		scope?: "user" | "project";
+		/** `pack`: output `.npix` path. */
+		out?: string;
 	};
 }
 
@@ -72,6 +85,8 @@ const VALID_ACTIONS: PluginAction[] = [
 	"marketplace",
 	"discover",
 	"upgrade",
+	"pack",
+	"inspect",
 ];
 
 /**
@@ -199,6 +214,61 @@ export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 		case "upgrade":
 			await handleUpgrade(manager, cmd.args, cmd.flags);
 			break;
+		case "pack":
+			await handlePack(cmd.args, cmd.flags);
+			break;
+		case "inspect":
+			await handleInspect(cmd.args, cmd.flags);
+			break;
+	}
+}
+
+// =============================================================================
+// .npix packages
+// =============================================================================
+
+function printNpixInfo(info: NpixInfo): void {
+	console.log(
+		`${chalk.bold(info.name)} ${info.version}${info.description ? chalk.dim(` — ${info.description}`) : ""}`,
+	);
+	for (const [kind, entries] of Object.entries(info.capabilities)) {
+		if (entries.length > 0) console.log(chalk.dim(`  ${kind}: ${entries.join(", ")}`));
+	}
+	const { developer } = info;
+	const contact = [developer.organization, developer.email, developer.url].filter(Boolean).join(" · ");
+	console.log(chalk.dim(`  by ${developer.name}${contact ? ` (${contact})` : ""}`));
+	if (info.bundles.skills) console.log(chalk.dim("  bundles skills"));
+	if (info.bundles.mcp) console.log(chalk.dim("  bundles MCP servers (.mcp.json)"));
+	console.log(chalk.dim(`  ${info.files} files, ${(info.bytes / 1024).toFixed(0)} KiB unpacked`));
+}
+
+async function handlePack(args: string[], flags: { json?: boolean; out?: string }): Promise<void> {
+	try {
+		const { file, info } = await packNpix(args[0] ?? ".", flags.out);
+		if (flags.json) {
+			console.log(JSON.stringify({ file, ...info }, null, 2));
+		} else {
+			console.log(chalk.green(`${theme.status.success} Packed ${file}`));
+			printNpixInfo(info);
+		}
+	} catch (err) {
+		console.error(chalk.red(`${theme.status.error} Failed to pack: ${err instanceof Error ? err.message : err}`));
+		process.exit(1);
+	}
+}
+
+async function handleInspect(args: string[], flags: { json?: boolean }): Promise<void> {
+	if (!args[0]) {
+		console.error(chalk.red(`Usage: ${APP_NAME} plugin inspect <file${NPIX_EXTENSION}>`));
+		process.exit(1);
+	}
+	try {
+		const info = await inspectNpix(args[0]);
+		if (flags.json) console.log(JSON.stringify(info, null, 2));
+		else printNpixInfo(info);
+	} catch (err) {
+		console.error(chalk.red(`${theme.status.error} ${err instanceof Error ? err.message : err}`));
+		process.exit(1);
 	}
 }
 
@@ -498,6 +568,25 @@ async function handleInstall(
 	const knownMarketplaces = new Set((await mktMgr.listMarketplaces()).map(m => m.name));
 
 	for (const spec of packages) {
+		if (spec.endsWith(NPIX_EXTENSION)) {
+			// A self-contained package: unpack and link it, nothing to download.
+			try {
+				const result = await installNpix(manager, spec);
+				if (flags.json) console.log(JSON.stringify(result, null, 2));
+				else
+					console.log(
+						chalk.green(`${theme.status.success} Installed ${result.name}@${result.version} from ${spec}`),
+					);
+			} catch (err) {
+				console.error(
+					chalk.red(
+						`${theme.status.error} Failed to install ${spec}: ${err instanceof Error ? err.message : err}`,
+					),
+				);
+				process.exit(1);
+			}
+			continue;
+		}
 		const target = classifyInstallTarget(spec, knownMarketplaces);
 
 		if (target.type === "marketplace") {
@@ -699,6 +788,7 @@ async function handleUninstall(
 
 		try {
 			await manager.uninstall(name);
+			await removeNpixInstall(name);
 			if (flags.json) {
 				console.log(JSON.stringify({ uninstalled: name }));
 			} else {
@@ -717,7 +807,11 @@ async function handleList(manager: PluginManager, flags: { json?: boolean }): Pr
 	const mktPlugins = await mktMgr.listInstalledPlugins();
 
 	if (flags.json) {
-		console.log(JSON.stringify({ npm: npmPlugins, marketplace: mktPlugins }, null, 2));
+		// Each npm entry also says whether it came from a `.npix` package and who made it (`developer.json`).
+		const npm = await Promise.all(
+			npmPlugins.map(async plugin => ({ ...plugin, ...(await installedDetails(plugin)) })),
+		);
+		console.log(JSON.stringify({ npm, marketplace: mktPlugins }, null, 2));
 		return;
 	}
 
