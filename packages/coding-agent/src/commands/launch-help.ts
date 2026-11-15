@@ -130,6 +130,9 @@ export const launchHelp = {
 			aliases: ["yolo"],
 			description: "Auto-approve all tool calls (skip approval prompts)",
 		}),
+		"side-agent": Flags.string({
+			description: "With --mode rpc/rpc-ui: serve an external ACP agent (registry id, e.g. antigravity-acp)",
+		}),
 		"approval-mode": Flags.string({
 			options: ["always-ask", "always-ask-cached", "write", "yolo"],
 			description: "Override tools.approvalMode for this session (always-ask|always-ask-cached|write|yolo)",

@@ -103,6 +103,8 @@ export interface Args {
 	noUi?: boolean;
 	autoApprove?: boolean;
 	approvalMode?: ApprovalMode;
+	/** `--side-agent <id>` (rpc modes): serve an external ACP agent from the registry instead of NPi's own. */
+	sideAgent?: string;
 	/** `--sandbox <mode>`: overrides `sandbox.mode` for this launch. */
 	sandbox?: SandboxMode;
 	messages: string[];

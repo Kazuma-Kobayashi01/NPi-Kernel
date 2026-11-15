@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `--mode rpc-ui --side-agent <id>` serves an external ACP agent (an id from the ACP registry, e.g. `antigravity-acp`, `claude-acp`) to RPC hosts: its turns stream like omp's own, its permission requests arrive as approval dialogs, and it signs in with its own account. An installed `agy` is preferred over the registry build for Antigravity; registry binaries install only when their SHA-256 is pinned
+
 ### Fixed
 
 - A seance `task` whose `sourceSession` id belongs to another project now fails with a hint to pass that session's `.jsonl` path, which works from any project, instead of only "was not found" ([#19095](https://github.com/can1357/oh-my-pi/pull/19095) by [@zhivko-kocev](https://github.com/zhivko-kocev))

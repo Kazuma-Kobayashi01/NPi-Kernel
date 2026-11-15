@@ -902,6 +902,11 @@ export function getPuppeteerDir(): string {
 	return dirs.rootSubdir("puppeteer", "cache");
 }
 
+/** Get the side agent install and registry cache directory (~/.omp/side-agents). */
+export function getSideAgentsDir(): string {
+	return dirs.rootSubdir("side-agents", "data");
+}
+
 /** Get the browser relay extension install directory (~/.omp/browser-relay). */
 export function getBrowserRelayDir(): string {
 	return dirs.rootSubdir("browser-relay", "data");

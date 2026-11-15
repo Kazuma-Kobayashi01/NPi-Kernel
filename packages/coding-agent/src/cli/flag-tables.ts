@@ -263,6 +263,9 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 			);
 		}
 	},
+	"--side-agent": (result, value) => {
+		result.sideAgent = value;
+	},
 	"--sandbox": (result, value) => {
 		// Mirrors `SandboxMode` in ../sandbox/settings (type-only import here).
 		if (value === "off" || value === "workspace-write" || value === "read-only") {

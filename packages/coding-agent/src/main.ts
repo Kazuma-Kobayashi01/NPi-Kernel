@@ -1907,6 +1907,28 @@ export async function runRootCommand(
 		// RPC owns stdin. Claim its singleton stream before plugin/extension discovery can load an in-process consumer.
 		const rpcInput = mode === "rpc" || mode === "rpc-ui" ? claimRpcInput() : undefined;
 
+		// A side agent tab serves an external ACP agent: none of NPi's own agent startup (plugins,
+		// models, sessions) applies, so branch off here.
+		if (rpcInput && parsedArgs.sideAgent) {
+			const { runSideAgentRpcMode } = await import("./side-agent/rpc-host");
+			const { resolveSideAgent } = await import("./side-agent/registry");
+			stopStartupWatchdog();
+			const agent = await resolveSideAgent(parsedArgs.sideAgent).catch((error: unknown) => {
+				process.stderr.write(`${chalk.red("Error:")} ${error instanceof Error ? error.message : String(error)}\n`);
+				process.exit(1);
+			});
+			await runSideAgentRpcMode({
+				agentId: parsedArgs.sideAgent,
+				agentName: agent.name,
+				launch: agent.launch,
+				cwd: getProjectDir(),
+				approvalMode: parsedArgs.approvalMode ?? (parsedArgs.autoApprove ? "yolo" : "always-ask"),
+				input: rpcInput,
+				output: process.stdout,
+			});
+			process.exit(0);
+		}
+
 		// Kick off plugin-root preload in parallel with the remaining startup work.
 		// Awaited later (before extension/skill discovery in createAgentSession needs it).
 		const home = os.homedir();
