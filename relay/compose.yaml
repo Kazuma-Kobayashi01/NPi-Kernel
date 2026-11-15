@@ -9,11 +9,11 @@ services:
       - "127.0.0.1:8787:8787"
     environment:
       RELAY_MAX_HOSTS: "16"
-      # Set once secrets/firebase-service-account.json exists (and uncomment the mount below).
-      # RELAY_FCM_CREDENTIALS: /run/secrets/fcm.json
+      # FCM push; the key exists only on the server, under /opt/npi-relay/secrets/ (0400, 65532:65532).
+      RELAY_FCM_CREDENTIALS: /run/secrets/fcm.json
     volumes:
       - npi-relay-data:/data
-      # - ./secrets/firebase-service-account.json:/run/secrets/fcm.json:ro
+      - ./secrets/firebase-service-account.json:/run/secrets/fcm.json:ro
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

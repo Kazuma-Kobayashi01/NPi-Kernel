@@ -211,7 +211,7 @@ flowchart LR
 3. **CLI**：`npi remote pair|start --relay <base>`（Mode A）或 `--listen host:port`（Mode B，二选一）；`devices` / `revoke` / `status`。吊销即时生效（设备表按 stat 失效缓存，Relay 隧道监听设备表变化后重新同步）。
 4. **本地调试（Flutter）**：`npi remote pair --listen 127.0.0.1:8787` → `adb reverse tcp:8787 tcp:8787` → 手机/模拟器扫码；配对后 `npi remote start --listen 127.0.0.1:8787 --root <dir>`。macOS 桌面版 Flutter 可直接连 `ws://127.0.0.1:8787`。Flutter Web 无法设置 `Authorization` 头，不支持。
 
-### 6.2 Relay Server（Go + Docker，`omp/relay/`，已部署于 `wss://35.213.93.187/relay`，推送未启用）
+### 6.2 Relay Server（Go + Docker，`omp/relay/`，已部署于 `wss://35.213.93.187/relay`，2026-11-15 起推送已启用）
 
 实现：Go 1.27 单二进制（`coder/websocket`、纯 Go SQLite `modernc.org/sqlite`、`golang.org/x/oauth2` 签发 FCM 访问令牌），distroless 非 root 镜像，SQLite（WAL）存于命名卷 `/data`；只保存宿主/设备 token 的 SHA-256 与 FCM token，不解密任何载荷。构建、测试均在 Docker 中完成，细节见 `omp/relay/README.md`。
 
@@ -228,6 +228,8 @@ flowchart LR
 **服务器现状（2026-11-13 只读调研，`35.213.93.187`）**：GCP `asia-northeast1-a` `e2-micro`（可用内存约 381 MiB、磁盘余 4.2 GiB），Debian 13；有 Docker 26、`sqlite3`，无 Go/Bun/Node/Caddy；`80/443` 由 `proxy-nginx` 容器（host 网络）占用，使用 acme.sh 自动续签的 6 天期 IP 证书，无域名；无既有 NPi 部署；FCM / OAuth2 出站可达。部署：本机 `docker buildx --platform linux/amd64` 构建后 `docker save | ssh … docker load`，`compose.yaml` 监听 `127.0.0.1:8787`（`mem_limit` 128m、只读根文件系统），`proxy-nginx` 加入 `nginx-relay.conf` 的 `/relay/` 反代（需排在现有 `location /` 回落之前），宿主与手机使用 `wss://35.213.93.187/relay`；IP 证书 6 天轮换，手机端不得做证书 pinning。需用户提供 Firebase Service Account JSON 并授权改动 nginx 配置。
 
 **部署记录（2026-11-13）**：用 `omp/relay/deploy.sh` 发布：本机构建 linux/amd64 镜像，标签为 git sha（工作区有改动时加 `-dirty.<时间>`），经 ssh `docker load` 后写入 `/opt/npi-relay/.env` 的 `RELAY_IMAGE_TAG` 并 `docker compose up -d`；60 秒内未变 healthy 自动回滚；服务器只保留当前与上一版镜像，`./deploy.sh rollback` 切回上一版。当前运行 `npi-relay:858b7586cdba-dirty.20261113145912`，数据卷 `npi-relay_npi-relay-data`，`RELAY_FCM_CREDENTIALS` 未设（推送关闭）。备份：`/etc/cron.d/npi-relay-backup` 每天 03:17 运行 `/opt/npi-relay/backup.sh`，SQLite 在线备份到 `/var/backups/npi-relay/`（仅 root，保留 14 份，含完整性检查）。nginx：新增 `/etc/nginx/snippets/npi-relay.conf`，并在 `/etc/nginx/conf.d/xui-subscription.conf` 的 443 server 中 `include /etc/nginx/snippets/neocloud-blog.conf;` 之前加一行 `include /etc/nginx/snippets/npi-relay.conf;`，原文件备份为 `/etc/nginx/xui-subscription.conf.bak-20261113-092442`。整体撤除：删除该 include 行与 snippet，`docker exec proxy-nginx nginx -t && docker exec proxy-nginx nginx -s reload`，`cd /opt/npi-relay && sudo docker compose down`，再删 `/etc/cron.d/npi-relay-backup`。启用推送：把 Service Account JSON 放到 `/opt/npi-relay/secrets/firebase-service-account.json`（属主 `65532:65532`，即容器内 nonroot 用户，权限 0400），取消 `compose.yaml` 中两行注释后重新 `./deploy.sh`。
+
+**推送启用记录（2026-11-15）**：专用服务账号 `npi-relay-fcm@npi-remote.iam.gserviceaccount.com`（Firebase 项目 `npi-remote`，与手机端 `google-services.json` 同项目），密钥只在服务器 `/opt/npi-relay/secrets/firebase-service-account.json`（`65532:65532`、0400），本地副本已删除；`compose.yaml` 已启用 `RELAY_FCM_CREDENTIALS` 与挂载，`./deploy.sh` 发布 `npi-relay:cc29fd8b08b6-dirty.20261115044228`（上一版 `858b7586cdba-dirty.20261113145912` 保留可回滚），日志 `push enabled`。手机端 FCM 已接入（`npi-remote/lib/push/`），2026-11-15 在 Galaxy S23 上用 Relay 配对验证：后台/杀进程收到通知、审批通知点击直达、完成通知与清除。
 
 ### 6.3 手机 App（独立仓库，**Flutter**，Android 优先）
 
