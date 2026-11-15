@@ -17,8 +17,8 @@ import * as path from "node:path";
 import { expandWindowsLongPath } from "@oh-my-pi/pi-natives/path";
 import { engines, version } from "../package.json" with { type: "json" };
 
-const NPI_VERSION = "3.1.0.105";
-const NPI_KERNEL_VERSION = "kernel.2.1.3-universal";
+const NPI_VERSION = "3.1.0.106";
+const NPI_KERNEL_VERSION = "kernel.2.1.4-universal";
 import { isEnoent, isEnotdir } from "./fs-error";
 import { isBunTestRuntime } from "./test-runtime";
 
