@@ -1798,6 +1798,49 @@ export interface RegisteredRpcCommand {
 	handler: (params: unknown, ctx: ExtensionCommandContext) => unknown;
 }
 
+/** What the `bash` tool hands an exec backend for one command. */
+export interface ExecBackendRunOptions {
+	/** Working directory as the host sees it; map it if the backend sees paths differently. */
+	cwd?: string;
+	/**
+	 * Variables the call adds on top of the backend's own environment (non-interactive switches, the
+	 * caller's explicit `env`). Never the host's whole environment, so credentials do not cross over.
+	 */
+	env: Record<string, string>;
+	/** Deadline in milliseconds, or `undefined` for none. The host also enforces it; honoring it saves a kill. */
+	timeoutMs?: number;
+	/** Aborts when the call is cancelled or times out: stop the command and return. */
+	signal: AbortSignal;
+	/**
+	 * Identifies the agent session (and a background job) the command belongs to. Commands with the same key
+	 * may share a long-lived shell, so `cd`/`export` carry over; a key ending in `:async:<id>` is one job.
+	 */
+	sessionKey?: string;
+	/** Deliver output (stdout and stderr merged, in order) as it arrives. */
+	onChunk: (chunk: string) => void;
+}
+
+/** How a command ended on an exec backend. */
+export interface ExecBackendResult {
+	/** Exit status; leave unset when the command was cancelled or timed out. */
+	exitCode?: number;
+	cancelled?: boolean;
+	timedOut?: boolean;
+	/** Where a persistent shell ended up, as a host path, when the command changed directory. */
+	workingDir?: string;
+}
+
+/** A place to run `bash` commands other than the host shell (a VM, a container, a remote machine). */
+export interface RegisteredExecBackend {
+	/** `<plugin>/<backend>`, lowercase. Selected by the `exec.backend` setting. */
+	name: string;
+	description?: string;
+	/** Run `command` and resolve when it ends; reject only when the backend itself failed. */
+	run(command: string, options: ExecBackendRunOptions): Promise<ExecBackendResult>;
+	/** Drop what the backend keeps for the agent session `sessionKey` (and its `:async:` jobs): the session ended. */
+	release?(sessionKey: string): void | Promise<void>;
+}
+
 // ============================================================================
 // Extension API
 // ============================================================================
@@ -2056,6 +2099,16 @@ export interface ExtensionAPI {
 	 * with `ctx.ui.emitEvent`.
 	 */
 	registerRpcCommand(name: string, options: { description?: string; handler: RegisteredRpcCommand["handler"] }): void;
+
+	/**
+	 * Offer a place to run the `bash` tool's commands. Setting `exec.backend` to `name` routes them there
+	 * instead of the host shell; output streaming, truncation and artifacts, approvals, background jobs and
+	 * the tool card stay the host's. A backend named in `exec.backend` that is not loaded makes `bash` fail,
+	 * never fall back to the host. Not routed: `pty`, services (`name`), `out://`/`artifact://` URLs inside the
+	 * shell, the ACP client terminal and the `eval` tools; a backend that must contain agent code deactivates
+	 * those (`setActiveTools`). `name` is `<plugin>/<backend>` (lowercase letters, digits, `-`, `.`, `_`).
+	 */
+	registerExecBackend(name: string, backend: Omit<RegisteredExecBackend, "name">): void;
 
 	/**
 	 * Register a composer shape for the interactive editor.
@@ -2447,6 +2500,8 @@ export interface Extension {
 	commands: Map<string, RegisteredCommand>;
 	/** Optional so hand-built extension records (tests, embedders) need not declare it. */
 	rpcCommands?: Map<string, RegisteredRpcCommand>;
+	/** Optional for the same reason as {@link rpcCommands}. */
+	execBackends?: Map<string, RegisteredExecBackend>;
 	flags: Map<string, ExtensionFlag>;
 	shortcuts: Map<KeyId, ExtensionShortcut>;
 	/** Set once the extension calls `registerProvider`; providers feed startup model resolution. */

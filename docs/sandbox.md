@@ -58,4 +58,6 @@ machines.
 - Programs that apply their own Seatbelt profile (Chromium's renderer sandbox)
   may refuse to start inside another one.
 - The sandbox does not isolate processes or the network. For that, a virtual
-  machine is the next step.
+  machine is the next step: an extension can provide one as an
+  [exec backend](./extensions.md#exec-backends-registerexecbackend) that the
+  `bash` tool's commands run on (`exec.backend`).

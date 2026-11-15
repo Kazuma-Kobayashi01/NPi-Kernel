@@ -1337,6 +1337,33 @@ A display-only transform of each assistant text block in the main transcript, us
 - **Redraw.** Call `ctx.ui.rerenderMessage(message.timestamp)` after state the renderer reads changes (for example a click) to draw that reply again in place; it calls the renderers again even for blocks whose text is unchanged. A reply still in the live viewport just repaints; in a plain terminal, a reply with rows already in scrollback rebuilds the scrollback (as toggling thinking visibility does), which is costly, so avoid animating such replies frame by frame.
 - **Links.** Links the renderer draws behave like any model-authored link. To get their clicks, give them a scheme the extension [claims](#extension-link-schemes). Relative link targets the renderer adds are not resolved against the session's working directory the way the model's own are, so Tern's native view opens them relative to its own; use absolute paths or URLs.
 
+## Exec backends (`registerExecBackend`)
+
+An extension can offer somewhere other than the host shell for the `bash` tool's commands to run: a VM, a container, a remote machine. The user picks it with the `exec.backend` setting (Settings → Shell → Command Backend, or `npi config set exec.backend <plugin>/<backend>`); empty runs commands on this machine.
+
+```ts
+pi.registerExecBackend("my-vm/default", {
+	description: "Commands run in the my-vm guest",
+	async run(command, { cwd, env, timeoutMs, signal, sessionKey, onChunk }) {
+		// Run `command` where you like; send stdout+stderr as it arrives; stop when `signal` aborts.
+		onChunk("hello\n");
+		return { exitCode: 0 }; // or { cancelled: true } / { timedOut: true }; `workingDir` after a `cd`
+	},
+	release(sessionKey) {
+		// The agent session ended: drop the shell you kept for `sessionKey` (and its `:async:` jobs).
+	},
+});
+```
+
+`name` is `<plugin>/<backend>` (lowercase letters, digits, `-`, `.`, `_`); when two extensions register the same name the later-loaded one serves it.
+
+- **What stays the host's.** Approvals and `bash` patterns, the output sink (truncation, `artifact://` spill), background jobs and auto-background, the timeout clamp, and the tool card. The backend only decides where the process runs.
+- **What it receives.** `command` as the model wrote it. `cwd` is the host path: mount the project at the same path in the guest, or map it. `env` holds the call's additions only (non-interactive switches such as `TERM=dumb`, `PI_SESSION_ID`), never the host's environment, so credentials do not cross over. `sessionKey` ends in `:async:<id>` for a background job; commands with the same key may share a long-lived shell so `cd` and `export` carry over. Free a job's shell when its `run` returns.
+- **Cancellation.** `signal` aborts on cancel and on timeout. Stop the command and return; a backend that is still running five seconds after the abort is abandoned and the call reports the cancel.
+- **Failures.** A `run` that rejects fails the call with `Exec backend <name> failed: …`. Return `exitCode` for any command that finished, whatever its status.
+- **Never the host by accident.** If `exec.backend` names a backend no loaded extension provides (plugin missing, failed to start), `bash` errors instead of running on this machine. Clearing the setting is the only way back to the host shell.
+- **Not routed.** These keep running on the host, so a backend meant to contain agent code must switch them off (for example with `setActiveTools`): `eval` (Python/JS), user `!` commands, the loop-condition and autoresearch runners, the file tools (they act on the mounted project directory), MCP servers, and browser/computer tools. Inside `bash`, `pty: true` runs without a terminal and says so, `name:` (services) and URL working directories are refused, `out://`/`artifact://` URLs are not resolved inside the command, and the ACP client terminal is not used.
+
 ## Extension link schemes
 
 Opt-in with the same setting as [assistant text renderers](#assistant-text-renderer) (`extensionRenderers.assistantText`, default off). Off, claimed schemes are ignored and links draw exactly as before.

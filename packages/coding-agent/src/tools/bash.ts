@@ -22,6 +22,8 @@ import { isPosixShell } from "@oh-my-pi/pi-utils/procmgr";
 import { raceJobSettlement, resolveAutoBackgroundWaitMs } from "../async";
 import type { Settings } from "../config/settings";
 import { applyDirenvPreflight, type BashResult, executeBash } from "../exec/bash-executor";
+import { selectExecBackend } from "../exec/exec-backend";
+import type { RegisteredExecBackend } from "../extensibility/extensions/types";
 import { InternalUrlRouter } from "../internal-urls";
 import { sessionResolveContext } from "../internal-urls/context";
 import { InternalUrlFilesystem, UrlFsError } from "../internal-urls/url-filesystem";
@@ -74,6 +76,7 @@ import {
 	cfgBashInterceptorEnabled,
 	cfgBashInterceptorPatterns,
 	cfgBashPatterns,
+	cfgExecBackend,
 } from "../exec/settings";
 import { cfgSkillful } from "../session/settings";
 import { cfgWorktreeClone } from "../task/settings";
@@ -674,6 +677,23 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		};
 	}
 
+	/**
+	 * The exec backend `exec.backend` names, or `undefined` for the host shell. Throws when the setting names one
+	 * no extension serves (not loaded, failed to start): asking for a backend is how commands are kept off this
+	 * machine, so the call stops instead of falling back to it.
+	 */
+	#execBackend(): RegisteredExecBackend | undefined {
+		const selection = selectExecBackend(cfgExecBackend.get(this.session.settings), name =>
+			this.session.getExecBackend?.(name),
+		);
+		if (selection.kind === "missing") {
+			throw new ToolError(
+				`exec.backend is set to "${selection.name}" but no loaded extension provides it, so bash will not run commands on this machine. Load its plugin, or clear exec.backend to run locally.`,
+			);
+		}
+		return selection.kind === "backend" ? selection.backend : undefined;
+	}
+
 	/** Service launch mode: live `launch.enabled` while `bash` itself is an active tool. */
 	get #launchEnabled(): boolean {
 		return cfgLaunchEnabled.get(this.session.settings) === true && (this.session.isToolActive?.("bash") ?? true);
@@ -877,6 +897,8 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		sessionEnv: Record<string, string>;
 		/** The model's `i` intent on the call, for the job's widget author. */
 		intent?: string;
+		/** Run on this exec backend instead of the host shell. */
+		backend?: RegisteredExecBackend;
 	}): ManagedBashJobHandle {
 		const manager = this.session.asyncJobManager;
 		if (!manager) {
@@ -936,6 +958,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				const wallTimeStart = performance.now();
 				try {
 					const result = await executeBash(options.command, {
+						backend: options.backend,
 						cwd: options.commandCwd,
 						env: options.sessionEnv,
 						// A call that starts in the foreground runs in the session's
@@ -1075,6 +1098,19 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const ready = normalizeReady(rawReady);
 		const asyncRequested = rawAsync === true;
 		const pendingNotices: string[] = [];
+		// A backend the user asked for and that is not loaded stops the call: it never runs on this machine.
+		const execBackend = this.#execBackend();
+		if (execBackend) {
+			if (name !== undefined) {
+				throw new ToolError(
+					`Services run on this machine and are unavailable while exec.backend routes commands to ${execBackend.name}.`,
+				);
+			}
+			if (pty) {
+				pendingNotices.push(`pty is unavailable on ${execBackend.name}; ran without a terminal`);
+				pty = undefined;
+			}
+		}
 		if (name !== undefined) {
 			if (!this.#launchEnabled) throw new ToolError("Service launch is disabled in this session.");
 			if (rawTimeout !== undefined)
@@ -1127,6 +1163,11 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		const virtualCwd = cwd && router.canHandle(cwd) ? router.normalize(cwd) : undefined;
 		const commandCwd = virtualCwd ?? (cwd ? resolveToCwd(cwd, this.session.cwd) : this.session.cwd);
 		if (virtualCwd !== undefined) {
+			if (execBackend) {
+				throw new ToolError(
+					`Working directory ${virtualCwd} exists only in the embedded shell; ${execBackend.name} needs a host directory.`,
+				);
+			}
 			if (name !== undefined || canUseInteractiveBashPty(pty === true, ctx)) {
 				throw new ToolError(
 					`Working directory ${virtualCwd} exists only in the embedded shell; ${name !== undefined ? "services" : "pty commands"} run external processes and need a host directory.`,
@@ -1244,6 +1285,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				sessionId,
 				sessionEnv,
 				intent: this.session.getToolCallIntent?.(toolCallId),
+				backend: execBackend,
 			});
 			return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
 				requestedTimeoutSec,
@@ -1256,7 +1298,11 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// auto-background would otherwise silently disable the terminal route).
 		const clientBridge = this.session.getClientBridge?.();
 		const bridgeTerminalAvailable = Boolean(
-			clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty && virtualCwd === undefined,
+			!execBackend &&
+			clientBridge?.capabilities.terminal &&
+			clientBridge.createTerminal &&
+			!pty &&
+			virtualCwd === undefined,
 		);
 
 		const autoBgManager = this.session.asyncJobManager;
@@ -1287,6 +1333,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 				sessionId,
 				sessionEnv,
 				intent: this.session.getToolCallIntent?.(toolCallId),
+				backend: execBackend,
 			});
 			if (startBackgrounded) {
 				return this.#buildBackgroundStartResult(job.jobId, "", timeoutSec, {
@@ -1356,7 +1403,13 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 		// Route through the client terminal when the client advertises the terminal capability.
 		// Skip when pty=true (PTY needs the local terminal UI) or the cwd is a URL
 		// (only the embedded shell's filesystem can enter it).
-		if (clientBridge?.capabilities.terminal && clientBridge.createTerminal && !pty && virtualCwd === undefined) {
+		if (
+			!execBackend &&
+			clientBridge?.capabilities.terminal &&
+			clientBridge.createTerminal &&
+			!pty &&
+			virtualCwd === undefined
+		) {
 			// Invariant (ACP terminal bridge): createTerminal has no signal in its
 			// contract; allocation cannot be cancelled retroactively. Guard before
 			// allocation. Shared timeout helper / pure AbortSignal fusion rejected:
@@ -1668,6 +1721,7 @@ export class BashTool implements AgentTool<BashToolSchema, BashToolDetails> {
 			: // executeBash runs its OWN direnv preflight internally — pass the RAW
 				// command here so the unset prefix is not applied twice.
 				await executeBash(command, {
+					backend: execBackend,
 					cwd: commandCwd,
 					env: sessionEnv,
 					sessionKey: sessionId,

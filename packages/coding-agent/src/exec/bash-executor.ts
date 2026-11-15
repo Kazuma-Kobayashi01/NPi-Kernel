@@ -15,17 +15,15 @@ import {
 import { $env } from "@oh-my-pi/pi-utils/env";
 import { isCmdShell, isExecutable, type ShellConfig } from "@oh-my-pi/pi-utils/procmgr";
 import { Settings } from "../config/settings";
+import type { RegisteredExecBackend } from "../extensibility/extensions/types";
 import { type OutputArtifactError, OutputSink, type OutputSummary } from "@oh-my-pi/pi-tui/tools/streaming-output";
-import {
-	resolveOutputMaxColumns,
-	resolveOutputSinkArtifactMaxBytes,
-	resolveOutputSinkHeadBytes,
-} from "../tools/output-meta";
 import { quotePosixArgv } from "../utils/shell-quote";
 import { getOrCreateSnapshot } from "../utils/shell-snapshot";
 import { TerminalGraphicsDecoder } from "../utils/terminal-graphics";
 import { loadDirenvEnv } from "./direnv";
 import { buildNonInteractiveEnv } from "./non-interactive-env";
+import { executeOnBackend, releaseExecBackendSessions } from "./exec-backend";
+import { createOutputCapture } from "./output-capture";
 
 import {
 	cfgBashDirenv,
@@ -36,6 +34,11 @@ import {
 } from "./settings";
 
 export interface BashExecutorOptions {
+	/**
+	 * Run the command on this exec backend instead of the host shell. The embedded shell's own features
+	 * (`filesystem`, `streams`, `gitGuard`, snapshots, direnv, `pty`, `onStart`) do not apply there.
+	 */
+	backend?: RegisteredExecBackend;
 	cwd?: string;
 	/** Milliseconds before aborting the command; 0 disables the executor deadline. */
 	timeout?: number;
@@ -310,6 +313,7 @@ function quarantineShellSession(
  */
 export function releaseShellSessions(agentSessionKey: string | undefined): void {
 	if (!agentSessionKey) return;
+	releaseExecBackendSessions(agentSessionKey);
 	const prefix = `${agentSessionKey}\n`;
 	for (const [key, shell] of shellSessions) {
 		if (!key.startsWith(prefix)) continue;
@@ -553,6 +557,7 @@ async function executeUserShellPty(run: {
 }
 
 export async function executeBash(command: string, options?: BashExecutorOptions): Promise<BashResult> {
+	if (options?.backend) return executeOnBackend(options.backend, command, options);
 	const settings = await Settings.init();
 	const baseShellConfig = settings.getShellConfig();
 	const shellConfig =
@@ -606,48 +611,14 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 			: preflight.command;
 
 	// Create output sink for truncation and artifact handling
-	const graphics = new TerminalGraphicsDecoder();
-	const onChunk = usePty ? undefined : options?.onChunk;
-	const onPreview = usePty ? undefined : options?.onPreview;
-	const sink: OutputSink = new OutputSink({
-		onChunk:
-			onChunk || onPreview
-				? chunk => {
-						onChunk?.(chunk);
-						onPreview?.(sink.preview());
-					}
-				: undefined,
+	const capture = createOutputCapture(settings, {
+		onChunk: usePty ? undefined : options?.onChunk,
+		onPreview: usePty ? undefined : options?.onPreview,
+		chunkThrottleMs: options?.chunkThrottleMs,
 		artifactPath: options?.artifactPath,
 		artifactId: options?.artifactId,
-		headBytes: resolveOutputSinkHeadBytes(settings),
-		artifactMaxBytes: resolveOutputSinkArtifactMaxBytes(settings),
-		maxColumns: resolveOutputMaxColumns(settings),
-		chunkThrottleMs: onChunk || onPreview ? (options?.chunkThrottleMs ?? 50) : 0,
 	});
-
-	// sink.push() is synchronous — buffer management, counters, and onChunk
-	// all run inline. File writes (artifact path) are handled asynchronously
-	// inside the sink. No promise chain needed.
-	let acceptingChunks = true;
-	let graphicsFinished = false;
-	let decodedImages: ImageContent[] = [];
-	const enqueueChunk = (chunk: string) => {
-		if (!acceptingChunks) return;
-		const clean = graphics.push(chunk);
-		if (clean) sink.push(clean);
-	};
-	const dump = async (notice?: string): Promise<OutputSummary & { images?: ImageContent[] }> => {
-		if (!graphicsFinished) {
-			graphicsFinished = true;
-			const tail = graphics.finish();
-			if (tail) sink.push(tail);
-			decodedImages = await graphics.images();
-		}
-		return {
-			...(await sink.dump(notice)),
-			...(decodedImages.length > 0 ? { images: decodedImages } : {}),
-		};
-	};
+	const { sink, graphics, enqueueChunk, dump } = capture;
 
 	if (options?.signal?.aborted) {
 		return {
@@ -782,7 +753,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		]);
 
 		if (winner.kind === "timeout" || winner.kind === "abort") {
-			acceptingChunks = false;
+			capture.stopAccepting();
 			const cleanupPromise = abortShell();
 			if (shellSession) {
 				resetSession = true;

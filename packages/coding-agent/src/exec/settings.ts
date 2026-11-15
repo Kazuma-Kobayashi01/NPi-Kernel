@@ -185,6 +185,19 @@ export const cfgBashInterceptorPatterns = register({
 	default: DEFAULT_BASH_INTERCEPTOR_RULES,
 });
 
+export const cfgExecBackend = register({
+	id: "exec.backend",
+	type: "string",
+	default: "",
+	ui: {
+		tab: "shell",
+		group: "Bash",
+		label: "Command Backend",
+		description:
+			"Run the bash tool's commands on a backend an extension provides (`<plugin>/<backend>`, e.g. a VM) instead of this machine's shell. Empty runs them here. A named backend that is not loaded makes bash fail rather than run here",
+	},
+});
+
 export const cfgBashDirenv = register({
 	id: "bash.direnv",
 	type: "enum",

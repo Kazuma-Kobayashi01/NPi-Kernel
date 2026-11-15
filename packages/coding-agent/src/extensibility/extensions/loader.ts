@@ -52,6 +52,7 @@ import type {
 	PreparedExtension,
 	ProviderConfig,
 	RegisteredCommand,
+	RegisteredExecBackend,
 	RegisteredRpcCommand,
 	SourceInfo,
 	ToolDefinition,
@@ -67,6 +68,8 @@ type LoadedExtensionModule = ExtensionFactory | { default?: ExtensionFactory };
 const LINK_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]+$/;
 /** `registerRpcCommand` names: `<plugin>/<command>`. */
 const RPC_COMMAND_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/;
+/** `registerExecBackend` names: `<plugin>/<backend>`, the same shape. */
+const EXEC_BACKEND_NAME_PATTERN = RPC_COMMAND_NAME_PATTERN;
 
 /** Standard schemes an extension may not claim: web, file and mail links. npi's internal URLs are refused too. */
 const STANDARD_LINK_SCHEMES: Readonly<Record<string, true>> = {
@@ -332,6 +335,18 @@ class ConcreteExtensionAPI implements ExtensionAPI, IExtensionRuntime {
 		(this.extension.rpcCommands ??= new Map()).set(name, { name, ...options });
 	}
 
+	registerExecBackend(name: string, backend: Omit<RegisteredExecBackend, "name">): void {
+		if (!EXEC_BACKEND_NAME_PATTERN.test(name)) {
+			throw new Error(
+				`registerExecBackend: "${name}" is not "<plugin>/<backend>" (lowercase letters, digits, "-", ".", "_")`,
+			);
+		}
+		if (typeof backend.run !== "function") {
+			throw new Error(`registerExecBackend: "${name}" needs a run(command, options) function`);
+		}
+		(this.extension.execBackends ??= new Map()).set(name, { ...backend, name });
+	}
+
 	registerComposerShape(definition: ComposerShapeDefinition): void {
 		const id = definition.style.id;
 		if (id.length === 0 || id !== id.trim()) {
@@ -446,6 +461,7 @@ function createExtension(extensionPath: string, resolvedPath: string): Extension
 		composerShapes: new Map(),
 		commands: new Map(),
 		rpcCommands: new Map(),
+		execBackends: new Map(),
 		flags: new Map(),
 		shortcuts: new Map(),
 	};

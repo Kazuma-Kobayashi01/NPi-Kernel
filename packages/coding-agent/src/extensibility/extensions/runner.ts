@@ -87,6 +87,7 @@ import type {
 	McpNotificationEvent,
 	MessageRenderer,
 	RegisteredCommand,
+	RegisteredExecBackend,
 	RegisteredRpcCommand,
 	RegisteredTool,
 	ResourcesDiscoverEvent,
@@ -1551,6 +1552,15 @@ export class ExtensionRunner {
 		for (let index = this.extensions.length - 1; index >= 0; index -= 1) {
 			const command = this.extensions[index]?.rpcCommands?.get(name);
 			if (command) return command;
+		}
+		return undefined;
+	}
+
+	/** The exec backend `name`; the later-loaded extension wins, as for slash commands. */
+	getExecBackend(name: string): RegisteredExecBackend | undefined {
+		for (let index = this.extensions.length - 1; index >= 0; index -= 1) {
+			const backend = this.extensions[index]?.execBackends?.get(name);
+			if (backend) return backend;
 		}
 		return undefined;
 	}

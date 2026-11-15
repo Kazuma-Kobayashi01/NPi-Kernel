@@ -22,6 +22,7 @@ import type {
 	BeforeSubagentSpawnEvent,
 	BeforeSubagentSpawnEventResult,
 	PreparedExtension,
+	RegisteredExecBackend,
 } from "../extensibility/extensions/types";
 import type { Skill, SkillRediscoveryHost } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
@@ -485,6 +486,8 @@ export interface ToolSession {
 	recordEvalSubagentUsage?: (output: number) => void;
 	/** Bridge to the connected client (e.g. ACP editor host). Tools should route fs/terminal/permission requests through this when available. */
 	getClientBridge?: () => ClientBridge | undefined;
+	/** The exec backend an extension registered as `name` (see `exec.backend`); absent where none can be. */
+	getExecBackend?: (name: string) => RegisteredExecBackend | undefined;
 	/** Get cached todo phases for this session. */
 	getTodoPhases?: () => TodoPhase[];
 	/** Replace cached todo phases for this session. */

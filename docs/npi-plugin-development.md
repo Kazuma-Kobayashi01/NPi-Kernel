@@ -94,6 +94,16 @@ pi.emitRpcEvent("office.progress", data); // 推给 RPC 客户端
 
 **改动位置：** `main.ts` 在认领 RPC stdin 之后（现在 `--side-agent` 分流的位置）检查参数是否命中插件声明的模式；`flag-tables.ts` 需要允许插件声明的参数。只读清单，命中后才加载代码。估计 150–250 行。
 
+### S5. 命令执行后端（已实现）
+
+**用途：** 让 `bash` 工具的命令跑在宿主 shell 之外（虚拟机、容器、远程机器），由插件提供。沙箱类功能（VM、Docker）都挂在这个点上，不进内核。
+
+**用法：** `pi.registerExecBackend("<plugin>/<backend>", { run, release })`，用户把设置项 `exec.backend` 设为该名字。`run(command, { cwd, env, timeoutMs, signal, sessionKey, onChunk })` 返回 `{ exitCode | cancelled | timedOut, workingDir? }`。审批、输出截断与产物、后台任务、卡片渲染仍由原生 `bash` 负责，后端只决定“在哪里跑”。接口全文见 `docs/extensions.md` 的 “Exec backends”。
+
+**安全约定：** `exec.backend` 指向未加载的后端时 `bash` 报错，不回退宿主；传给后端的 `env` 只含本次调用追加的变量，不含宿主环境；`eval`、用户 `!` 命令、文件工具、MCP 不经过后端，需要隔离的插件自己停用或接管它们（`setActiveTools`）。
+
+**实现：** `src/exec/exec-backend.ts`（选择、执行、释放）、`src/exec/output-capture.ts`（与内置 shell 共用的输出截断/产物）、`executeBash` 的 `backend` 选项、`BashTool` 的 `#execBackend()`；测试 `test/exec-backend.test.ts`。
+
 ### S4. TUI 区块（暂缓）
 
 侧边面板区块、状态栏片段等。现有 `registerMessageRenderer`、`registerComposerShape` 已覆盖一部分；等到确有需求再设计。
