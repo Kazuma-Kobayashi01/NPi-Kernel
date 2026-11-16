@@ -80,6 +80,7 @@ import { CollabController } from "../collab/controller";
 import type { CollabHost } from "../collab/host";
 import type { RemoteControl } from "../remote/remote-control";
 import { cfgRemoteAutoStart } from "../remote/settings";
+import type { WebUi } from "../web-ui/web-ui";
 import { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import { appKey, editorKey, fitHints, rawKeyHint } from "@oh-my-pi/pi-tui/chrome/keybinding-hints";
 import { renderSidePanel, type SidePanelRows } from "@oh-my-pi/pi-tui/chrome/side-panel";
@@ -1768,6 +1769,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	collabHost?: CollabHost;
 	collabGuest?: CollabGuestLink;
 	#remoteControl: RemoteControl | undefined;
+	#webUi: WebUi | undefined;
 	#streamPublisher: StreamPublisher | undefined;
 	#recorder: SessionRecorder | undefined;
 	#recorderStarting = false;
@@ -8300,6 +8302,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			await this.collabController.shutdown("host exited");
 			await this.remoteControl?.stop();
 			this.remoteControl = undefined;
+			await this.webUi?.stop();
+			this.webUi = undefined;
 			await this.#liveCommandController.stop();
 			await this.#btwController.dispose();
 			this.#omfgController.dispose();
@@ -8387,8 +8391,23 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	set remoteControl(control: RemoteControl | undefined) {
 		this.#remoteControl = control;
-		this.statusLine.setRemoteControl(control !== undefined);
-		this.composer.setHomeBadge(control ? "/rc" : undefined);
+		this.#refreshRemoteBadges();
+	}
+
+	/** Browsers on the LAN driving this session (`/web`); the footers show a green `/web` while set. */
+	get webUi(): WebUi | undefined {
+		return this.#webUi;
+	}
+
+	set webUi(control: WebUi | undefined) {
+		this.#webUi = control;
+		this.#refreshRemoteBadges();
+	}
+
+	#refreshRemoteBadges(): void {
+		const badges = [this.#remoteControl && "/rc", this.#webUi && "/web"].filter((badge): badge is string => !!badge);
+		this.statusLine.setRemoteBadges(badges);
+		this.composer.setHomeBadge(badges.length > 0 ? badges.join(" ") : undefined);
 	}
 
 	/** `remote.autoStart`: `/rc` at launch, in the background; a missing relay or phone only warns. */

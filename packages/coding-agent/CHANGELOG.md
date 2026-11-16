@@ -4,6 +4,7 @@
 
 ### Added
 
+- `/web` serves this session to browsers on the LAN: open the printed link (it carries an access token that changes on every start) to watch the transcript stream, send, steer, queue or stop prompts, and answer approvals and ask dialogs. Pages are locked to this one session. `--listen host:port` and `--tls` (self-signed via `openssl`) are optional, `/web status` and `/web stop` manage it, and a green `/web` shows in the footers while it is on
 - Extensions can provide somewhere other than this machine for `bash` commands to run (`pi.registerExecBackend`, chosen with the `exec.backend` setting); approvals, output handling and background jobs stay the same, and a named backend that is not loaded stops `bash` instead of running locally
 - `--version --all` adds one `name/version` line each for the omp core and the kernel line after the usual `npi/<version>`; plain `--version` still prints the one line
 - `/version` shows the logo with the NPi version, the omp core version it is built from and the kernel line (`kernel.x.y.z-platform`); outside the terminal UI it answers with the three versions as plain text

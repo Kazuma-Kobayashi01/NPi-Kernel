@@ -10,6 +10,7 @@ import type { CollabController } from "../collab/controller";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import type { RemoteControl } from "../remote/remote-control";
+import type { WebUi } from "../web-ui/web-ui";
 import type { KeybindingsManager } from "@oh-my-pi/pi-tui/app-keybindings";
 import type { TrackSegment } from "@oh-my-pi/pi-tui/chrome/segment-track";
 import type { Composer } from "@oh-my-pi/pi-tui/prompt/composer";
@@ -253,6 +254,8 @@ export interface InteractiveModeContext {
 	collabGuest?: CollabGuestLink;
 	/** Paired phones following and driving this session (`/rc`). */
 	remoteControl?: RemoteControl;
+	/** Browsers on the LAN following and driving this session (`/web`). */
+	webUi?: WebUi;
 	eventController: EventController;
 	eventBus?: EventBus;
 	/** Root-scoped bus carrying this session tree's `task:subagent:*` frames. */

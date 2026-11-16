@@ -966,9 +966,9 @@ export class ExtensionUiController {
 	 * keeps running — the host user may be mid-keystroke in it — and its
 	 * eventual result is returned.
 	 */
-	/** Collab guests and the `/rc` phone, whoever is there to answer alongside the terminal. */
+	/** Collab guests, the `/rc` phone and `/web` pages, whoever is there to answer alongside the terminal. */
 	#guestPeer(): GuestUiPeer | undefined {
-		return combineGuestUiPeers([this.ctx.collabHost, this.ctx.remoteControl]);
+		return combineGuestUiPeers([this.ctx.collabHost, this.ctx.remoteControl, this.ctx.webUi]);
 	}
 
 	async #raceCollabDialog(

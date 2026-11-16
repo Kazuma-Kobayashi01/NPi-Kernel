@@ -18,6 +18,7 @@ import { openPath } from "../utils/open";
 import { copyToClipboard } from "../utils/clipboard";
 import { refreshStatusLine } from "./builtin-modes";
 import { remoteControlStatus } from "../remote/remote-control-status";
+import { webUiStatus } from "../web-ui/web-ui-status";
 import { CollabQrCodeComponent, collabBrowserLink } from "@oh-my-pi/pi-tui/chrome/collab-qrcode";
 import { commandConsumed, errorMessage, parseSubcommand, usage } from "./helpers/parse";
 import { formatDumpArchiveReport } from "../session/session-dump-format";
@@ -486,6 +487,46 @@ export const BUILTIN_COLLABORATION_SLASH_COMMANDS: ReadonlyArray<SlashCommandSpe
 			// leaves the RPC server out (see `main.ts`).
 			const { startRemoteControl } = await import("../remote/remote-control");
 			await startRemoteControl(ctx, args);
+		},
+	},
+	{
+		name: "web",
+		icon: "globe",
+		description: "Web UI: drive this session from a browser on the LAN",
+		inlineHint: "[--listen host:port] [--tls] | status | stop",
+		subcommands: [
+			{ name: "status", description: "Show the web UI links" },
+			{ name: "stop", description: "Stop the web UI" },
+		],
+		subcommandOptional: true,
+		allowArgs: true,
+		getTuiAutocompleteDescription: runtime => (runtime.ctx.webUi ? "Web UI: on" : "Web UI: off"),
+		handleTui: async (command, runtime) => {
+			const ctx = runtime.ctx;
+			clearSubmittedText(runtime);
+			const args = command.args.trim();
+			const current = ctx.webUi;
+			if (args === "stop" || args === "off") {
+				if (!current) {
+					ctx.showStatus("Web UI is off");
+					return;
+				}
+				ctx.webUi = undefined;
+				await current.stop();
+				ctx.showStatus("Web UI stopped");
+				return;
+			}
+			if (args === "status" || (current && !args)) {
+				ctx.showStatus(current ? webUiStatus(current) : "Web UI is off (/web to start)");
+				return;
+			}
+			if (current) {
+				ctx.showError("Web UI is already on (/web stop first)");
+				return;
+			}
+			// Loaded on use, like `/rc`: the web UI carries the RPC server, which imports this registry.
+			const { startWebUi } = await import("../web-ui/web-ui");
+			await startWebUi(ctx, args);
 		},
 	},
 	{

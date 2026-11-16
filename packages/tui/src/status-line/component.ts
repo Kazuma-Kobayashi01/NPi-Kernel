@@ -819,7 +819,7 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 	#collabStatus: CollabStatus | null = null;
 	#streamStatus: { viewers: number } | null = null;
 	#recording = false;
-	#remoteControl = false;
+	#remoteBadges: string[] = [];
 	#focusedAgentId: string | undefined;
 	#activeRepoCache: ActiveRepoCache | undefined;
 
@@ -1288,8 +1288,13 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 
 	/** Toggle the green `/rc` badge at the right end, shown while paired phones can drive the session. */
 	setRemoteControl(on: boolean): void {
-		if (this.#remoteControl === on) return;
-		this.#remoteControl = on;
+		this.setRemoteBadges(on ? ["/rc"] : []);
+	}
+
+	/** Green badges at the right end, such as `/rc` and `/web`, shown while something remote can drive the session. */
+	setRemoteBadges(badges: readonly string[]): void {
+		if (this.#remoteBadges.join(" ") === badges.join(" ")) return;
+		this.#remoteBadges = [...badges];
 		this.#invalidateStatusLineRenderCache();
 	}
 
@@ -3147,9 +3152,11 @@ export class StatusLineComponent<TSession extends StatusLineSession = StatusLine
 			}
 			if (subagentBadge) rightParts.unshift(subagentBadge);
 		}
-		// Badge/job parts unshifted ahead of the tracked segment ids; `/rc` goes after them all, in the corner.
+		// Badge/job parts unshifted ahead of the tracked segment ids; `/rc` and `/web` go after them all, in the corner.
 		const rightLeadParts = rightParts.length - rightSegIds.length;
-		if (layout !== "plain-left" && this.#remoteControl) rightParts.push(theme.fg("success", "/rc"));
+		if (layout !== "plain-left" && this.#remoteBadges.length > 0) {
+			rightParts.push(theme.fg("success", this.#remoteBadges.join(" ")));
+		}
 		const topFillWidth = Math.max(0, width);
 		// These arrays are local to this render; overflow handling can mutate them.
 		const left = leftParts;
