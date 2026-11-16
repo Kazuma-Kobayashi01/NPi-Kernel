@@ -18,6 +18,8 @@
 
 ### Fixed
 
+- With `sandbox.mode` on, the terminal no longer shows "Still starting after Ns" every 10 seconds for the whole session
+
 - A seance `task` whose `sourceSession` id belongs to another project now fails with a hint to pass that session's `.jsonl` path, which works from any project, instead of only "was not found" ([#19095](https://github.com/can1357/oh-my-pi/pull/19095) by [@zhivko-kocev](https://github.com/zhivko-kocev))
 - Pressing Enter in `/resume` on a session recorded in a folder that has since been moved or deleted no longer does nothing: a session filed under the current folder is moved here and resumed, and any other one reports why it cannot be resumed
 - Leading `KEY=VALUE` environment assignments are now stripped when evaluating `deny` and `prompt` rules in `bash.patterns` so they cannot bypass command restrictions ([#18351](https://github.com/can1357/oh-my-pi/pull/18351) by [@asuffield](https://github.com/asuffield))

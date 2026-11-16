@@ -1902,7 +1902,12 @@ export async function runRootCommand(
 				deps.settings
 					? Promise.resolve(deps.settings)
 					: Settings.init({ cwd: sandboxCwd, configFiles: parsedArgs.config }),
-			beforeRelaunch: stopPendingStartupComposer,
+			// The relaunching parent only waits for the sandboxed child from here on: its
+			// watchdog would keep reporting "Still starting" over the child's session.
+			beforeRelaunch: () => {
+				stopStartupWatchdog();
+				stopPendingStartupComposer();
+			},
 		});
 		// RPC owns stdin. Claim its singleton stream before plugin/extension discovery can load an in-process consumer.
 		const rpcInput = mode === "rpc" || mode === "rpc-ui" ? claimRpcInput() : undefined;
