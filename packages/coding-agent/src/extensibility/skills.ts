@@ -43,9 +43,10 @@ export { allowsSkillTokens, SKILL_TOKEN_RE };
 /** Provider id for skills loaded from `skills.customDirectories` (see `loadSkills`). */
 const CUSTOM_DIR_PROVIDER_ID = "custom";
 
-/** Scope globs from frontmatter, omitted when the skill declares none. */
+/** Scope globs from frontmatter (a list of strings), omitted when the skill declares none. */
 function scopeGlobs(frontmatter: CapabilitySkill["frontmatter"]): { globs?: string[] } {
-	return frontmatter?.globs?.length ? { globs: frontmatter.globs } : {};
+	const globs = frontmatter?.globs;
+	return Array.isArray(globs) && globs.length > 0 && globs.every(g => typeof g === "string") ? { globs } : {};
 }
 
 export interface Skill {

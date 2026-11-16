@@ -10,7 +10,7 @@
 import { constants as fsConstants, type Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, isEnoent } from "@oh-my-pi/pi-utils";
+import { getAgentDir, isEnoent, parseFrontmatter } from "@oh-my-pi/pi-utils";
 import { YAML } from "bun";
 
 /** Provider id stamped on discovered managed skills (distinguishes them from authored). */
@@ -77,12 +77,13 @@ export function sanitizeManagedDescription(raw: string): string {
 }
 
 /**
- * Serialize the minimal `name`/`description` frontmatter block via the repo's
- * YAML helper (round-trips through `parseFrontmatter`).
+ * Serialize the managed-skill frontmatter block via the repo's YAML helper
+ * (round-trips through `parseFrontmatter`): `name`, `description`, and the
+ * skill's `globs` scope when it has one.
  */
-export function toSkillFrontmatter(name: string, description: string): string {
+export function toSkillFrontmatter(name: string, description: string, globs?: string[]): string {
 	const frontmatter = YAML.stringify(
-		{ name, description: sanitizeManagedDescription(description) },
+		{ name, description: sanitizeManagedDescription(description), ...(globs && { globs }) },
 		null,
 		2,
 	).trimEnd();
@@ -237,12 +238,25 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 			throw new Error(`Managed skill "${name}" SKILL.md is a symlink; refusing to overwrite it.`);
 		}
 		assertManagedSkillFileSafeForUpdate(name, fileStat);
+		// `globs` is set by hand, not by the tools: carry it over so an update keeps the skill's scope.
+		const previous = parseFrontmatter(await fs.readFile(file, "utf8"), { level: "off" }).frontmatter.globs;
+		const globs =
+			Array.isArray(previous) && previous.length > 0 && previous.every(g => typeof g === "string")
+				? (previous as string[])
+				: undefined;
+		const updated = globs ? `${toSkillFrontmatter(name, description, globs)}\n${body}\n` : content;
+		const updatedBytes = Buffer.byteLength(updated, "utf8");
+		if (updatedBytes > MAX_MANAGED_SKILL_BYTES) {
+			throw new Error(
+				`Managed skill is ${updatedBytes} bytes; the limit is ${MAX_MANAGED_SKILL_BYTES}. Trim the body or description.`,
+			);
+		}
 		const handle = await openManagedSkillFileForUpdate(name, file);
 		try {
 			const openStat = await handle.stat();
 			assertManagedSkillFileSafeForUpdate(name, openStat);
 			await handle.truncate(0);
-			await handle.writeFile(content);
+			await handle.writeFile(updated);
 		} finally {
 			await handle.close();
 		}

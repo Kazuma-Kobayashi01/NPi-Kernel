@@ -251,13 +251,23 @@ const SKILL_GLOB_TIMEOUT_MS = 1000;
 
 /**
  * A skill without `globs` applies everywhere; otherwise any one match under `cwd` is enough.
+ * Patterns are anchored at `cwd` (only `**` recurses), see dot-directories such as `.npi-academic`,
+ * and ignore `.gitignore` (a marker inside an ignored nested repo, like `omp/`, still counts).
  * A scan that times out cannot prove the skill irrelevant, so it keeps its description.
  */
 async function skillAppliesToWorkspace(skill: Skill, cwd: string): Promise<boolean> {
 	if (!skill.globs) return true;
 	for (const pattern of skill.globs) {
 		try {
-			const { totalMatches } = await glob({ pattern, path: cwd, maxResults: 1, timeoutMs: SKILL_GLOB_TIMEOUT_MS });
+			const { totalMatches } = await glob({
+				pattern,
+				path: cwd,
+				maxResults: 1,
+				recursive: false,
+				hidden: true,
+				gitignore: false,
+				timeoutMs: SKILL_GLOB_TIMEOUT_MS,
+			});
 			if (totalMatches > 0) return true;
 		} catch (error) {
 			logger.warn("Skill globs scan failed; keeping the skill description", { skill: skill.name, error: String(error) });

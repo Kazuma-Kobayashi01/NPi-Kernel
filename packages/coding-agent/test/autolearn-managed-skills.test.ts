@@ -80,6 +80,17 @@ describe("managed-skills primitives", () => {
 			).rejects.toThrow(/does not exist/);
 		});
 
+		it("update keeps a hand-set globs scope", async () => {
+			await writeManagedSkill({ action: "create", name: "scoped", description: "d", body: "original" });
+			const file = skillFile("scoped");
+			await Bun.write(file, `${toSkillFrontmatter("scoped", "d", ["*.rs", "Cargo.toml"])}\noriginal\n`);
+			await writeManagedSkill({ action: "update", name: "scoped", description: "new d", body: "replaced" });
+			const { frontmatter, body } = parseFrontmatter(await Bun.file(file).text(), { source: "test" });
+			expect(frontmatter.globs).toEqual(["*.rs", "Cargo.toml"]);
+			expect(frontmatter.description).toBe("new d");
+			expect(body).toContain("replaced");
+		});
+
 		it("rejects an oversized body and writes nothing", async () => {
 			const huge = "a".repeat(MAX_MANAGED_SKILL_BYTES + 1);
 			await expect(
