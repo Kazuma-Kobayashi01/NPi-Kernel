@@ -9,6 +9,7 @@ import type { ToolExample, TSchema } from "@oh-my-pi/pi-ai";
 import { renderToolInventory } from "@oh-my-pi/pi-ai/dialect";
 import type { DelegationBias } from "@oh-my-pi/pi-catalog/compat/delegation";
 import type { PromptProfile } from "@oh-my-pi/pi-catalog/compat/prompt-profile";
+import { glob } from "@oh-my-pi/pi-natives";
 import {
 	$env,
 	getAgentDir,
@@ -244,6 +245,18 @@ function renderActiveRepoContextPrompt(activeRepoContext: ActiveRepoContext | nu
 			relativeRepoRoot: normalizePromptPath(activeRepoContext.relativeRepoRoot),
 		})
 		.trim();
+}
+
+const SKILL_GLOB_TIMEOUT_MS = 1000;
+
+/** A skill without `globs` applies everywhere; otherwise any one match under `cwd` is enough. */
+async function skillAppliesToWorkspace(skill: Skill, cwd: string): Promise<boolean> {
+	if (!skill.globs) return true;
+	for (const pattern of skill.globs) {
+		const { totalMatches } = await glob({ pattern, path: cwd, maxResults: 1, timeoutMs: SKILL_GLOB_TIMEOUT_MS });
+		if (totalMatches > 0) return true;
+	}
+	return false;
 }
 
 const SYSTEM_PROMPT_PREP_TIMEOUT_MS = 5000;
@@ -1000,9 +1013,15 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		settingsApproval,
 		outReplies,
 	};
-	const filteredSkills = (options.skillDescriptions ?? new SkillDescriptionCatalog()).render(
-		hasSkillReader ? skills.filter(skill => skill.hide !== true) : [],
+	const visibleSkills = hasSkillReader ? skills.filter(skill => skill.hide !== true) : [];
+	const applies = await Promise.all(visibleSkills.map(skill => skillAppliesToWorkspace(skill, resolvedCwd)));
+	const described = new Map(
+		(options.skillDescriptions ?? new SkillDescriptionCatalog())
+			.render(visibleSkills.filter((_, index) => applies[index]))
+			.map(skill => [skill.name, skill]),
 	);
+	// Skills scoped by `globs` that match nothing here keep only their name in the listing.
+	const filteredSkills = visibleSkills.map(skill => described.get(skill.name) ?? { ...skill, description: "" });
 
 	const effectiveSystemPromptCustomization = dedupePromptSource(systemPromptCustomization, [
 		resolvedCustomPrompt,

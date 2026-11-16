@@ -259,7 +259,8 @@ export function getEvalToolDescription(options: EvalToolDescriptionOptions = {})
 	return prompt.render(evalDescription, {
 		...evalTemplateContext(options),
 		preludes,
-		toolNames: options.toolNames,
+		// MCP tools are already listed with their routes in the MCP guidance.
+		toolNames: options.toolNames?.filter(name => !name.startsWith("mcp__")),
 		inlinePreludes,
 		inlineTopics: options.inlineTopics ? Object.values(getEvalDocTopics(options)).join("\n\n") : undefined,
 	});

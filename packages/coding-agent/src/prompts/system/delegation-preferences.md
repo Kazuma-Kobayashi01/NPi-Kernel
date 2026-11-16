@@ -31,4 +31,5 @@ CONSERVATIVE appetite: default to working inline. Delegate only a substantial, s
 - Decide the scope and shared contracts before spawning; delegate genuine self-contained slices, not ownership of the top-level plan. Supply each worker with the requirements and context it cannot see.
 - Fan independent slices {{#if taskBatch}}in one task batch{{else}}concurrently{{/if}}. Keep useful main-session work moving while agents run. Avoid overlapping file ownership and unnecessary sequential delegations.
 - User says `parallel` or `parallelize` → MUST use subagents; parallel tool calls are insufficient.
+- Surface: `task` is the default for delegating. Eval `agent()`/`workpool()` only when already scripting inside an eval cell (fan-out in code, DAG waves, keep-alive pool for an open-ended item stream).
 {{/when}}

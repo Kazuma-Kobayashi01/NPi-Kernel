@@ -43,6 +43,11 @@ export { allowsSkillTokens, SKILL_TOKEN_RE };
 /** Provider id for skills loaded from `skills.customDirectories` (see `loadSkills`). */
 const CUSTOM_DIR_PROVIDER_ID = "custom";
 
+/** Scope globs from frontmatter, omitted when the skill declares none. */
+function scopeGlobs(frontmatter: CapabilitySkill["frontmatter"]): { globs?: string[] } {
+	return frontmatter?.globs?.length ? { globs: frontmatter.globs } : {};
+}
+
 export interface Skill {
 	name: string;
 	description: string;
@@ -55,6 +60,11 @@ export interface Skill {
 	 * prompt's `<skills>` listing.
 	 */
 	hide?: boolean;
+	/**
+	 * Frontmatter `globs`: workspace paths this skill applies to. When set and
+	 * nothing under the workspace matches, the prompt lists only the skill's name.
+	 */
+	globs?: string[];
 	/**
 	 * Filesystem-resolved plugin root for Agent Plugin skills (spec §4.1):
 	 * every `skill://` resource access must realpath-resolve within it.
@@ -277,6 +287,7 @@ export async function loadSkillsFromDir(options: LoadSkillsFromDirOptions): Prom
 			baseDir: capSkill.path.replace(/[\\/]SKILL\.md$/, ""),
 			source: options.source,
 			...(capSkill.containRoot !== undefined && { containRoot: capSkill.containRoot }),
+			...scopeGlobs(capSkill.frontmatter),
 			hide: capSkill.frontmatter?.hide === true || capSkill.frontmatter?.disableModelInvocation === true,
 			_source: capSkill._source,
 		})),
@@ -475,6 +486,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 			baseDir: capSkill.path.replace(/[\\/]SKILL\.md$/, ""),
 			source: `${capSkill._source.provider}:${capSkill.level}`,
 			...(capSkill.containRoot !== undefined && { containRoot: capSkill.containRoot }),
+			...scopeGlobs(capSkill.frontmatter),
 			hide: capSkill.frontmatter?.hide === true || capSkill.frontmatter?.disableModelInvocation === true,
 			_source: capSkill._source,
 		};
@@ -518,6 +530,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 					baseDir: capSkill.path.replace(/[\\/]SKILL\.md$/, ""),
 					source: "custom:user",
 					...(capSkill.containRoot !== undefined && { containRoot: capSkill.containRoot }),
+					...scopeGlobs(capSkill.frontmatter),
 					hide: capSkill.frontmatter?.hide === true || capSkill.frontmatter?.disableModelInvocation === true,
 					_source: { ...capSkill._source, providerName: "Custom" },
 				},
@@ -601,6 +614,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 			baseDir: capSkill.path.replace(/[\\/]SKILL\.md$/, ""),
 			source: `${capSkill._source.provider}:${capSkill.level}`,
 			...(capSkill.containRoot !== undefined && { containRoot: capSkill.containRoot }),
+			...scopeGlobs(capSkill.frontmatter),
 			hide: capSkill.frontmatter?.hide === true || capSkill.frontmatter?.disableModelInvocation === true,
 			_source: capSkill._source,
 		});

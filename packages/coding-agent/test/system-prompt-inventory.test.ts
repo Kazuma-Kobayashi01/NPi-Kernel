@@ -762,6 +762,32 @@ describe("system prompt tool inventory", () => {
 		expect(text).toContain("`skill://<name>`");
 	});
 
+	it("lists only the name of a globbed skill that matches nothing in the workspace", async () => {
+		await Bun.write(path.join(tempDir, "present.rs"), "");
+		const skill = (name: string, globs?: string[]) => ({
+			name,
+			description: `${name} description`,
+			filePath: path.join(tempDir, `${name}.md`),
+			baseDir: tempDir,
+			source: "test",
+			...(globs && { globs }),
+		});
+		const { systemPrompt } = await buildSystemPrompt({
+			cwd: tempDir,
+			contextFiles: [],
+			skills: [skill("unscoped"), skill("matching", ["*.rs"]), skill("absent", ["*.swift"])],
+			rules: [],
+			toolNames: ["read"],
+			workspaceTree: { ...EMPTY_TREE, rootPath: tempDir },
+		});
+		const text = systemPrompt.join("\n\n");
+
+		expect(text).toContain("- unscoped: unscoped description");
+		expect(text).toContain("- matching: matching description");
+		expect(text).toMatch(/- absent\n/);
+		expect(text).not.toContain("absent description");
+	});
+
 	it("keeps skill URL guidance for a mounted skill URI reader", async () => {
 		const registry = new Map([["fetch", { ...SDK_TOOL, name: "fetch", readsSkillUris: true }]]);
 		const directNames: string[] = [];

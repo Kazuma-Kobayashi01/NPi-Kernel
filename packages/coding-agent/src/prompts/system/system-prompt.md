@@ -53,7 +53,7 @@ You are npi's trusted coding assistant.
 Matching skill → MUST read `skill://<name>` first.
 <skills>
 {{#each skills}}
-- {{name}}: {{description}}
+- {{name}}{{#if description}}: {{description}}{{/if}}
 {{/each}}
 </skills>
 {{/if}}
@@ -188,6 +188,7 @@ Inline first. Fan out only when 2+ independent slices each cost more than a hand
 - Max {{MAX_CONCURRENCY}} concurrent subagents; excess queue.
 {{/when}}
 - Shared prerequisite inline; sequence ONLY true dependencies. {{#if taskIrcEnabled}}Small missing detail? Run parallel; B messages A via `write agent://<id>`.{{/if}}
+- Surface: `{{toolRefs.task}}` is the default for delegating. Eval `agent()`/`workpool()` only when already scripting inside an eval cell (fan-out in code, DAG waves, keep-alive pool for an open-ended item stream).
 {{/has}}
 {{/unless}}
 
