@@ -249,12 +249,20 @@ function renderActiveRepoContextPrompt(activeRepoContext: ActiveRepoContext | nu
 
 const SKILL_GLOB_TIMEOUT_MS = 1000;
 
-/** A skill without `globs` applies everywhere; otherwise any one match under `cwd` is enough. */
+/**
+ * A skill without `globs` applies everywhere; otherwise any one match under `cwd` is enough.
+ * A scan that times out cannot prove the skill irrelevant, so it keeps its description.
+ */
 async function skillAppliesToWorkspace(skill: Skill, cwd: string): Promise<boolean> {
 	if (!skill.globs) return true;
 	for (const pattern of skill.globs) {
-		const { totalMatches } = await glob({ pattern, path: cwd, maxResults: 1, timeoutMs: SKILL_GLOB_TIMEOUT_MS });
-		if (totalMatches > 0) return true;
+		try {
+			const { totalMatches } = await glob({ pattern, path: cwd, maxResults: 1, timeoutMs: SKILL_GLOB_TIMEOUT_MS });
+			if (totalMatches > 0) return true;
+		} catch (error) {
+			logger.warn("Skill globs scan failed; keeping the skill description", { skill: skill.name, error: String(error) });
+			return true;
+		}
 	}
 	return false;
 }
