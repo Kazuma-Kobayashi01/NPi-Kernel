@@ -194,7 +194,7 @@ off();
 `.npix` 是可离线安装的单文件插件，相当于 VS Code 的 `.vsix`。格式与 `npm pack` 一致：一个 tar.gz，所有条目都在 `package/` 下。
 
 ```sh
-npi plugin pack [目录] [-o out.npix]      # 校验后打包，默认输出 <name>-<version>.npix
+npi plugin pack [目录] [-o out.npix]      # 校验后打包；不带 -o 时写进插件目录里的 <name>-<version>.npix
 npi plugin inspect file.npix [--json]     # 只读查看：名称、版本、开发者、能力、文件数、大小
 npi plugin install file.npix [--json]     # 解压并链接，不联网
 npi plugin list --json                    # npm 条目额外带 npix: bool、developer
@@ -203,6 +203,7 @@ npi plugin enable|disable|features|config # 与普通插件相同
 ```
 
 - `pack` 会跳过 `.git`、`.DS_Store`、`node_modules/.bin` 和已有的 `.npix`；符号链接会被替换成实际内容。
+- 产物位置（用户指定）：NPi Desktop 根目录 `dist/extension/<包名>-<版本>.npix`，用 `-o` 指向它；插件目录里不留 `.npix`。
 - 安装位置：`<插件目录>/npix/<包名，/ 换成 __>/<版本>/`，同名旧版本先删除，再用 `PluginManager.link` 链接进 `<插件目录>/node_modules`。插件目录随 profile 而定。
 - 安全检查：
   - 解压前：不许有绝对路径或 `..`，所有条目必须在 `package/` 下；

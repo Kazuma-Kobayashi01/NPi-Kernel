@@ -1,0 +1,13 @@
+{
+	"name": "@npi/plugin-sandbox-vm",
+	"version": "1.0.1",
+	"description": "Run the bash tool's commands in a local Linux virtual machine instead of on this machine",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"test": "bun test"
+	},
+	"omp": {
+		"extensions": ["./src/index.ts"]
+	}
+}

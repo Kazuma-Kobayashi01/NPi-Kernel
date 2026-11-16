@@ -1,0 +1,42 @@
+#!/bin/sh
+# Runs as PID 1 of the throwaway build VM (scripts/build-image.sh): installs the packages into /target with
+# apk and tars the result into the shared folder, then powers off.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /run /tmp
+mount -t tmpfs tmpfs /run
+mount -t tmpfs -o mode=1777 tmpfs /tmp
+
+fail() { echo "BUILD FAILED: $*"; sync; poweroff -f; }
+
+for module in fuse virtiofs virtio_net; do modprobe "$module" || fail "modprobe $module"; done
+ip link set lo up
+ip link set eth0 up || fail "no network device"
+udhcpc -i eth0 -n -q -s /usr/share/udhcpc/default.script || fail "no DHCP lease"
+mkdir -p /share
+mount -t virtiofs m0 /share || fail "mount the shared folder"
+
+. /share/repo
+printf '%s/main\n%s/community\n' "$alpine_repo" "$alpine_repo" > /etc/apk/repositories
+apk update || fail "apk update"
+mkdir -p /target
+# shellcheck disable=SC2046
+apk add --root /target --initdb --no-cache --keys-dir /etc/apk/keys \
+	--repositories-file /etc/apk/repositories $(cat /share/packages.txt) || fail "apk add"
+
+# The runtime root also needs the kernel's modules, the guest init and the agent.
+mkdir -p /target/lib /target/usr/lib/npi /target/sbin
+cp -a /lib/modules /target/lib/
+cp /share/npi-init /target/sbin/npi-init
+cp /share/agent.py /target/usr/lib/npi/agent.py
+chmod 755 /target/sbin/npi-init /target/usr/lib/npi/agent.py
+# busybox applet links (apk's trigger needs /dev and /proc inside the root; make sure they exist either way).
+chroot /target /bin/busybox --install -s 2>/dev/null
+
+tar -C /target -cf /share/rootfs.tar . || fail "tar"
+echo "installed: $(wc -l < /target/lib/apk/db/installed 2>/dev/null) db lines, $(du -sm /target | cut -f1) MiB"
+touch /share/done
+sync
+poweroff -f

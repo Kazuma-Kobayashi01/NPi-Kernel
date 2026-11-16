@@ -1,0 +1,62 @@
+#!/bin/sh
+# Runs as PID 1 of the throwaway build VM for the Ubuntu base (scripts/build-image.sh ubuntu): unpacks the pinned
+# ubuntu-base into /target, installs the packages in a chroot with apt, and tars the result into the shared
+# folder, then powers off. The build VM itself is the Alpine one; only /target is Ubuntu.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /run /tmp
+mount -t tmpfs tmpfs /run
+mount -t tmpfs -o mode=1777 tmpfs /tmp
+
+fail() { echo "BUILD FAILED: $*"; sync; poweroff -f; }
+
+for module in fuse virtiofs virtio_net; do modprobe "$module" || fail "modprobe $module"; done
+ip link set lo up
+ip link set eth0 up || fail "no network device"
+udhcpc -i eth0 -n -q -s /usr/share/udhcpc/default.script || fail "no DHCP lease"
+mkdir -p /share
+mount -t virtiofs m0 /share || fail "mount the shared folder"
+
+. /share/repo
+mkdir -p /target
+tar -xzf "/share/$ubuntu_base" -C /target || fail "unpack $ubuntu_base"
+
+mount -t proc proc /target/proc
+mount -t sysfs sysfs /target/sys
+mount -o bind /dev /target/dev
+rm -f /target/etc/resolv.conf
+cp /etc/resolv.conf /target/etc/resolv.conf
+# No services start in the chroot, and the root keeps no documentation or manuals (it lives in RAM).
+printf '#!/bin/sh\nexit 101\n' > /target/usr/sbin/policy-rc.d
+chmod 755 /target/usr/sbin/policy-rc.d
+mkdir -p /target/etc/dpkg/dpkg.cfg.d
+printf 'path-exclude=/usr/share/doc/*\npath-exclude=/usr/share/man/*\npath-exclude=/usr/share/info/*\npath-exclude=/usr/share/locale/*\n' \
+	> /target/etc/dpkg/dpkg.cfg.d/01-npi
+cp /share/packages.txt /target/tmp/packages.txt
+
+chroot /target /usr/bin/env DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 /bin/sh -c '
+	set -e
+	apt-get update
+	apt-get install -y --no-install-recommends $(cat /tmp/packages.txt)
+	apt-get clean
+	rm -rf /var/lib/apt/lists/* /var/cache/apt/*.bin /tmp/packages.txt /usr/sbin/policy-rc.d
+' || fail "apt"
+
+umount /target/dev /target/sys /target/proc
+rm -f /target/etc/resolv.conf
+: > /target/etc/resolv.conf
+
+# The runtime root also needs the kernel's modules, the guest init and the agent.
+mkdir -p /target/lib /target/usr/lib/npi /target/sbin
+cp -a /lib/modules /target/lib/
+cp /share/npi-init /target/sbin/npi-init
+cp /share/agent.py /target/usr/lib/npi/agent.py
+chmod 755 /target/sbin/npi-init /target/usr/lib/npi/agent.py
+
+tar -C /target -cf /share/rootfs.tar . || fail "tar"
+echo "installed: $(grep -c '^Package:' /target/var/lib/dpkg/status) packages, $(du -sm /target | cut -f1) MiB"
+touch /share/done
+sync
+poweroff -f
