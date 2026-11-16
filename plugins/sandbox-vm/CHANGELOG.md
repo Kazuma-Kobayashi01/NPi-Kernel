@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-11-16
+
+- `/vm clean` (asks first) and RPC `sandbox-vm/clean`: for removing the VM. Stops it, unsets a global `exec.backend` that names it (so bash keeps working after the plugin is uninstalled), deletes every image built on this machine, `sandbox-vm.json` and the terminal routes of dead processes, and reports the size of the images the package ships (they go with `npi plugin uninstall`). NPi Desktop's Settings → Approvals → Remove Sandbox VM calls it and uninstalls the plugin.
+
 ## [1.0.1] - 2026-11-16
 
 - The permissions panel: `/vm permissions` in the TUI and Settings → Approvals → Sandbox VM permissions in NPi Desktop (network, project folder read-write or read-only, extra read-only folders, cores, memory ceiling, idle stop), RPC `sandbox-vm/permissions` and `sandbox-vm/set-permissions`, and the setting `projectAccess`. Changes are validated, saved, and apply at the next VM start.

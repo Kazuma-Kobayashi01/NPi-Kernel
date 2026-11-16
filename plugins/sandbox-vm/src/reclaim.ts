@@ -46,6 +46,17 @@ export async function reclaimImage(dir: string, parent?: string): Promise<ImageI
 	return freed;
 }
 
+/** Delete one file; `false` when there was none. */
+export async function removeFile(file: string): Promise<boolean> {
+	try {
+		await fs.rm(file);
+		return true;
+	} catch (error) {
+		if (isEnoent(error)) return false;
+		throw error;
+	}
+}
+
 async function removeIfEmpty(dir: string): Promise<void> {
 	try {
 		await fs.rmdir(dir);

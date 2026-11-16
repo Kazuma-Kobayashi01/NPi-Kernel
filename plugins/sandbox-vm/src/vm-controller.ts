@@ -1,11 +1,11 @@
 import * as path from "node:path";
 import type { RegisteredExecBackend } from "@oh-my-pi/pi-coding-agent";
-import { bundledImageDir, dataDir, imageDirs, loadConfig, savePatch, saveBase, type SandboxVmConfig, type VmBase, VM_BASES } from "./config";
+import { bundledImageDir, configPath, dataDir, imageDirs, loadConfig, savePatch, saveBase, type SandboxVmConfig, type VmBase, VM_BASES } from "./config";
 import { HelperClient, type VmStatus } from "./helper-client";
 import type { VmConfig } from "./protocol";
-import { removeRoute, routePaths, writeRoute } from "./terminal-route";
+import { pruneRoutes, removeRoute, routePaths, writeRoute } from "./terminal-route";
 import { limits, type PermissionLimits, type Permissions, permissionsOf, validatePatch } from "./permissions";
-import { type ImageInfo, imageInfo, reclaimImage } from "./reclaim";
+import { type ImageInfo, imageInfo, reclaimImage, removeFile } from "./reclaim";
 
 /** The name `exec.backend` is set to for this plugin's VM. */
 export const BACKEND_NAME = "sandbox-vm/default";
@@ -40,6 +40,8 @@ export interface VmControllerOptions {
 	saveBase?: (base: VmBase) => Promise<void>;
 	/** Idle time in milliseconds after which the VM stops; overrides the settings (tests). */
 	idleStopMs?: number;
+	/** The settings file `cleanUp` deletes; defaults to `<agent dir>/sandbox-vm.json`. */
+	configFile?: string;
 }
 
 /**
@@ -59,6 +61,7 @@ export class VmController {
 	readonly #saveBase: (base: VmBase) => Promise<void>;
 	readonly #savePatch: (patch: Record<string, unknown>) => Promise<void>;
 	readonly #idleOverrideMs: number | undefined;
+	readonly #configFile: string;
 	#idleMs = 0;
 	#idleTimer: Timer | undefined;
 	#running = 0;
@@ -74,6 +77,7 @@ export class VmController {
 		this.#saveBase = options.saveBase ?? (base => saveBase(base));
 		this.#savePatch = options.savePatch ?? (patch => savePatch(patch));
 		this.#idleOverrideMs = options.idleStopMs;
+		this.#configFile = options.configFile ?? configPath();
 	}
 
 	get status(): VmStatus {
@@ -256,6 +260,21 @@ export class VmController {
 			freed.files.push(...one.files.map(name => `${base}/${name}`));
 		}
 		return freed;
+	}
+
+	/**
+	 * Remove what the VM left on this machine, for someone done with it: stop the VM, delete every image built
+	 * here (as `reclaim("all")`), the settings file and the terminal routes of processes that are gone. The
+	 * plugin package, with its bundled images (`bundledBytes`), stays until it is uninstalled.
+	 */
+	async cleanUp(): Promise<{ freed: ImageInfo; configRemoved: boolean; bundledBytes: number }> {
+		// Images first: a custom `image` folder is named in the settings file this deletes.
+		const freed = await this.reclaim("all");
+		const configRemoved = await removeFile(this.#configFile);
+		await pruneRoutes().catch(() => undefined);
+		let bundledBytes = 0;
+		for (const base of VM_BASES) bundledBytes += (await imageInfo(bundledImageDir(base))).bytes;
+		return { freed, configRemoved, bundledBytes };
 	}
 
 	/** The exec backend for `pi.registerExecBackend`. */

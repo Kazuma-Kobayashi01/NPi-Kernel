@@ -63,6 +63,26 @@ describe("reclaiming the guest image", () => {
 		expect((await imageInfo(image)).files).toEqual([]);
 	});
 
+	it("cleans up the custom image, the settings file and its folder, leaving foreign files", async () => {
+		const { root, image } = await makeImage({ "notes.txt": "mine" });
+		const configFile = path.join(root, "sandbox-vm.json");
+		await Bun.write(configFile, JSON.stringify({ image }));
+		const controller = new VmController({
+			loadConfig: async () => ({ ...DEFAULT_CONFIG, image }),
+			routes: false,
+			configFile,
+		});
+
+		const done = await controller.cleanUp();
+
+		expect(done.freed.bytes).toBe(30);
+		expect(done.configRemoved).toBe(true);
+		expect(await fs.readdir(image)).toEqual(["notes.txt"]);
+		expect(await Bun.file(configFile).exists()).toBe(false);
+		// A second run finds nothing left to remove.
+		expect((await controller.cleanUp()).configRemoved).toBe(false);
+	});
+
 	it("formats sizes", () => {
 		expect(formatBytes(512)).toBe("512 B");
 		expect(formatBytes(71_500_000)).toBe("68.2 MB");

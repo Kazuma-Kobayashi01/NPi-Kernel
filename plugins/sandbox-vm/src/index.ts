@@ -8,7 +8,7 @@ import { formatBytes } from "./reclaim";
 import { BACKEND_NAME, VmController } from "./vm-controller";
 
 const STATUS_KEY = "sandbox-vm";
-const HELP = "Usage: /vm [status|start|stop|on|off|base [alpine|ubuntu]|permissions|reclaim [alpine|ubuntu|all]]";
+const HELP = "Usage: /vm [status|start|stop|on|off|base [alpine|ubuntu]|permissions|reclaim [alpine|ubuntu|all]|clean]";
 
 function describe(status: VmStatus, isBackend: boolean, base: VmBase): string {
 	const detail = status.detail ? ` (${status.detail})` : "";
@@ -125,6 +125,32 @@ export default function sandboxVm(pi: ExtensionAPI): void {
 		return { freedBytes: freed.bytes, persistedBackend: isBackend() };
 	};
 
+	/**
+	 * Everything `reclaim` does for every base, plus: a persisted `exec.backend` naming the VM is removed from the
+	 * global config (so bash keeps working once the plugin is uninstalled), and the settings file and stale
+	 * terminal routes go. `persistedBackend` is still true when another layer (a project's config) names the VM.
+	 */
+	const cleanUp = async (): Promise<{
+		freedBytes: number;
+		configRemoved: boolean;
+		backendReset: boolean;
+		persistedBackend: boolean;
+		bundledBytes: number;
+	}> => {
+		let backendReset = false;
+		if (execBackend) {
+			await switchBackend(false);
+			if (isBackend()) {
+				execBackend.unset(pi.pi.settings);
+				backendReset = true;
+				await applyPolicy();
+			}
+		}
+		const { freed, configRemoved, bundledBytes } = await controller.cleanUp();
+		currentBase = await controller.base();
+		return { freedBytes: freed.bytes, configRemoved, backendReset, persistedBackend: isBackend(), bundledBytes };
+	};
+
 	/** Select the base and refresh what the status line shows. */
 	const setBase = async (base: VmBase): Promise<void> => {
 		await controller.setBase(base);
@@ -199,6 +225,22 @@ export default function sandboxVm(pi: ExtensionAPI): void {
 						);
 						return;
 					}
+					case "clean": {
+						const ok = await ctx.ui.confirm(
+							"Clean up the Sandbox VM?",
+							"Stops the VM, sends bash back to this machine (also in the saved config), and deletes the images built here and sandbox-vm.json. The plugin itself stays until it is uninstalled.",
+						);
+						if (!ok) return;
+						const done = await cleanUp();
+						const parts = [`VM cleaned up: ${formatBytes(done.freedBytes)} of local images freed`];
+						if (done.configRemoved) parts.push("sandbox-vm.json deleted");
+						if (done.backendReset) parts.push("exec.backend reset to this machine");
+						if (done.persistedBackend) parts.push("a project config still sets exec.backend to the VM: remove it there");
+						if (done.bundledBytes > 0)
+							parts.push(`the plugin's own images (${formatBytes(done.bundledBytes)}) go with \`npi plugin uninstall @npi/plugin-sandbox-vm\``);
+						ctx.ui.notify(parts.join("; "), done.persistedBackend ? "warning" : "info");
+						return;
+					}
 					default:
 						ctx.ui.notify(HELP, "warning");
 				}
@@ -264,6 +306,14 @@ export default function sandboxVm(pi: ExtensionAPI): void {
 			}
 			const { freedBytes, persistedBackend } = await reclaim(base);
 			return { ...(await report(controller.status)), freedBytes, persistedBackend };
+		},
+	});
+	pi.registerRpcCommand("sandbox-vm/clean", {
+		description:
+			"Clean up for removal (the caller confirms first): stop the VM, reset a persisted exec.backend naming it, delete every locally built image, sandbox-vm.json and stale terminal routes. Answers with `freedBytes`, `configRemoved`, `backendReset`, `persistedBackend`, `bundledBytes` and the usual status",
+		handler: async () => {
+			const done = await cleanUp();
+			return { ...(await report(controller.status)), ...done };
 		},
 	});
 	pi.registerRpcCommand("sandbox-vm/set-backend", {

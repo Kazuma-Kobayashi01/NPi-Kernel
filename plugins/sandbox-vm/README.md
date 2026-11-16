@@ -19,6 +19,7 @@ plugins/sandbox-vm/scripts/pack.sh                  # -> ../dist/extension/npi-p
 /vm permissions                    # the permissions panel: network, project access, read-only folders, cores, memory, idle stop
 /vm base [alpine|ubuntu]           # show or select the Linux the VM boots (stops the VM; the next command boots the new one)
 /vm reclaim [alpine|ubuntu|all]    # stop the VM and delete the images built on this machine (the selected base by default); the plugin and its packaged images stay
+/vm clean                          # done with it: stop, reset exec.backend, delete local images and settings (asks first); then npi plugin uninstall
 ```
 
 In NPi Desktop the same switch is Settings → Approvals → Command backend; it sets `exec.backend` for new tabs.
@@ -34,6 +35,8 @@ The VM boots Alpine (default, about 70 MB, musl) or Ubuntu 24.04 LTS (about 110 
 The package carries both images (`images/alpine`, `images/ubuntu`, put there by `scripts/pack.sh`), so nothing has to be built or downloaded after installing it. The VM boots, in this order: the settings' `image` folder, an image built on this machine (`~/.local/share/npi/sandbox-vm/image[-ubuntu]`, what `scripts/build-image.sh` writes), then the packaged one. Building your own therefore overrides the package without touching it. `npi plugin uninstall` removes the packaged images with the plugin.
 
 ## Reclaiming
+
+`/vm clean` (RPC `sandbox-vm/clean`; NPi Desktop: Settings → Approvals → Remove Sandbox VM) is the way out for good: after a confirmation it stops the VM, unsets a global `exec.backend` naming it, deletes every image built here (as `reclaim all`), `<agent dir>/sandbox-vm.json` and stale `<tmp>/npi-vm-routes/` files, then names the size of the packaged images, which `npi plugin uninstall @npi/plugin-sandbox-vm` removes with the plugin (`~/.local/share/npi/plugins/npix/@npi__plugin-sandbox-vm/<version>/images/`). A project `config.yml` that sets `exec.backend` is not touched; the command says so.
 
 `/vm reclaim [alpine|ubuntu|all]` (RPC `sandbox-vm/reclaim` with `{ base }`; `sandbox-vm/image` reports each base's size first) stops the VM, sends `bash` back to this machine for the run, and deletes the guest image built on this machine for that base (the selected one by default; a packaged image is part of the plugin and stays until it is uninstalled): only `Image`, `rootfs.cpio.gz` and `manifest.json`, so a custom `image` folder keeps any other file, and empty folders are removed. The VM has no persistent disk, so nothing else is left behind. If `exec.backend` is persisted as `sandbox-vm/default`, the command warns: set it back with `npi config set exec.backend ""`, or `bash` refuses to run. Rebuild the image with `scripts/build-image.sh` to use the VM again; to remove the plugin as well, `npi plugin uninstall @npi/plugin-sandbox-vm`.
 
