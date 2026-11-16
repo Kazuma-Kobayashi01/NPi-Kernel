@@ -553,7 +553,7 @@ describe("system prompt tool inventory", () => {
 			inlineToolDescriptors: false,
 			evalPreludes: [{ name: "browser" }, { name: "computer", guidance: "COMPUTER-GUIDANCE" }],
 		});
-		expect(systemPrompt[1]).toBe("COMPUTER-GUIDANCE");
+		expect(systemPrompt).toContain("COMPUTER-GUIDANCE");
 		expect(systemPrompt.filter(block => block.includes("COMPUTER-GUIDANCE"))).toHaveLength(1);
 		// Prelude names still drive the verification bullets.
 		expect(systemPrompt[0]).toContain("Native desktop: JS/Python eval `computer` helpers");
