@@ -5,29 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>NPi Web</title>
+<link rel="stylesheet" href="/desktop-ui.css">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header id="top">
-	<div class="brand">NPi</div>
-	<div class="where">
-		<div id="cwd" class="cwd"></div>
-		<div id="meta" class="meta"></div>
-	</div>
-	<div id="conn" class="conn off" title="Connection">offline</div>
-</header>
-<main id="transcript" aria-live="polite"></main>
-<div id="queue" class="queue" hidden></div>
-<div id="dialogs"></div>
-<footer id="composer">
-	<textarea id="input" rows="2" placeholder="Message this session… (Enter to send, Shift+Enter for a new line)"></textarea>
-	<div class="actions">
-		<button id="send" class="primary">Send</button>
-		<button id="queueBtn" hidden title="Send after the current turn">Queue</button>
-		<button id="stop" class="danger" hidden>Stop</button>
-	</div>
-</footer>
-<div id="toasts"></div>
+<div id="root"></div>
+<script src="/desktop-ui.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

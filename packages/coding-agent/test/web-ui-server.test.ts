@@ -72,7 +72,7 @@ function openSocket(base: string, headers: Record<string, string>) {
 describe("/web server auth", () => {
 	it("refuses the page, assets and socket without the token's cookie, and serves them with it", async () => {
 		const { base } = start();
-		for (const path of ["/", "/app.js", "/ws", `/?t=wrong-${TOKEN}`]) {
+		for (const path of ["/", "/app.js", "/desktop-ui.js", "/ws", `/?t=wrong-${TOKEN}`]) {
 			expect((await fetch(`${base}${path}`, { redirect: "manual" })).status).toBe(401);
 		}
 		const cookie = await login(base);

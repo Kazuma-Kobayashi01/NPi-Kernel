@@ -15,6 +15,9 @@ import { PendingDialogTracker } from "../remote/journal";
 import appCss from "./assets/app.css" with { type: "text" };
 // @ts-expect-error Bun imports this JavaScript source as text instead of evaluating its module shape.
 import appJs from "./assets/app.js" with { type: "text" };
+import desktopCss from "./assets/vendor/desktop-ui.css" with { type: "text" };
+// @ts-expect-error Bun imports this JavaScript source as text instead of evaluating its module shape.
+import desktopJs from "./assets/vendor/desktop-ui.js" with { type: "text" };
 import indexHtmlBundle from "./assets/index.html" with { type: "text" };
 
 /** What the server needs from the RPC client over the live session. */
@@ -170,7 +173,10 @@ function sanitizeUiResponse(value: unknown): RpcExtensionUIResponse {
 	if (value.cancelled === true) return { type: "extension_ui_response", id, cancelled: true };
 	if (typeof value.confirmed === "boolean") return { type: "extension_ui_response", id, confirmed: value.confirmed };
 	if (typeof value.value === "string" && value.value.length <= MAX_MESSAGE_CHARS) {
-		return { type: "extension_ui_response", id, value: value.value };
+		const hunks = Array.isArray(value.selectedHunks)
+			? value.selectedHunks.filter((hunk): hunk is number => Number.isInteger(hunk))
+			: undefined;
+		return { type: "extension_ui_response", id, value: value.value, ...(hunks ? { selectedHunks: hunks } : {}) };
 	}
 	if (Array.isArray(value.answers)) {
 		const answers = value.answers.map(answer => {
@@ -268,7 +274,7 @@ export class WebSessionServer {
 			"Referrer-Policy": "no-referrer",
 			"X-Frame-Options": "DENY",
 			"Content-Security-Policy":
-				"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+				"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
 		});
 	}
 
@@ -305,6 +311,10 @@ export class WebSessionServer {
 				return new Response(appJs, { headers: this.#headers("text/javascript; charset=utf-8") });
 			case "/app.css":
 				return new Response(appCss, { headers: this.#headers("text/css; charset=utf-8") });
+			case "/desktop-ui.js":
+				return new Response(desktopJs, { headers: this.#headers("text/javascript; charset=utf-8") });
+			case "/desktop-ui.css":
+				return new Response(desktopCss, { headers: this.#headers("text/css; charset=utf-8") });
 			case "/ws": {
 				const origin = req.headers.get("origin");
 				let sameOrigin = false;
