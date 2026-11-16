@@ -12,6 +12,7 @@
 - Extensions can serve RPC hosts: `pi.registerRpcCommand("<plugin>/<command>", { handler })` answers `extension_command` frames with the handler's result (errors and unknown names answer as failures), and `ctx.ui.emitEvent?.(name, data)` pushes `extension_event` frames
 - `--mode rpc-ui --side-agent <id>` serves an external ACP agent (an id from the ACP registry, e.g. `antigravity-acp`, `claude-acp`) to RPC hosts: its turns stream like omp's own, its permission requests arrive as approval dialogs, and it signs in with its own account. An installed `agy` is preferred over the registry build for Antigravity; registry binaries install only when their SHA-256 is pinned
 - Skills can declare frontmatter `globs`; when none match anything under the workspace, the prompt lists only that skill's name instead of its description. Skills without `globs` are unchanged
+- `manage_skill` takes `scope`: skills the agent writes now go to `<project>/.npi/skills` by default and are used only in that project; `scope: "global"` writes the shared `~/.omp/agent/managed-skills` and is for when the user explicitly asks for it. `update`/`delete` act on the same scope, so an existing global skill needs `scope: "global"`. Project skills are discovered from the project and its ancestors and win over a global managed skill of the same name. A skill minted through `learn` is always project-only. Results carry `scope` and `cwd`
 
 ### Changed
 

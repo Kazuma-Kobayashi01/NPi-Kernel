@@ -24,14 +24,15 @@
 | `name`        | `string`                           |           Yes | Managed skill name; trimmed and lowercased before path resolution, then validated against `[a-z0-9][a-z0-9-]{0,63}`. |
 | `description` | `string`                           | Create/update | One-line description used for skill discovery.                                                                       |
 | `body`        | `string`                           | Create/update | Markdown body for `SKILL.md`; do not include frontmatter.                                                            |
+| `scope`       | `"project" \| "global"`            |            No | Default `project`: `<project>/.npi/skills`, visible only in that project. `global`: `<agent-dir>/managed-skills`, visible everywhere; the prompt allows it only when the user explicitly asks for it. `update`/`delete` act on the same scope. |
 
 ## Outputs
 
-- `delete`: `content[0].text = "Deleted managed skill \"<name>\"."`, `details = { action: "delete", name }`
-- `create`: `content[0].text = "Created managed skill \"<name>\" (managed-skills/<name>/SKILL.md)."`, `details = { action: "create", name }`
-- `update`: `content[0].text = "Updated managed skill \"<name>\" (managed-skills/<name>/SKILL.md)."`, `details = { action: "update", name }`
+- `delete`: `content[0].text = "Deleted <scope> managed skill \"<name>\"."`, `details = { action: "delete", name, scope, cwd }`
+- `create`: `content[0].text = "Created <scope> managed skill \"<name>\" (.npi/skills/<name>/SKILL.md)."` (global: `managed-skills/<name>/SKILL.md`), `details = { action: "create", name, scope, cwd }`
+- `update`: `content[0].text = "Updated <scope> managed skill \"<name>\" (.npi/skills/<name>/SKILL.md)."` (global: `managed-skills/<name>/SKILL.md`), `details = { action: "update", name, scope, cwd }`; `cwd` is the session's project folder.
 - Result names echo the supplied `name`; create/update paths use its normalized on-disk spelling.
-- Authored-skill shadowing on create returns `isError: true` with `details = { action: "create", name, shadowed: true }`.
+- Authored-skill shadowing on create returns `isError: true` with `details = { action: "create", name, scope, cwd, shadowed: true }`.
 
 ## Flow
 
@@ -52,7 +53,7 @@
 
 ## Side Effects
 
-- Filesystem: writes or deletes `<agent-dir>/managed-skills/<name>/SKILL.md`; the default agent directory is `~/.omp/agent`.
+- Filesystem: writes or deletes `<project>/.npi/skills/<name>/SKILL.md` (scope `project`, the default) or `<agent-dir>/managed-skills/<name>/SKILL.md` (scope `global`); the default agent directory is `~/.omp/agent`.
 - Network: none.
 - Session state: reads `autolearn.enabled` during tool creation and refreshes the active skill list after a successful mutation when `refreshSkills` is available.
 - Background work: none.
@@ -79,6 +80,6 @@
 
 ## Notes
 
-- Managed skills are generated under `<agent-dir>/managed-skills` and never edit authored skills.
+- Managed skills are generated under `<project>/.npi/skills` (default) or `<agent-dir>/managed-skills` and never edit authored skills. Everything in `<project>/.npi/skills` is treated as agent-written: discovery tags it `omp-managed:project`, and a same-named project skill wins over a global managed one.
 - Do not include YAML frontmatter in `body`; `writeManagedSkill(...)` generates normalized `name` and sanitized `description` frontmatter.
 - `update` does not bypass authored-skill precedence: if an authored skill has the same name, the managed skill remains shadowed in discovery.

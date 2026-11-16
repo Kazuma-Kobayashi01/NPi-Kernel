@@ -4,6 +4,8 @@ import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import {
 	deleteManagedSkill,
 	getManagedSkillsDir,
+	getProjectManagedSkillsDir,
+	PROJECT_SKILLS_DIR,
 	sanitizeSkillName,
 	writeManagedSkill,
 } from "../autolearn/managed-skills";
@@ -20,6 +22,9 @@ const manageSkillSchema = type({
 		"one-line description of when to use the skill (required for create/update)",
 	),
 	"body?": type("string").describe("the SKILL.md body in markdown, no frontmatter (required for create/update)"),
+	"scope?": type("'project' | 'global'").describe(
+		"where the skill lives; defaults to project (this project only); global only when the user explicitly asked for it",
+	),
 }).narrow(
 	(p, ctx) =>
 		p.action === "delete" ||
@@ -36,6 +41,8 @@ export type ManageSkillParams = typeof manageSkillSchema.infer;
 /**
  * Direct create/update/delete of isolated managed skills. Gated behind
  * `autolearn.enabled`; backend-independent (the skill side is standalone).
+ * Scope `project` (default) acts on `<project>/.npi/skills`, `global` on the
+ * shared managed-skills directory.
  */
 export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 	readonly name = "manage_skill";
@@ -47,20 +54,23 @@ export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 	readonly loadMode = "essential" as const;
 	readonly summary = "Create, update, or delete an isolated managed skill";
 
-	constructor(private readonly refreshSkills?: () => Promise<void>) {}
+	constructor(private readonly session: ToolSession) {}
 
 	static createIf(session: ToolSession): ManageSkillTool | null {
 		if (!cfgAutolearnEnabled.get(session.settings)) return null;
-		return new ManageSkillTool(session.refreshSkills);
+		return new ManageSkillTool(session);
 	}
 
 	async execute(_id: string, params: ManageSkillParams): Promise<AgentToolResult> {
+		const scope = params.scope ?? "project";
+		const cwd = this.session.cwd;
+		const root = scope === "global" ? getManagedSkillsDir() : getProjectManagedSkillsDir(cwd);
 		if (params.action === "delete") {
-			await deleteManagedSkill(params.name);
-			await this.refreshSkills?.();
+			await deleteManagedSkill(params.name, root);
+			await this.session.refreshSkills?.();
 			return {
-				content: [{ type: "text", text: `Deleted managed skill "${params.name}".` }],
-				details: { action: "delete", name: params.name },
+				content: [{ type: "text", text: `Deleted ${scope} managed skill "${params.name}".` }],
+				details: { action: "delete", name: params.name, scope, cwd },
 			};
 		}
 
@@ -84,7 +94,7 @@ export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 					},
 				],
 				isError: true,
-				details: { action: "create", name: params.name, shadowed: true },
+				details: { action: "create", name: params.name, scope, cwd, shadowed: true },
 			};
 		}
 		const { path: skillPath } = await writeManagedSkill({
@@ -92,13 +102,17 @@ export class ManageSkillTool implements AgentTool<typeof manageSkillSchema> {
 			name: params.name,
 			description: params.description,
 			body: params.body,
+			root,
 		});
-		await this.refreshSkills?.();
-		const relativePath = path.relative(getManagedSkillsDir(), skillPath);
+		await this.session.refreshSkills?.();
+		const relativePath = path.join(
+			scope === "global" ? "managed-skills" : PROJECT_SKILLS_DIR,
+			path.relative(root, skillPath),
+		);
 		const verb = params.action === "create" ? "Created" : "Updated";
 		return {
-			content: [{ type: "text", text: `${verb} managed skill "${params.name}" (managed-skills/${relativePath}).` }],
-			details: { action: params.action, name: params.name },
+			content: [{ type: "text", text: `${verb} ${scope} managed skill "${params.name}" (${relativePath}).` }],
+			details: { action: params.action, name: params.name, scope, cwd },
 		};
 	}
 }

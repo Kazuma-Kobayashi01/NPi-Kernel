@@ -1,7 +1,7 @@
 import { type } from "@oh-my-pi/omptype";
 import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
 import { prompt } from "@oh-my-pi/pi-utils";
-import { sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skills";
+import { getProjectManagedSkillsDir, sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skills";
 import { isNameClaimedByAuthoredSkill } from "../extensibility/skills";
 import { isHindsightConfigured, loadHindsightConfig } from "../hindsight/config";
 import { localBackend } from "../memory-backend/local-backend";
@@ -159,8 +159,10 @@ export class LearnTool implements AgentTool<LearnSchema> {
 					details: { skill: null, shadowed: true },
 				};
 			}
+			// A skill minted here is always project-scoped, whatever the lesson's scope;
+			// a global skill takes an explicit `manage_skill` call with `scope: "global"`.
 			try {
-				await writeManagedSkill(params.skill);
+				await writeManagedSkill({ ...params.skill, root: getProjectManagedSkillsDir(this.session.cwd) });
 			} catch (err) {
 				const reason = err instanceof Error ? err.message : String(err);
 				throw new Error(`${memoryMessage}, but the managed skill could not be written: ${reason}`);
@@ -176,7 +178,7 @@ export class LearnTool implements AgentTool<LearnSchema> {
 			}
 			return {
 				content: [{ type: "text", text: `${memoryMessage}. ${verb} managed skill "${params.skill.name}".` }],
-				details: { skill: params.skill.name },
+				details: { skill: params.skill.name, scope: "project", cwd: this.session.cwd },
 			};
 		}
 

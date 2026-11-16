@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { type } from "@oh-my-pi/omptype";
-import { getManagedSkillsDir } from "@oh-my-pi/pi-coding-agent/autolearn/managed-skills";
+import { getManagedSkillsDir, getProjectManagedSkillsDir } from "@oh-my-pi/pi-coding-agent/autolearn/managed-skills";
 import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { resetActiveSkillsForTests, type Skill, setActiveSkills } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
 import type { HindsightSessionState } from "@oh-my-pi/pi-coding-agent/hindsight/state";
@@ -24,6 +24,11 @@ function makeSession(settingsOverrides: Record<string, unknown> = {}, extra: Par
 		settings: Settings.isolated(settingsOverrides),
 		...extra,
 	};
+}
+
+/** Where a project-scoped skill lands for a session whose cwd is `<home>/project`. */
+function projectSkillFile(home: string, name: string): string {
+	return path.join(getProjectManagedSkillsDir(path.join(home, "project")), name, "SKILL.md");
 }
 
 describe("autolearn tool gating", () => {
@@ -132,15 +137,48 @@ describe("manage_skill execute", () => {
 		await removeWithRetries(tempHome);
 	});
 
-	const tool = () => ManageSkillTool.createIf(makeSession({ "autolearn.enabled": true }))!;
+	const tool = () =>
+		ManageSkillTool.createIf(makeSession({ "autolearn.enabled": true }, { cwd: path.join(tempHome, "project") }))!;
 
-	it("create writes the managed SKILL.md; delete removes it", async () => {
-		const file = path.join(getManagedSkillsDir(), "demo", "SKILL.md");
-		await tool().execute("1", { action: "create", name: "demo", description: "When to demo.", body: "# Demo" });
+	it("create writes a project skill by default; delete removes it", async () => {
+		const file = projectSkillFile(tempHome, "demo");
+		const created = await tool().execute("1", {
+			action: "create",
+			name: "demo",
+			description: "When to demo.",
+			body: "# Demo",
+		});
 		expect(await Bun.file(file).exists()).toBe(true);
+		expect(await Bun.file(path.join(getManagedSkillsDir(), "demo", "SKILL.md")).exists()).toBe(false);
+		expect(created.details).toEqual({
+			action: "create",
+			name: "demo",
+			scope: "project",
+			cwd: path.join(tempHome, "project"),
+		});
 
 		await tool().execute("2", { action: "delete", name: "demo" });
 		expect(await Bun.file(file).exists()).toBe(false);
+	});
+
+	it("writes the global managed directory only for scope global, and default delete leaves it alone", async () => {
+		const globalFile = path.join(getManagedSkillsDir(), "shared", "SKILL.md");
+		await tool().execute("g1", {
+			action: "create",
+			name: "shared",
+			scope: "global",
+			description: "When to share.",
+			body: "# Shared",
+		});
+		expect(await Bun.file(globalFile).exists()).toBe(true);
+		expect(await Bun.file(projectSkillFile(tempHome, "shared")).exists()).toBe(false);
+
+		// A default (project) delete does not reach the global skill.
+		await expect(tool().execute("g2", { action: "delete", name: "shared" })).rejects.toThrow(/does not exist/);
+		expect(await Bun.file(globalFile).exists()).toBe(true);
+
+		await tool().execute("g3", { action: "delete", name: "shared", scope: "global" });
+		expect(await Bun.file(globalFile).exists()).toBe(false);
 	});
 
 	it("rejects create without a body and delete of a missing skill", async () => {
@@ -187,7 +225,7 @@ describe("manage_skill execute", () => {
 		expect(text).toMatch(/authored skill/i);
 		expect(text).not.toContain("Created");
 		// Nothing was written, so the managed skill can never surface.
-		expect(await Bun.file(path.join(getManagedSkillsDir(), "demo", "SKILL.md")).exists()).toBe(false);
+		expect(await Bun.file(projectSkillFile(tempHome, "demo")).exists()).toBe(false);
 	});
 });
 
@@ -207,7 +245,10 @@ describe("learn execute", () => {
 		};
 		return makeSession(
 			{ "autolearn.enabled": true, "memory.backend": "mnemopi" },
-			{ getMnemopiSessionState: () => fakeState as unknown as MnemopiSessionState },
+			{
+				cwd: path.join(tempHome, "project"),
+				getMnemopiSessionState: () => fakeState as unknown as MnemopiSessionState,
+			},
 		);
 	}
 
@@ -230,6 +271,9 @@ describe("learn execute", () => {
 		expect(remembered).toEqual(["Prefer Bun.file over readFileSync."]);
 		// No managed skills written.
 		expect(await fs.readdir(getManagedSkillsDir()).catch(() => [])).toHaveLength(0);
+		expect(await fs.readdir(getProjectManagedSkillsDir(path.join(tempHome, "project"))).catch(() => [])).toHaveLength(
+			0,
+		);
 	});
 
 	it("also mints a managed skill when skill payload is supplied", async () => {
@@ -244,7 +288,35 @@ describe("learn execute", () => {
 			},
 		});
 		expect(remembered).toHaveLength(1);
-		expect(await Bun.file(path.join(getManagedSkillsDir(), "worker-host", "SKILL.md")).exists()).toBe(true);
+		expect(await Bun.file(projectSkillFile(tempHome, "worker-host")).exists()).toBe(true);
+		expect(await Bun.file(path.join(getManagedSkillsDir(), "worker-host", "SKILL.md")).exists()).toBe(false);
+	});
+
+	it("keeps a skill minted with a global lesson project-only", async () => {
+		const fakeState = {
+			sessionId: "sess-3",
+			session: { sessionManager: { getCwd: () => "/tmp/work" } },
+			getGlobalRetainTarget: () => undefined,
+			rememberScoped: (memory: string) => {
+				remembered.push(memory);
+				return "mem-id";
+			},
+		};
+		const session = makeSession(
+			{ "autolearn.enabled": true, "memory.backend": "mnemopi" },
+			{
+				cwd: path.join(tempHome, "project"),
+				getMnemopiSessionState: () => fakeState as unknown as MnemopiSessionState,
+			},
+		);
+		await new LearnTool(session).execute("l-global", {
+			memory: "A cross-project lesson.",
+			scope: "global",
+			skill: { action: "create", name: "cross-project", description: "Shared procedure.", body: "# Shared" },
+		});
+		expect(remembered).toHaveLength(1);
+		expect(await Bun.file(projectSkillFile(tempHome, "cross-project")).exists()).toBe(true);
+		expect(await Bun.file(path.join(getManagedSkillsDir(), "cross-project", "SKILL.md")).exists()).toBe(false);
 	});
 
 	it("reports both the committed memory and managed skill when refreshing session skills fails", async () => {
@@ -269,7 +341,7 @@ describe("learn execute", () => {
 			/Lesson stored\. Created managed skill "worker-host", but refreshing session skills failed: prompt rebuild failed/,
 		);
 		expect(remembered).toHaveLength(1);
-		expect(await Bun.file(path.join(getManagedSkillsDir(), "worker-host", "SKILL.md")).exists()).toBe(true);
+		expect(await Bun.file(projectSkillFile(tempHome, "worker-host")).exists()).toBe(true);
 	});
 
 	it("surfaces a partial-outcome error when the skill name is invalid", async () => {
@@ -311,6 +383,7 @@ describe("learn execute", () => {
 		const session = makeSession(
 			{ "autolearn.enabled": true, "memory.backend": "hindsight" },
 			{
+				cwd: path.join(tempHome, "project"),
 				getHindsightSessionState: () =>
 					({
 						enqueueRetain: (memory: string) => {
@@ -328,6 +401,7 @@ describe("learn execute", () => {
 			}),
 		).rejects.toThrow(/only available with the Mnemopi backend/i);
 		expect(queued).toEqual([]);
+		expect(await Bun.file(projectSkillFile(tempHome, "global-lesson")).exists()).toBe(false);
 		expect(await Bun.file(path.join(getManagedSkillsDir(), "global-lesson", "SKILL.md")).exists()).toBe(false);
 	});
 
@@ -364,7 +438,10 @@ describe("learn execute", () => {
 		};
 		const session = makeSession(
 			{ "autolearn.enabled": true, "memory.backend": "mnemopi" },
-			{ getMnemopiSessionState: () => failingState as unknown as MnemopiSessionState },
+			{
+				cwd: path.join(tempHome, "project"),
+				getMnemopiSessionState: () => failingState as unknown as MnemopiSessionState,
+			},
 		);
 		await expect(
 			new LearnTool(session).execute("5", {
@@ -373,6 +450,6 @@ describe("learn execute", () => {
 			}),
 		).rejects.toThrow("Mnemopi did not store the lesson: database or disk is full");
 		// A failed lesson must not leave a minted skill behind.
-		expect(await Bun.file(path.join(getManagedSkillsDir(), "should-not-exist", "SKILL.md")).exists()).toBe(false);
+		expect(await Bun.file(projectSkillFile(tempHome, "should-not-exist")).exists()).toBe(false);
 	});
 });

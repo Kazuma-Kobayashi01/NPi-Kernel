@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getManagedSkillsDir } from "@oh-my-pi/pi-coding-agent/autolearn/managed-skills";
+import { getManagedSkillsDir, getProjectManagedSkillsDir } from "@oh-my-pi/pi-coding-agent/autolearn/managed-skills";
 import { disableUserSource, enableUserSource } from "@oh-my-pi/pi-coding-agent/capability";
 import "@oh-my-pi/pi-coding-agent/discovery";
 import { loadSkills } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
@@ -55,6 +55,27 @@ describe("managed-skills discovery", () => {
 		const foo = skills.find(s => s.name === "foo");
 		expect(foo).toBeDefined();
 		expect(foo?.source).toBe("omp-managed:user");
+	});
+
+	it("surfaces a project skill from <project>/.npi/skills only inside that project", async () => {
+		await writeSkill(getProjectManagedSkillsDir(tempCwd), "proj-only", "A project skill.");
+		const inside = await loadSkills({ cwd: tempCwd });
+		const found = inside.skills.find(s => s.name === "proj-only");
+		expect(found?.source).toBe("omp-managed:project");
+
+		const otherCwd = path.join(tempHome, "other");
+		await fs.mkdir(otherCwd, { recursive: true });
+		const outside = await loadSkills({ cwd: otherCwd });
+		expect(outside.skills.some(s => s.name === "proj-only")).toBe(false);
+	});
+
+	it("prefers a project skill over a global managed skill of the same name", async () => {
+		await writeSkill(managedDir, "both", "Global managed.");
+		await writeSkill(getProjectManagedSkillsDir(tempCwd), "both", "Project managed.");
+		const { skills } = await loadSkills({ cwd: tempCwd });
+		const both = skills.filter(s => s.name === "both");
+		expect(both).toHaveLength(1);
+		expect(both[0]?.source).toBe("omp-managed:project");
 	});
 
 	it("lets an authored skill win a name collision and drops the managed one", async () => {

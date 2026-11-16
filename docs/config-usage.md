@@ -289,7 +289,7 @@ Native provider (`id: native`) reads native config from:
 ### Scope-specific loading
 
 - Skills: `<ancestor>/.omp/skills/*/SKILL.md` and `~/.omp/agent/skills/*/SKILL.md`
-- Managed skills: `~/.omp/agent/managed-skills/*/SKILL.md`, through a separate priority-5 provider; authored skills from any other provider win name collisions. Discovery is unconditional; `autolearn.enabled` gates writing/nudging, not loading.
+- Managed skills: `<ancestor>/.npi/skills/*/SKILL.md` (project, the default write target) and `~/.omp/agent/managed-skills/*/SKILL.md` (global, written only on explicit `scope: "global"`), through a separate priority-5 provider; authored skills from any other provider win name collisions. Discovery is unconditional; `autolearn.enabled` gates writing/nudging, not loading.
 - Slash commands: `commands/*.md`
 - Rules: `rules/*.{md,mdc}` plus top-level `RULES.md`
 - Prompts: `prompts/*.md`

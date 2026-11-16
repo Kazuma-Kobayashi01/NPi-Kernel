@@ -26,6 +26,14 @@ export function getManagedSkillsDir(agentDir: string = getAgentDir()): string {
 	return path.join(agentDir, "managed-skills");
 }
 
+/** Project-local directory name that holds agent-written project skills (`<project>/.npi/skills`). */
+export const PROJECT_SKILLS_DIR = path.join(".npi", "skills");
+
+/** Resolve the project-scoped managed-skills directory (`<project>/.npi/skills`). */
+export function getProjectManagedSkillsDir(projectDir: string): string {
+	return path.join(projectDir, PROJECT_SKILLS_DIR);
+}
+
 /**
  * Validate + normalize a managed-skill name. Throws on anything outside the
  * strict allowlist so a bad name can never escape `getManagedSkillsDir()`
@@ -86,6 +94,8 @@ export interface WriteManagedSkillInput {
 	name: string;
 	description: string;
 	body: string;
+	/** Directory the skill is written under. Default: the global managed-skills directory. */
+	root?: string;
 }
 
 /**
@@ -97,13 +107,13 @@ export interface WriteManagedSkillInput {
  * races are out of scope.
  */
 const skillMutationChains = new Map<string, Promise<unknown>>();
-function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<T> {
-	const prev = skillMutationChains.get(name) ?? Promise.resolve();
+function serializeSkillMutation<T>(key: string, op: () => Promise<T>): Promise<T> {
+	const prev = skillMutationChains.get(key) ?? Promise.resolve();
 	const run = prev.then(op, op);
 	const guarded = run.catch(() => {});
-	skillMutationChains.set(name, guarded);
+	skillMutationChains.set(key, guarded);
 	void guarded.finally(() => {
-		if (skillMutationChains.get(name) === guarded) skillMutationChains.delete(name);
+		if (skillMutationChains.get(key) === guarded) skillMutationChains.delete(key);
 	});
 	return run;
 }
@@ -117,8 +127,7 @@ function serializeSkillMutation<T>(name: string, op: () => Promise<T>): Promise<
  * at the mutation itself. A broken link or a link to a non-directory has no
  * defined write target, so it is refused.
  */
-async function assertManagedRootSafe(): Promise<void> {
-	const root = getManagedSkillsDir();
+async function assertManagedRootSafe(root: string): Promise<void> {
 	const rootStat = await fs.lstat(root).catch(err => {
 		if (isEnoent(err)) return null;
 		throw err;
@@ -161,6 +170,7 @@ async function openManagedSkillFileForUpdate(name: string, file: string) {
 
 /** Create or update a managed `SKILL.md`. Returns the resolved file path. */
 export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<{ path: string }> {
+	const root = input.root ?? getManagedSkillsDir();
 	const name = sanitizeSkillName(input.name);
 	const description = sanitizeManagedDescription(input.description);
 	const body = input.body.trim();
@@ -182,9 +192,9 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 			`Managed skill is ${bytes} bytes; the limit is ${MAX_MANAGED_SKILL_BYTES}. Trim the body or description.`,
 		);
 	}
-	return serializeSkillMutation(name, async () => {
-		await assertManagedRootSafe();
-		const dir = path.join(getManagedSkillsDir(), name);
+	return serializeSkillMutation(`${root}\0${name}`, async () => {
+		await assertManagedRootSafe(root);
+		const dir = path.join(root, name);
 		const file = path.join(dir, "SKILL.md");
 		// Reject a symlinked skill directory: an intermediate symlink would let the
 		// write escape the isolated managed root. lstat does not follow the final
@@ -240,12 +250,12 @@ export async function writeManagedSkill(input: WriteManagedSkillInput): Promise<
 	});
 }
 
-/** Delete a managed skill directory. Throws when it does not exist. */
-export async function deleteManagedSkill(name: string): Promise<void> {
+/** Delete a managed skill directory under `root`. Throws when it does not exist. */
+export async function deleteManagedSkill(name: string, root: string = getManagedSkillsDir()): Promise<void> {
 	const safe = sanitizeSkillName(name);
-	await serializeSkillMutation(safe, async () => {
-		await assertManagedRootSafe();
-		const dir = path.join(getManagedSkillsDir(), safe);
+	await serializeSkillMutation(`${root}\0${safe}`, async () => {
+		await assertManagedRootSafe(root);
+		const dir = path.join(root, safe);
 		// Refuse to follow a symlinked skill directory (rm would delete the target).
 		const dirStat = await fs.lstat(dir).catch(err => {
 			if (isEnoent(err)) return null;
