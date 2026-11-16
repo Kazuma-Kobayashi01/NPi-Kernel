@@ -13,8 +13,8 @@ const date = new Date(2026, 4, 31, 2, 30); // 02:30 local — previous UTC day i
 if (date.getTimezoneOffset() === 0 || localDay(date) === date.toISOString().slice(0, 10)) {
 	process.exit(2);
 }
-const basename = getLogPath(date, 7).replace(/.*[/\\]/, "");
-if (basename !== `omp.${localDay(date)}.7.log`) {
+const basename = getLogPath(date).replace(/.*[/\\]/, "");
+if (basename !== `omp.${localDay(date)}.log`) {
 	console.error(`getLogPath used the UTC day key: ${basename}`);
 	process.exit(1);
 }

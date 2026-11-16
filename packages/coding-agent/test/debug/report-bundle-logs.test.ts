@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 describe("report bundle logs", () => {
-	it("collects every same-day PID log, not only the current process", async () => {
+	it("collects the shared day log and the same-day PID logs of older processes", async () => {
 		cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-report-logs-"));
 		await isolateLogsRoot(cleanupRoot);
 
@@ -65,7 +65,7 @@ describe("report bundle logs", () => {
 		const today = localDay(new Date());
 		const crashedName = `omp.${today}.4242.log`;
 		const rotatedName = `${crashedName}.1`;
-		const currentName = `omp.${today}.${process.pid}.log`;
+		const currentName = `omp.${today}.log`;
 		await Bun.write(path.join(logsDir, crashedName), '{"pid":4242,"message":"fatal in crashed pid"}\n');
 		await fs.utimes(path.join(logsDir, crashedName), 1, 1);
 		await Bun.write(path.join(logsDir, rotatedName), '{"pid":4242,"message":"earlier rotated crash output"}\n');
@@ -104,7 +104,7 @@ describe("report bundle logs", () => {
 		const logsDir = getLogsDir();
 		logger.setTransports({ console: false, file: logsDir });
 		const marker = `report-buffered-${crypto.randomUUID()}`;
-		logger.debug("report bundle buffered probe", { marker });
+		logger.warn("report bundle buffered probe", { marker });
 
 		const result = await createReportBundle({ sessionFile: undefined }).finally(() =>
 			logger.setTransports({ file: true }),
@@ -113,7 +113,7 @@ describe("report bundle logs", () => {
 		const archive = new Bun.Archive(await Bun.file(result.path).bytes());
 		const logsText = (await (await archive.files()).get("logs.txt")?.text()) ?? "";
 		await fs.rm(result.path, { force: true });
-		expect(logsText).toContain(`omp.${localDay(new Date())}.${process.pid}.log`);
+		expect(logsText).toContain(`omp.${localDay(new Date())}.log`);
 		expect(logsText).toContain(marker);
 	});
 

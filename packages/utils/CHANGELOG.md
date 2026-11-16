@@ -7,6 +7,11 @@
 - Added `RunOptions.components`: `[name, version]` pairs that `--version --all` prints as `name/version` lines after the usual one
 - Added `KERNEL_VERSION`, the NPi kernel line of the build (`kernel.x.y.z-platform`)
 - Added `isFileLockHeld`, which reports whether a file lock is held without acquiring it ([#17428](https://github.com/can1357/oh-my-pi/pull/17428) by [@andrebrait](https://github.com/andrebrait))
+- Added `logger.fatal` for errors the process cannot continue after; uncaught exceptions and unhandled rejections are logged at this level
+
+### Changed
+
+- The log keeps only `warn`, `error` and `fatal` records (`info` and `debug` calls are dropped), in one file per local day, `omp.YYYY-MM-DD.log`, shared by every process; `OMP_LOG_LEVEL` can narrow it to `error` or `fatal` but no longer widens it, days older than five are deleted, and per-process `omp.YYYY-MM-DD.<pid>.log` files of ended processes are removed
 
 ## [18.14.0] - 2026-10-29
 

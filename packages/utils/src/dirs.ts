@@ -756,9 +756,9 @@ export function localDay(date: Date): string {
 	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-/** Get this process's dated log path (~/.omp/logs/omp.YYYY-MM-DD.PID.log, local-day named like the rotating sink). */
-export function getLogPath(date = new Date(), pid = process.pid): string {
-	return path.join(getLogsDir(), `${APP_NAME}.${localDay(date)}.${pid}.log`);
+/** Get the day's shared log path (~/.omp/logs/omp.YYYY-MM-DD.log, local-day named like the file sink); every process appends to it. */
+export function getLogPath(date = new Date()): string {
+	return path.join(getLogsDir(), `${APP_NAME}.${localDay(date)}.log`);
 }
 
 /**

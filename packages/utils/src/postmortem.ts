@@ -656,7 +656,7 @@ async function exitAfterFatal(output: string, logMessage: string, err: Error, re
 		// fatal report is written, while slower resource cleanup continues afterward.
 		const cleanup = runCleanup(reason);
 		writeTerminalReport(output);
-		logger.error(logMessage, { err });
+		logger.fatal(logMessage, { err });
 		await cleanup;
 		writeRecoveryHints(hintProviders);
 	} finally {

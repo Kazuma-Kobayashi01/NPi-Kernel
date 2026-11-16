@@ -55,6 +55,7 @@ const SERVICE_NAME = "oh-my-pi";
 type OtelLogLevel = "none" | logger.LogLevel;
 
 const LOG_SEVERITY: Record<logger.LogLevel, SeverityNumber> = {
+	fatal: SeverityNumber.FATAL,
 	error: SeverityNumber.ERROR,
 	warn: SeverityNumber.WARN,
 	info: SeverityNumber.INFO,
@@ -62,10 +63,11 @@ const LOG_SEVERITY: Record<logger.LogLevel, SeverityNumber> = {
 };
 
 const LOG_LEVEL_WEIGHT: Record<logger.LogLevel, number> = {
-	error: 0,
-	warn: 1,
-	info: 2,
-	debug: 3,
+	fatal: 0,
+	error: 1,
+	warn: 2,
+	info: 3,
+	debug: 4,
 };
 
 const TOOL_STATUSES = ["ok", "error", "skipped", "blocked", "timeout", "aborted"] satisfies readonly ToolStatus[];

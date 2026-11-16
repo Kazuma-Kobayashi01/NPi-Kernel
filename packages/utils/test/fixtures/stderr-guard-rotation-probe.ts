@@ -19,16 +19,17 @@ const thirdDay = process.argv[4];
 const sink = new RotatingFileSink({
 	directory,
 	filenamePrefix: "omp",
-	filenameSuffix: String(process.pid),
-	maxBytes: 10 * 1024 * 1024,
-	maxFiles: 5,
+	// As the production logger builds it: one shared file per local day.
+	filenameSuffix: "",
+	maxBytes: Number.POSITIVE_INFINITY,
+	maxFiles: Number.POSITIVE_INFINITY,
 	onRotate: setStderrRedirectTarget,
 });
 
 sink.write(JSON.stringify({ message: "startup-day record" }));
 const startupFile = fs.readdirSync(directory).find(name => name.endsWith(".log"))!;
 // Resolved on the startup day: it must name the file the sink just opened.
-const logPathBasename = path.basename(getLogPath(new Date(), process.pid));
+const logPathBasename = path.basename(getLogPath(new Date()));
 
 // No explicit redirectPath: the guard must adopt the file the sink reported.
 const forced = suppressTerminalStderr({ force: true });

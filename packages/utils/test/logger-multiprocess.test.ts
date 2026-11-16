@@ -27,9 +27,9 @@ async function makeProbe(logsDir: string): Promise<string> {
 	await Bun.write(
 		probePath,
 		`import * as fs from "node:fs";\n` +
-			`import { info, setTransports } from ${JSON.stringify(loggerModuleUrl)};\n` +
+			`import { setTransports, warn } from ${JSON.stringify(loggerModuleUrl)};\n` +
 			`setTransports({ file: ${JSON.stringify(logsDir)} });\n` +
-			`info("multiprocess probe");\n` +
+			`warn("multiprocess probe");\n` +
 			`await new Promise<void>(resolve => setImmediate(resolve));\n` +
 			`fs.writeSync(1, "ready\\n");\n` +
 			`await new Promise<void>(resolve => {\n` +
@@ -49,60 +49,39 @@ async function makeProbe(logsDir: string): Promise<string> {
 }
 
 describe("multiprocess file logging", () => {
-	it("prunes completed PID namespaces across short-lived invocations", async () => {
+	it("appends every process to the day's one file and removes ended processes' per-process logs", async () => {
 		const logsDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-logger-retention-"));
 		roots.push(logsDir);
 		// macOS process identifiers are far below these values, so the fixtures
 		// are deterministically completed rather than briefly lingering as zombies.
 		const exitedPids = [9_000_001, 9_000_002];
+		const today = localDay(new Date());
+		const oldNames: string[] = [];
+		for (const pid of exitedPids) {
+			for (const name of [`omp.${today}.${pid}.log`, `omp.${today}.${pid}.log.1`, `.omp.${pid}-audit.json`]) {
+				await Bun.write(path.join(logsDir, name), name);
+				oldNames.push(name);
+			}
+		}
 
 		await Bun.write(path.join(logsDir, ".release"), "");
 		const probePath = await makeProbe(logsDir);
-		const seed = Bun.spawn([process.execPath, probePath], {
-			stdin: "pipe",
-			stdout: "ignore",
-			stderr: "pipe",
-		});
-		seed.stdin.end();
-		expect(await seed.exited).toBe(0);
-		const seedLog = (await fs.readdir(logsDir)).find(name => name.endsWith(`.${seed.pid}.log`));
-		const seedDate = seedLog?.match(/^omp\.(\d{4}-\d{2}-\d{2})\./)?.[1];
-		if (!seedDate) throw new Error("probe did not create a dated log");
-		const baseDate = new Date(`${seedDate}T12:00:00`);
-		const localDate = (daysAgo: number): string => localDayBefore(baseDate, daysAgo);
-		const retainedNames: string[] = [];
-		const expiredNames: string[] = [];
-		for (const pid of exitedPids) {
-			for (let daysAgo = -1; daysAgo <= 5; daysAgo++) {
-				const name = `omp.${localDate(daysAgo)}.${pid}.log`;
-				await Bun.write(path.join(logsDir, name), name);
-				await fs.utimes(path.join(logsDir, name), 2, 2);
-				(daysAgo > 0 && daysAgo < 5 ? retainedNames : expiredNames).push(name);
-			}
-			const rolloverName = `omp.${localDate(0)}.${pid}.log.1`;
-			await Bun.write(path.join(logsDir, rolloverName), rolloverName);
-			await fs.utimes(path.join(logsDir, rolloverName), 2, 2);
-			retainedNames.push(rolloverName);
-			await Bun.write(path.join(logsDir, `.omp.${pid}-audit.json`), "{}");
+		const pids: number[] = [];
+		for (let run = 0; run < 2; run++) {
+			const probe = Bun.spawn([process.execPath, probePath], { stdin: "pipe", stdout: "ignore", stderr: "pipe" });
+			probe.stdin.end();
+			expect(await probe.exited).toBe(0);
+			pids.push(probe.pid);
 		}
 
-		for (let restart = 0; restart < 2; restart++) {
-			const current = Bun.spawn([process.execPath, probePath], {
-				stdin: "pipe",
-				stdout: "ignore",
-				stderr: "pipe",
-			});
-			current.stdin.end();
-			expect(await current.exited).toBe(0);
-		}
-
-		const entries = await fs.readdir(logsDir);
-		for (const expected of retainedNames) expect(entries).toContain(expected);
-		for (const expired of expiredNames) expect(entries).not.toContain(expired);
-		expect(entries.filter(name => name.endsWith(".log.1"))).toHaveLength(exitedPids.length);
-		// Completed-process audits from earlier releases are removed, and the
-		// current sink tracks its rotations in memory without writing one.
-		expect(entries.filter(name => name.endsWith("-audit.json"))).toEqual([]);
+		const entries = (await fs.readdir(logsDir)).filter(name => name !== ".release");
+		expect(entries).toEqual([`omp.${today}.log`]);
+		for (const name of oldNames) expect(entries).not.toContain(name);
+		const records = (await fs.readFile(path.join(logsDir, `omp.${today}.log`), "utf8"))
+			.split(os.EOL)
+			.filter(line => line.length > 0)
+			.map(line => JSON.parse(line) as { pid: number; message: string });
+		expect(records.map(record => [record.pid, record.message])).toEqual(pids.map(pid => [pid, "multiprocess probe"]));
 	});
 
 	it("ages out legacy shared daily logs and hash-named audits past the retention window", async () => {

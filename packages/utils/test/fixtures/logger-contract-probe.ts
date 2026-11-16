@@ -27,6 +27,7 @@ switch (scenario) {
 		logger.warn("level-warn", { ordinal: 2 });
 		logger.info("level-info", { ordinal: 3 });
 		logger.debug("level-debug", { ordinal: 4 });
+		logger.fatal("level-fatal", { ordinal: 5 });
 
 		const hidden = Symbol("hidden");
 		const context: Record<string, unknown> & { [hidden]?: unknown } = {
@@ -41,7 +42,7 @@ switch (scenario) {
 			nan: Number.NaN,
 		};
 		context[hidden] = "omitted";
-		logger.info("context-matrix", context);
+		logger.warn("context-matrix", context);
 		logger.warn("reserved-primary", {
 			before: "first",
 			message: "metadata-message",
@@ -49,7 +50,7 @@ switch (scenario) {
 			timestamp: "context-timestamp",
 			after: "last",
 		});
-		logger.debug("reserved-falsy", { message: "", after: true });
+		logger.warn("reserved-falsy", { message: "", after: true });
 
 		const cause = new Error("downstream");
 		cause.stack = "CAUSE_STACK";
@@ -68,16 +69,16 @@ switch (scenario) {
 	case "format-tokens": {
 		logger.setTransports({ console: false, file: primaryDir });
 		for (const token of ["s", "c", "d", "j", "i", "f", "o", "O", "%"]) {
-			logger.info(`token-%${token}`, { value: 7 });
+			logger.warn(`token-%${token}`, { value: 7 });
 		}
-		logger.info("non-token-%q", { value: 7 });
+		logger.warn("non-token-%q", { value: 7 });
 		interface TokenCircularContext extends Record<string, unknown> {
 			self?: TokenCircularContext;
 		}
 		const circular: TokenCircularContext = { kind: "circular" };
 		circular.self = circular;
-		logger.info("circular-%s", circular);
-		logger.info("bigint-%d", { value: 1n });
+		logger.warn("circular-%s", circular);
+		logger.warn("bigint-%d", { value: 1n });
 		disableTransports();
 		break;
 	}
@@ -94,38 +95,38 @@ switch (scenario) {
 				},
 			},
 			async () => {
-				logger.info("parent-start");
+				logger.warn("parent-start");
 				await Bun.sleep(5);
 				// A getter is read per record, so a re-keyed session is current at once.
 				parentId = "parent-rekeyed";
-				logger.info("parent-after-timer");
-				logger.info("explicit-wins", { sessionId: "explicit" });
-				logger.withoutContext(() => logger.info("shared-service"));
+				logger.warn("parent-after-timer");
+				logger.warn("explicit-wins", { sessionId: "explicit" });
+				logger.withoutContext(() => logger.warn("shared-service"));
 				parentDone();
 			},
 		);
 		const child = logger.withContext({ sessionId: "child" }, async () => {
 			await parentLogged;
-			logger.withContext({ sessionId: "grandchild" }, () => logger.info("child-nested", { ordinal: 1 }));
+			logger.withContext({ sessionId: "grandchild" }, () => logger.warn("child-nested", { ordinal: 1 }));
 		});
-		logger.info("outside");
+		logger.warn("outside");
 		await Promise.all([parent, child]);
 		// Context fields named like the record's own keep the record's level and message.
 		logger.withContext({ sessionId: "reserved", level: "error", message: "scoped", timestamp: "scoped" }, () =>
-			logger.info("reserved-kept"),
+			logger.warn("reserved-kept"),
 		);
 		// Sinks see the context's fields under the call's own.
 		const sinkContexts: unknown[] = [];
 		const unregister = logger.registerLogSink(event => sinkContexts.push(event.context));
-		logger.withContext({ sessionId: "sink", turn: 1 }, () => logger.info("to-sink", { turn: 2 }));
-		logger.info("to-sink-outside");
+		logger.withContext({ sessionId: "sink", turn: 1 }, () => logger.warn("to-sink", { turn: 2 }));
+		logger.warn("to-sink-outside");
 		// A context getter that throws costs the record, never the caller.
 		const throwing = {
 			get sessionId(): string {
 				throw new Error("getter failed");
 			},
 		};
-		logger.withContext(throwing, () => logger.info("throwing-getter", { kept: true }));
+		logger.withContext(throwing, () => logger.warn("throwing-getter", { kept: true }));
 		unregister();
 		writeResult({ sinkContexts });
 		disableTransports();
@@ -164,23 +165,23 @@ switch (scenario) {
 		disableTransports();
 		break;
 	case "default-file":
-		logger.info("mode-default", { mode: "default" });
+		logger.warn("mode-default", { mode: "default" });
 		disableTransports();
 		writeResult({ logPath: getLogPath() });
 		break;
 	case "file-only":
 		logger.setTransports({ console: false, file: primaryDir });
-		logger.info("mode-file", { mode: "file" });
+		logger.warn("mode-file", { mode: "file" });
 		disableTransports();
 		break;
 	case "console-only":
 		logger.setTransports({ console: true, file: false });
-		logger.info("mode-console", { mode: "console" });
+		logger.warn("mode-console", { mode: "console" });
 		disableTransports();
 		break;
 	case "both":
 		logger.setTransports({ console: true, file: primaryDir });
-		logger.info("mode-both", { mode: "both" });
+		logger.warn("mode-both", { mode: "both" });
 		disableTransports();
 		break;
 	case "disabled-reenable": {
@@ -204,14 +205,14 @@ switch (scenario) {
 	}
 	case "reconfigure":
 		logger.setTransports({ console: false, file: primaryDir });
-		logger.info("directory-a", { destination: "a" });
+		logger.warn("directory-a", { destination: "a" });
 		logger.setTransports({ console: false, file: secondaryDir });
-		logger.info("directory-b", { destination: "b" });
+		logger.warn("directory-b", { destination: "b" });
 		disableTransports();
 		break;
 	case "reconfigure-failure": {
 		logger.setTransports({ console: false, file: primaryDir });
-		logger.info("before-failed-reconfigure");
+		logger.warn("before-failed-reconfigure");
 		const blockerPath = path.join(secondaryDir, "not-a-directory");
 		fs.writeFileSync(blockerPath, "blocked");
 		let reconfigureThrew = false;
@@ -227,7 +228,7 @@ switch (scenario) {
 			sinkCount++;
 			sinkSameContext = event.context === sinkContext;
 		});
-		logger.info("after-failed-reconfigure", sinkContext);
+		logger.warn("after-failed-reconfigure", sinkContext);
 		dispose();
 		await Bun.sleep(20);
 		writeResult({ reconfigureThrew, sinkCount, sinkSameContext });
@@ -235,12 +236,12 @@ switch (scenario) {
 	}
 	case "burst-close":
 		logger.setTransports({ console: false, file: primaryDir });
-		for (let index = 0; index < 1_000; index++) logger.info("burst-close", { index });
+		for (let index = 0; index < 1_000; index++) logger.warn("burst-close", { index });
 		disableTransports();
 		break;
 	case "burst-natural":
 		logger.setTransports({ console: false, file: primaryDir });
-		for (let index = 0; index < 1_000; index++) logger.info("burst-natural", { index });
+		for (let index = 0; index < 1_000; index++) logger.warn("burst-natural", { index });
 		break;
 	case "sink-order": {
 		logger.setTransports({ console: true, file: false });
@@ -249,9 +250,9 @@ switch (scenario) {
 			process.stdout.write(`SINK:${event.context === sinkContext}\n`);
 			throw new Error("sink failure must be isolated");
 		});
-		logger.info("sink-first", sinkContext);
+		logger.warn("sink-first", sinkContext);
 		dispose();
-		logger.info("sink-disposed");
+		logger.warn("sink-disposed");
 		disableTransports();
 		break;
 	}
@@ -268,18 +269,37 @@ switch (scenario) {
 		logger.setTransports({ console: false, file: primaryDir });
 		for (const [index, date] of dates.entries()) {
 			process.env.OMP_LOGGER_TEST_NOW = date;
-			logger.info(`date-${index + 1}`);
+			logger.warn(`date-${index + 1}`);
 			await Bun.sleep(10);
 		}
 		disableTransports();
 		break;
 	}
+	case "prune": {
+		// Shared retention runs once the transport is built: older days and dead processes' files go.
+		const live = process.pid;
+		for (const name of [
+			"omp.2025-12-27.log",
+			"omp.2025-12-28.log",
+			"omp.2025-12-31.999999.log",
+			`omp.2026-01-01.${live}.log`,
+			".omp.999999-audit.json",
+			"notes.txt",
+		]) {
+			fs.writeFileSync(path.join(primaryDir, name), "old\n");
+		}
+		logger.setTransports({ console: false, file: primaryDir });
+		logger.warn("after-prune");
+		await Bun.sleep(50);
+		disableTransports();
+		break;
+	}
 	case "size-rotation":
 		logger.setTransports({ console: false, file: primaryDir });
-		logger.info("size-nine-mib", { payload: "x".repeat(9 * 1024 * 1024) });
-		logger.info("size-half-mib", { payload: "y".repeat(512 * 1024) });
-		logger.info("size-crosses-ten-mib", { payload: "z".repeat(1024 * 1024) });
-		logger.info("rotation-trigger");
+		logger.warn("size-nine-mib", { payload: "x".repeat(9 * 1024 * 1024) });
+		logger.warn("size-half-mib", { payload: "y".repeat(512 * 1024) });
+		logger.warn("size-crosses-ten-mib", { payload: "z".repeat(1024 * 1024) });
+		logger.warn("rotation-trigger");
 		disableTransports();
 		break;
 	default:

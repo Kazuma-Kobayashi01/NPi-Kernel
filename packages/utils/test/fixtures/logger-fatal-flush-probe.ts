@@ -16,14 +16,14 @@ if (!primaryDir) throw new Error("expected primary directory");
 logger.setTransports({ console: false, file: primaryDir });
 switch (scenario) {
 	case "uncaught":
-		logger.info("before-crash-info");
+		logger.warn("before-crash-warn");
 		logger.debug("before-crash-debug");
 		setTimeout(() => {
 			throw new Error("fixture crash");
 		}, 0);
 		break;
 	case "exit-process":
-		logger.info("before-exit-info");
+		logger.warn("before-exit-warn");
 		logger.debug("before-exit-debug");
 		exitProcess(3);
 		break;

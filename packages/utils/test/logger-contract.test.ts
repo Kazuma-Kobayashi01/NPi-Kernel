@@ -85,9 +85,7 @@ async function runScenario(
 }
 
 async function logFileNames(directory: string): Promise<string[]> {
-	return (await fs.readdir(directory))
-		.filter(name => /^omp\.\d{4}-\d{2}-\d{2}\.\d+\.log(?:\.\d+)?$/.test(name))
-		.sort();
+	return (await fs.readdir(directory)).filter(name => /^omp\.\d{4}-\d{2}-\d{2}\.log$/.test(name)).sort();
 }
 
 async function readSingleLog(directory: string): Promise<{ name: string; text: string }> {
@@ -113,7 +111,7 @@ async function readLogEntries(directory: string): Promise<LogEntry[]> {
 
 function expectedLine(
 	pid: number,
-	level: "error" | "warn" | "info" | "debug",
+	level: "fatal" | "error" | "warn" | "info" | "debug",
 	message: string,
 	context: Record<string, unknown> = {},
 	timestamp = fixedTimestamp,
@@ -122,18 +120,17 @@ function expectedLine(
 }
 
 describe("central logger byte contract", () => {
-	test("pins levels, metadata normalization, key order, timestamp, errors, pid, and EOL", async () => {
+	test("keeps fatal, error and warn only, and pins metadata normalization, key order, timestamp, errors, pid, and EOL", async () => {
 		const result = await runScenario("matrix");
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
 		const log = await readSingleLog(result.primaryDir);
-		expect(log.name).toBe(`omp.2026-01-01.${result.pid}.log`);
+		expect(log.name).toBe("omp.2026-01-01.log");
 		const expected = [
 			expectedLine(result.pid, "error", "level-error", { ordinal: 1 }),
 			expectedLine(result.pid, "warn", "level-warn", { ordinal: 2 }),
-			expectedLine(result.pid, "info", "level-info", { ordinal: 3 }),
-			expectedLine(result.pid, "debug", "level-debug", { ordinal: 4 }),
-			expectedLine(result.pid, "info", "context-matrix", {
+			expectedLine(result.pid, "fatal", "level-fatal", { ordinal: 5 }),
+			expectedLine(result.pid, "warn", "context-matrix", {
 				stringValue: "text",
 				numberValue: 7,
 				booleanValue: false,
@@ -143,7 +140,7 @@ describe("central logger byte contract", () => {
 				nan: null,
 			}),
 			expectedLine(result.pid, "warn", "reserved-primary metadata-message", { before: "first", after: "last" }),
-			expectedLine(result.pid, "debug", "reserved-falsy", { after: true }),
+			expectedLine(result.pid, "warn", "reserved-falsy", { after: true }),
 			expectedLine(result.pid, "error", "error-matrix", {
 				error: {
 					name: "CustomError",
@@ -179,10 +176,10 @@ describe("central logger byte contract", () => {
 			"token-%%",
 		];
 		const expected = [
-			...tokenMessages.map(message => expectedLine(result.pid, "info", message)),
-			expectedLine(result.pid, "info", "non-token-%q", { value: 7 }),
-			expectedLine(result.pid, "info", "circular-%s"),
-			expectedLine(result.pid, "info", "bigint-%d"),
+			...tokenMessages.map(message => expectedLine(result.pid, "warn", message)),
+			expectedLine(result.pid, "warn", "non-token-%q", { value: 7 }),
+			expectedLine(result.pid, "warn", "circular-%s"),
+			expectedLine(result.pid, "warn", "bigint-%d"),
 		].join("");
 		expect((await readSingleLog(result.primaryDir)).text).toBe(expected);
 	});
@@ -191,15 +188,15 @@ describe("central logger byte contract", () => {
 		const result = await runScenario("context");
 		expect(result.stderr).toBe("");
 		const expected = [
-			expectedLine(result.pid, "info", "parent-start", { sessionId: "parent" }),
-			expectedLine(result.pid, "info", "outside"),
-			expectedLine(result.pid, "info", "parent-after-timer", { sessionId: "parent-rekeyed" }),
-			expectedLine(result.pid, "info", "explicit-wins", { sessionId: "explicit" }),
-			expectedLine(result.pid, "info", "shared-service"),
-			expectedLine(result.pid, "info", "child-nested", { sessionId: "grandchild", ordinal: 1 }),
-			expectedLine(result.pid, "info", "reserved-kept", { sessionId: "reserved" }),
-			expectedLine(result.pid, "info", "to-sink", { sessionId: "sink", turn: 2 }),
-			expectedLine(result.pid, "info", "to-sink-outside"),
+			expectedLine(result.pid, "warn", "parent-start", { sessionId: "parent" }),
+			expectedLine(result.pid, "warn", "outside"),
+			expectedLine(result.pid, "warn", "parent-after-timer", { sessionId: "parent-rekeyed" }),
+			expectedLine(result.pid, "warn", "explicit-wins", { sessionId: "explicit" }),
+			expectedLine(result.pid, "warn", "shared-service"),
+			expectedLine(result.pid, "warn", "child-nested", { sessionId: "grandchild", ordinal: 1 }),
+			expectedLine(result.pid, "warn", "reserved-kept", { sessionId: "reserved" }),
+			expectedLine(result.pid, "warn", "to-sink", { sessionId: "sink", turn: 2 }),
+			expectedLine(result.pid, "warn", "to-sink-outside"),
 		].join("");
 		expect((await readSingleLog(result.primaryDir)).text).toBe(expected);
 		const payload = JSON.parse(await fs.readFile(result.resultPath, "utf8")) as { sinkContexts: unknown[] };
@@ -224,41 +221,37 @@ describe("central logger byte contract", () => {
 });
 
 describe("central logger file level and batching", () => {
-	test("persists debug records by default", async () => {
+	test("drops debug and info records: no file appears for them", async () => {
 		const result = await runScenario("debug-only");
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
-		expect((await readSingleLog(result.primaryDir)).text).toBe(
-			expectedLine(result.pid, "debug", "debug-only-first", { ordinal: 1 }) +
-				expectedLine(result.pid, "debug", "debug-only-second", { ordinal: 2 }),
-		);
+		expect(await logFileNames(result.primaryDir)).toEqual([]);
 	});
 
-	test("OMP_LOG_LEVEL=warn gates info and debug while warn and error stay on disk", async () => {
-		const result = await runScenario("matrix", { logLevel: "WARN" });
-		expect((await readLogEntries(result.primaryDir)).map(entry => entry.message)).toEqual([
+	test("OMP_LOG_LEVEL=error narrows to error and fatal; debug never widens past warn", async () => {
+		const narrowed = await runScenario("matrix", { logLevel: "ERROR" });
+		expect((await readLogEntries(narrowed.primaryDir)).map(entry => entry.message)).toEqual([
 			"level-error",
-			"level-warn",
-			"reserved-primary metadata-message",
+			"level-fatal",
 			"error-matrix",
 			"tojson-error",
 		]);
+		const widened = await runScenario("matrix", { logLevel: "debug" });
+		expect((await readLogEntries(widened.primaryDir)).map(entry => entry.level)).not.toContain("debug");
 	});
 
 	test("the fatal record lands after the buffered records that preceded it", async () => {
 		const result = await runScenario("uncaught", { probe: fatalProbePath, exitCode: 1 });
 		expect((await readLogEntries(result.primaryDir)).map(entry => [entry.level, entry.message])).toEqual([
-			["info", "before-crash-info"],
-			["debug", "before-crash-debug"],
-			["error", "Uncaught exception"],
+			["warn", "before-crash-warn"],
+			["fatal", "Uncaught exception"],
 		]);
 	});
 
 	test("a hard exit through exitProcess writes the buffered records", async () => {
 		const result = await runScenario("exit-process", { probe: fatalProbePath, exitCode: 3 });
 		expect((await readLogEntries(result.primaryDir)).map(entry => [entry.level, entry.message])).toEqual([
-			["info", "before-exit-info"],
-			["debug", "before-exit-debug"],
+			["warn", "before-exit-warn"],
 		]);
 	});
 });
@@ -270,7 +263,7 @@ describe("central logger transport lifecycle", () => {
 		expect(result.stderr).toBe("");
 		const defaultLogsDir = path.join(result.primaryDir, ".omp", "logs");
 		const log = await readSingleLog(defaultLogsDir);
-		expect(log.text).toBe(expectedLine(result.pid, "info", "mode-default", { mode: "default" }));
+		expect(log.text).toBe(expectedLine(result.pid, "warn", "mode-default", { mode: "default" }));
 	});
 
 	test("a test process writes its default-file records under the temp dir, never the real logs dir", async () => {
@@ -282,7 +275,7 @@ describe("central logger transport lifecycle", () => {
 		const uid = typeof process.getuid === "function" ? process.getuid() : os.userInfo().username;
 		const testLogsDir = path.join(result.root, "tmp", `omp-test-logs-${uid}`);
 		const log = await readSingleLog(testLogsDir);
-		expect(log.text).toBe(expectedLine(result.pid, "info", "mode-default", { mode: "default" }));
+		expect(log.text).toBe(expectedLine(result.pid, "warn", "mode-default", { mode: "default" }));
 		// Log readers (report bundles, the stderr guard) resolve the same file.
 		const { logPath } = JSON.parse(await fs.readFile(result.resultPath, "utf8"));
 		expect(logPath).toBe(path.join(testLogsDir, log.name));
@@ -290,19 +283,19 @@ describe("central logger transport lifecycle", () => {
 
 	test("emits file-only, console-only, and dual modes exactly once", async () => {
 		const fileOnly = await runScenario("file-only");
-		const fileLine = expectedLine(fileOnly.pid, "info", "mode-file", { mode: "file" });
+		const fileLine = expectedLine(fileOnly.pid, "warn", "mode-file", { mode: "file" });
 		expect(fileOnly.stdout).toBe("");
 		expect(fileOnly.stderr).toBe("");
 		expect((await readSingleLog(fileOnly.primaryDir)).text).toBe(fileLine);
 
 		const consoleOnly = await runScenario("console-only");
-		const consoleLine = expectedLine(consoleOnly.pid, "info", "mode-console", { mode: "console" });
+		const consoleLine = expectedLine(consoleOnly.pid, "warn", "mode-console", { mode: "console" });
 		expect(consoleOnly.stdout).toBe(consoleLine);
 		expect(consoleOnly.stderr).toBe("");
 		expect(await logFileNames(consoleOnly.primaryDir)).toEqual([]);
 
 		const both = await runScenario("both");
-		const bothLine = expectedLine(both.pid, "info", "mode-both", { mode: "both" });
+		const bothLine = expectedLine(both.pid, "warn", "mode-both", { mode: "both" });
 		expect(both.stdout).toBe(bothLine);
 		expect(both.stderr).toBe("");
 		expect((await readSingleLog(both.primaryDir)).text).toBe(bothLine);
@@ -328,10 +321,10 @@ describe("central logger transport lifecycle", () => {
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
 		expect((await readSingleLog(result.primaryDir)).text).toBe(
-			expectedLine(result.pid, "info", "directory-a", { destination: "a" }),
+			expectedLine(result.pid, "warn", "directory-a", { destination: "a" }),
 		);
 		expect((await readSingleLog(result.secondaryDir)).text).toBe(
-			expectedLine(result.pid, "info", "directory-b", { destination: "b" }),
+			expectedLine(result.pid, "warn", "directory-b", { destination: "b" }),
 		);
 	});
 
@@ -340,7 +333,7 @@ describe("central logger transport lifecycle", () => {
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
 		expect((await readSingleLog(result.primaryDir)).text).toBe(
-			expectedLine(result.pid, "info", "before-failed-reconfigure"),
+			expectedLine(result.pid, "warn", "before-failed-reconfigure"),
 		);
 		expect(await logFileNames(result.secondaryDir)).toEqual([]);
 		const payload = JSON.parse(await fs.readFile(result.resultPath, "utf8")) as {
@@ -374,53 +367,49 @@ describe("central logger transport lifecycle", () => {
 
 	test("runs local console output before sinks and isolates throwing or disposed sinks", async () => {
 		const result = await runScenario("sink-order");
-		const first = expectedLine(result.pid, "info", "sink-first", { identity: "same" });
-		const second = expectedLine(result.pid, "info", "sink-disposed");
+		const first = expectedLine(result.pid, "warn", "sink-first", { identity: "same" });
+		const second = expectedLine(result.pid, "warn", "sink-disposed");
 		expect(result.stdout).toBe(`${first}SINK:true\n${second}`);
 		expect(result.stderr).toBe("");
 	});
 });
 
-describe("DailyRotateFile option and retention contract", () => {
-	test("uses local-day names and retains exactly five rotations without an audit file", async () => {
+describe("daily file and retention contract", () => {
+	test("writes one shared file per local day, named without a PID", async () => {
 		const result = await runScenario("date-retention");
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
-		const expectedNames = [2, 3, 4, 5, 6].map(day => `omp.2026-01-0${day}.${result.pid}.log`);
+		// 03:04 UTC is 22:04 of the previous day in the probe's UTC-5 zone.
+		const expectedNames = [1, 2, 3, 4, 5, 6].map(day => `omp.2026-01-0${day}.log`);
 		expect(await logFileNames(result.primaryDir)).toEqual(expectedNames);
 		for (const [offset, name] of expectedNames.entries()) {
-			const day = offset + 2;
+			const day = offset + 1;
 			const timestamp = `2026-01-0${day}T22:04:05.006-05:00`;
 			expect(await fs.readFile(path.join(result.primaryDir, name), "utf8")).toBe(
-				expectedLine(result.pid, "info", `date-${day}`, {}, timestamp),
+				expectedLine(result.pid, "warn", `date-${offset + 1}`, {}, timestamp),
 			);
 		}
-		expect((await fs.readdir(result.primaryDir)).sort()).toEqual(expectedNames);
 	});
 
-	test("crosses 10 MiB before rolling the following record to suffix .1", async () => {
+	test("keeps five days and live processes' old files, removing older days and dead processes' files", async () => {
+		const result = await runScenario("prune");
+		expect(result.stderr).toBe("");
+		expect((await fs.readdir(result.primaryDir)).sort()).toEqual(
+			["notes.txt", "omp.2025-12-28.log", "omp.2026-01-01.log", `omp.2026-01-01.${result.pid}.log`].sort(),
+		);
+	});
+
+	test("never rolls a day's file by size", async () => {
 		const result = await runScenario("size-rotation");
 		expect(result.stdout).toBe("");
 		expect(result.stderr).toBe("");
-		const baseName = `omp.2026-01-01.${result.pid}.log`;
-		const rotatedName = `${baseName}.1`;
-		expect(await logFileNames(result.primaryDir)).toEqual([baseName, rotatedName]);
-		const basePath = path.join(result.primaryDir, baseName);
-		const baseStat = await fs.stat(basePath);
-		const recordSize = (message: string, payloadSize: number): number =>
-			`{"timestamp":"${fixedTimestamp}","level":"info","pid":${result.pid},"message":"${message}","payload":"`
-				.length +
-			payloadSize +
-			`"}${os.EOL}`.length;
-		const expectedBytes =
-			recordSize("size-nine-mib", 9 * 1024 * 1024) +
-			recordSize("size-half-mib", 512 * 1024) +
-			recordSize("size-crosses-ten-mib", 1024 * 1024);
-		expect(baseStat.size).toBe(expectedBytes);
-		expect(baseStat.size).toBeGreaterThan(10 * 1024 * 1024);
-		expect(await fs.readFile(path.join(result.primaryDir, rotatedName), "utf8")).toBe(
-			expectedLine(result.pid, "info", "rotation-trigger"),
-		);
-		expect((await fs.readdir(result.primaryDir)).sort()).toEqual([baseName, rotatedName]);
+		expect(await logFileNames(result.primaryDir)).toEqual(["omp.2026-01-01.log"]);
+		const entries = await readLogEntries(result.primaryDir);
+		expect(entries.map(entry => entry.message)).toEqual([
+			"size-nine-mib",
+			"size-half-mib",
+			"size-crosses-ten-mib",
+			"rotation-trigger",
+		]);
 	});
 });

@@ -16,6 +16,7 @@ export interface RotatingFileBatchOptions {
 export interface RotatingFileOptions {
 	readonly directory: string;
 	readonly filenamePrefix: string;
+	/** Owner tag in the name (`<prefix>.<day>.<suffix>.log`); empty for a file shared by every process. */
 	readonly filenameSuffix: string;
 	readonly maxBytes: number;
 	readonly maxFiles: number;
@@ -197,10 +198,9 @@ export class RotatingFileSink {
 
 	#setActivePath(day: string, index: number): void {
 		const suffix = index === 0 ? "" : `.${index}`;
-		this.#activePath = path.join(
-			this.#directory,
-			`${this.#filenamePrefix}.${day}.${this.#filenameSuffix}.log${suffix}`,
-		);
+		// An empty filenameSuffix gives the shared `<prefix>.<day>.log`.
+		const owner = this.#filenameSuffix ? `.${this.#filenameSuffix}` : "";
+		this.#activePath = path.join(this.#directory, `${this.#filenamePrefix}.${day}${owner}.log${suffix}`);
 		try {
 			this.#activeBytes = fs.statSync(this.#activePath).size;
 		} catch {

@@ -22,18 +22,6 @@ afterEach(() => {
 	fs.rmSync(dir, { recursive: true, force: true });
 });
 
-/** Bytes passed to each `fs.writeSync` call so far. */
-function writtenSizes(): number[] {
-	// The spy's type follows writeSync's last (string) overload; the sink passes Buffers.
-	return writeSpy.mock.calls.map(call => {
-		const data: unknown = call[1];
-		const offset: unknown = call[2];
-		const size =
-			typeof data === "string" ? Buffer.byteLength(data) : data instanceof Uint8Array ? data.byteLength : 0;
-		return size - (typeof offset === "number" ? offset : 0);
-	});
-}
-
 function readLines(directory: string): string[] {
 	const names = fs.readdirSync(directory).sort();
 	return names.flatMap(name =>
@@ -51,72 +39,20 @@ function messages(directory: string): string[] {
 	});
 }
 
-describe("logger file batching", () => {
-	test("buffers debug records and writes them in one call, creating the file only then", () => {
-		logger.setTransports({ console: false, file: dir });
-		for (let index = 0; index < 200; index++) logger.debug("batched-debug", { index });
-
-		expect(writeSpy).not.toHaveBeenCalled();
-		expect(fs.readdirSync(dir)).toEqual([]);
-
-		logger.flush();
-		expect(writeSpy).toHaveBeenCalledTimes(1);
-		expect(readLines(dir)).toHaveLength(200);
-	});
-
-	test("the flush timer writes a pending batch once, one second after the first buffered record", () => {
-		vi.useFakeTimers();
-		logger.setTransports({ console: false, file: dir });
-		for (let index = 0; index < 50; index++) logger.debug("timer-debug", { index });
-
-		vi.advanceTimersByTime(999);
-		expect(writeSpy).not.toHaveBeenCalled();
-		vi.advanceTimersByTime(1);
-		expect(writeSpy).toHaveBeenCalledTimes(1);
-		expect(readLines(dir)).toHaveLength(50);
-
-		vi.advanceTimersByTime(5_000);
-		expect(writeSpy).toHaveBeenCalledTimes(1);
-	});
-
-	test("a burst above the size threshold writes once per 64 KiB, not once per record", () => {
-		logger.setTransports({ console: false, file: dir });
-		const count = 5_000;
-		for (let index = 0; index < count; index++) logger.debug("burst-debug", { index, padding: "p".repeat(64) });
-		const burstWrites = writtenSizes();
-		logger.flush();
-
-		const fileBytes = fs.readdirSync(dir).reduce((sum, name) => sum + fs.statSync(path.join(dir, name)).size, 0);
-		expect(burstWrites.length).toBeGreaterThan(0);
-		expect(burstWrites.length).toBeLessThanOrEqual(Math.floor(fileBytes / FLUSH_BYTES));
-		for (const size of burstWrites) expect(size).toBeGreaterThanOrEqual(FLUSH_BYTES);
-		expect(readLines(dir)).toHaveLength(count);
-	});
-
-	test("warn and error records reach disk at once, after the records buffered before them", () => {
+describe("logger file writes", () => {
+	test("warn, error and fatal records reach disk at once, one write each; info and debug never do", () => {
 		logger.setTransports({ console: false, file: dir });
 		logger.debug("debug-1");
 		logger.info("info-2");
 		expect(writeSpy).not.toHaveBeenCalled();
+		expect(fs.readdirSync(dir)).toEqual([]);
 
 		logger.warn("warn-3");
 		expect(writeSpy).toHaveBeenCalledTimes(1);
-		expect(messages(dir)).toEqual(["debug-1", "info-2", "warn-3"]);
-
-		logger.debug("debug-4");
-		logger.error("error-5");
-		expect(writeSpy).toHaveBeenCalledTimes(2);
-		expect(messages(dir)).toEqual(["debug-1", "info-2", "warn-3", "debug-4", "error-5"]);
-	});
-
-	test("closing the transport writes the pending records", () => {
-		logger.setTransports({ console: false, file: dir });
-		logger.debug("pending-1");
-		logger.info("pending-2");
-		expect(fs.readdirSync(dir)).toEqual([]);
-
-		logger.setTransports({ console: false, file: false });
-		expect(messages(dir)).toEqual(["pending-1", "pending-2"]);
+		logger.error("error-4");
+		logger.fatal("fatal-5");
+		expect(writeSpy).toHaveBeenCalledTimes(3);
+		expect(messages(dir)).toEqual(["warn-3", "error-4", "fatal-5"]);
 	});
 });
 

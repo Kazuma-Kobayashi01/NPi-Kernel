@@ -237,8 +237,8 @@ async function collectSessionIds(sessionFile: string | undefined): Promise<Set<s
 }
 
 /**
- * Concatenate the tail of every same-day process log so a report generated
- * after a crash still captures the fatal PID's `omp.<date>.<pid>.log`. Files
+ * Concatenate the tail of every same-day log: the shared `omp.<date>.log`, plus
+ * any `omp.<date>.<pid>.log` an older npi still running today writes. Files
  * are ordered oldest-first by mtime and separated by a filename header.
  * `sessionLines` holds every record of those files whose `sessionId` is in
  * `sessionIds`, in the same file order, capped at the last {@link MAX_LOG_LINES}.
@@ -310,7 +310,8 @@ async function collectSameDayLogs(
 	return { tails: chunks.join("\n\n"), sessionLines: sessionLines.join("\n") };
 }
 
-const LOG_FILE_PATTERN = new RegExp(`^${APP_NAME}\\.(\\d{4}-\\d{2}-\\d{2})\\.\\d+\\.log(?:\\.\\d+)?$`);
+/** The shared daily log, and per-process logs (`.<pid>` before `.log`) of earlier releases. */
+const LOG_FILE_PATTERN = new RegExp(`^${APP_NAME}\\.(\\d{4}-\\d{2}-\\d{2})(?:\\.\\d+)?\\.log(?:\\.\\d+)?$`);
 
 export async function createDebugLogSource(): Promise<DebugLogSource> {
 	const logsDir = getLogsDir();
