@@ -2,54 +2,37 @@ You MUST summarize the conversation above into a structured handoff summary for 
 
 IMPORTANT: If the conversation ends with an unanswered question or a request awaiting user response (e.g., "Please run command and paste output"), you MUST preserve that exact question/request.
 
-You MUST use this format (sections can be omitted if not applicable):
+You MUST use this format (sections can be omitted if not applicable); the most important sections come first:
 
-## Goal & Original User Intent
-[Preserve the user's primary goal verbatim; list multiple if session covers different tasks. NEVER drop or dilute the original task request.]
-
-## User Directives & Architectural Invariants
-- [Explicit project constraints, branch rules, coding paradigms, forbidden actions, engineering boundaries, long-term preferences, or user persona facts specified by the user]
-
-## Key Architectural Decisions
-- **[Decision]**: [Technical choice and exact rationale. Preserve permanent invariants across compactions.]
-
-## Modified Files & Artifacts
-- [Exact file paths modified, created, or tested, including branch state and key exports/APIs]
+## Goal
+[The user's goal in their own words; list multiple if the session covers different tasks. Keep the original request's intent; NEVER dilute it.]
 
 ## Constraints & Preferences
-- [Constraints or technical conventions discovered during execution]
-## Progress
+- [Rules the user set for this work (branch rules, forbidden actions, conventions) and constraints discovered during execution]
 
-### Done
-- [x] [Completed tasks/changes]
-
-### In Progress
+## In Progress
 - [ ] [Current work]
-
-### Blocked
-- [Issues preventing progress]
-
-## Key Decisions
-- **[Decision]**: [Brief rationale]
+- [Blockers, if any]
 
 ## Next Steps
 1. [Ordered list of next actions]
 
 ## Critical Context
-- [Important data, pending questions, references]
-- **Mathematical Derivations & Formulas**: ALL LaTeX mathematical formulas (`$...$` and `$$...$$`) MUST be preserved verbatim; NEVER abbreviate, skip derivation steps, or replace formulas with vague descriptive prose.
-- **Academic Citations & Literature Sources**: ALL literature identifiers (e.g., `\cite{...}`, author/year, ArXiv IDs, DOIs) MUST be strictly preserved without omitting citation keys or bibliographic references.
-- **Key Code State & File Paths**: Exact file paths, symbol/function names, key configuration parameters, and error messages MUST be strictly preserved.
-- **User Directives & Invariants**: User explicitly declared long-term preferences, constraints, architectural boundaries, and persona facts MUST be preserved verbatim.
+- [Data needed to continue: exact file paths, symbol names, key configuration values, error messages, relevant command results, pending questions]
+- [Repository state if mentioned: branch, uncommitted changes]
 
-## Additional Notes
-[Anything else important not covered above]
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Done
+- [x] [Completed tasks/changes]
+
+## Relevant Files
+- [Files that still matter for the remaining work, with what changed]
 
 You MUST output only the structured summary; you NEVER include extra text.
 
-Sections MUST be kept concise, but conciseness NEVER overrides verbatim preservation:
-- Mathematical derivations and formulas: ALL LaTeX mathematical formulas (`$...$` and `$$...$$`) MUST be preserved verbatim; NEVER abbreviate, skip derivation steps, or vaguely summarize in prose.
-- Academic citations and sources: ALL literature identifiers (`\cite{...}`, author/year, ArXiv ID, DOI) MUST be strictly preserved; NEVER drop or omit citation keys.
-- Key code state and file paths: You MUST preserve exact file paths, function/type names, key configuration parameters, error messages, and relevant tool outputs or command results.
-- User directives and facts: You MUST strictly preserve user long-term preferences, constraints, architectural invariants, and explicitly declared persona facts.
-- Repository and execution state: You MUST include repository state changes (branch, uncommitted changes) if mentioned.
+Keep sections concise: compress what is finished, keep exact what the next step needs. Preserve exact file paths, function/type names, configuration values and error messages you keep.
+{{#if academic}}
+This is a research session: keep LaTeX formulas (`$...$`, `$$...$$`) that the work still depends on verbatim, and keep literature identifiers (citation keys, author/year, arXiv IDs, DOIs) exact.
+{{/if}}

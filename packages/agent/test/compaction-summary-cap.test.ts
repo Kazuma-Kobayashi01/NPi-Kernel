@@ -55,6 +55,14 @@ describe("compaction summary output budget", () => {
 		expect(spy.mock.calls[0]?.[2]?.maxTokens).toBe(MAX_SUMMARY_TOKENS);
 	});
 
+	test("rejects a summary cut off at the output limit instead of committing it", async () => {
+		vi.spyOn(ai, "completeSimple").mockResolvedValue({
+			...createAssistantMessage("## Goal\nFinish the port\n\n## Next St"),
+			stopReason: "length",
+		});
+		await expect(generateSummary(messages, getModel(), 16_384, "test-key")).rejects.toThrow(/output token limit/);
+	});
+
 	test("forwards the cap to remote compaction", async () => {
 		let requestBody: Record<string, unknown> | undefined;
 		await generateSummary(messages, getModel(), 150_000, "test-key", undefined, undefined, undefined, {

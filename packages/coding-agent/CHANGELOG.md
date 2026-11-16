@@ -19,11 +19,13 @@
 - `remote.autoStart` no longer prints the remote control notice at launch: a green `/rc` at the right end of the home footer and the status line shows it is on, for as long as it is. A typed `/rc` and `/rc status` still print the details
 - The system prompt no longer repeats MCP tool names in the eval tool's session list (they stay in the MCP routes), names `task` as the default delegation surface over eval `agent()`/`workpool()`, and states when a decision counts as already fixed so no form is opened for it
 - The `ui.present` tool description is about 40% shorter: per-component field lists and the two examples are gone (the schema already carries them), while the limits, image-source rules and "forms never authorize" rules stay
+- Compaction and handoff prompts are leaner: one decisions section and one constraints section instead of two each, Next Steps and Critical Context ahead of the finished-work list, and an update pass that condenses old work and drops files the remaining work no longer needs instead of keeping everything forever. The LaTeX formula and citation rules apply only in NPi Desktop Academic sessions (`NPI_APP_MODE=academic`), and summaries no longer copy user persona facts (Memory owns those)
 
 ### Fixed
 
 - The prompt's destructive-command rule no longer tells the model to `ask` (approval goes through the native gate), the branch check is no longer forbidden by the no-git-validation rule, and the last `todo` update may stand alone when no real call remains
 - With `sandbox.mode` on, the terminal no longer shows "Still starting after Ns" every 10 seconds for the whole session
+- A compaction summary, handoff document or turn-prefix summary cut off at its output token limit now fails the pass instead of replacing the history with a summary missing its last sections
 
 - A seance `task` whose `sourceSession` id belongs to another project now fails with a hint to pass that session's `.jsonl` path, which works from any project, instead of only "was not found" ([#19095](https://github.com/can1357/oh-my-pi/pull/19095) by [@zhivko-kocev](https://github.com/zhivko-kocev))
 - Pressing Enter in `/resume` on a session recorded in a folder that has since been moved or deleted no longer does nothing: a session filed under the current folder is moved here and resumed, and any other one reports why it cannot be resumed

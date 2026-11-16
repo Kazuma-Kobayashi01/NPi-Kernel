@@ -10,9 +10,9 @@ Capture exact technical state, not abstractions.
 - Test results, observed failures
 - Decisions made
 - Partial work affecting the next step
-- Mathematical derivations & formulas: all LaTeX formulas (`$...$` and `$$...$$`) MUST be preserved verbatim; NEVER abbreviate, skip derivation steps, or summarize in prose
-- Academic citations & sources: all literature identifiers (e.g., `\cite{...}`, author/year, ArXiv ID, DOI) MUST be strictly preserved without dropping citation keys
-- User directives & persona facts: explicit long-term preferences, constraints, and persona facts MUST be preserved verbatim
+{{#if academic}}
+- Research session: LaTeX formulas (`$...$`, `$$...$$`) the work still depends on, verbatim; literature identifiers (citation keys, author/year, arXiv IDs, DOIs) exact
+{{/if}}
 Register: address the successor directly in the imperative ("Fix X", "Run Y") — never first person ("I need to…", "my attempt…").
 The handoff mechanism is invisible to the document: NEVER list writing, generating, or delivering a handoff/summary/context document as progress or a next step. Progress and Next Steps cover the user's task only.
 </instruction>
@@ -24,7 +24,7 @@ Use exactly this structure:
 [What the user is trying to accomplish]
 
 ## Constraints & Preferences
-- [Any constraints, long-term preferences, requirements, or explicitly declared user persona facts]
+- [Any constraints, preferences, or requirements the user set for this work]
 
 ## Progress
 ### Done
@@ -41,9 +41,6 @@ Use exactly this structure:
 
 ## Critical Context
 - Code snippets, file paths, function/type names, key configuration parameters, error messages, data essential to continue
-- Mathematical derivations & formulas: all LaTeX formulas (`$...$` and `$$...$$`) preserved verbatim without abbreviation or step skipping
-- Academic citations & literature: all literature identifiers (`\cite{...}`, author/year, ArXiv ID, DOI) preserved with full citation keys
-- User constraints, long-term preferences, and persona facts preserved verbatim
 - Repository state if relevant
 
 ## Next Steps

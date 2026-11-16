@@ -600,13 +600,19 @@ export function findCutPoint(
 // Summarization
 // ============================================================================
 
-const SUMMARIZATION_PROMPT = prompt.render(compactionSummaryPrompt);
+/**
+ * NPi Desktop launches every tab's process with its app mode; only Academic
+ * sessions add the formula/citation preservation rules to the summary prompts.
+ */
+const PROMPT_CONTEXT = { academic: process.env.NPI_APP_MODE === "academic" };
 
-const UPDATE_SUMMARIZATION_PROMPT = prompt.render(compactionUpdateSummaryPrompt);
+const SUMMARIZATION_PROMPT = prompt.render(compactionSummaryPrompt, PROMPT_CONTEXT);
+
+const UPDATE_SUMMARIZATION_PROMPT = prompt.render(compactionUpdateSummaryPrompt, PROMPT_CONTEXT);
 
 const SHORT_SUMMARY_PROMPT = prompt.render(compactionShortSummaryPrompt);
 
-const HANDOFF_DOCUMENT_PROMPT = prompt.render(handoffDocumentPrompt);
+const HANDOFF_DOCUMENT_PROMPT = prompt.render(handoffDocumentPrompt, PROMPT_CONTEXT);
 
 export const AUTO_HANDOFF_THRESHOLD_FOCUS = prompt.render(autoHandoffThresholdFocusPrompt);
 
@@ -679,6 +685,17 @@ function createSummarizationError(prefix: string, response: AssistantMessage): E
 	return response.errorStatus === undefined
 		? new Error(text)
 		: new AIError.ProviderHttpError(text, response.errorStatus);
+}
+
+/**
+ * A summary cut off at its output budget loses its last sections and must not
+ * replace the history it summarizes: fail the pass instead.
+ */
+function throwIfSummaryFailed(prefix: string, response: AssistantMessage): void {
+	if (response.stopReason === "error") throw createSummarizationError(prefix, response);
+	if (response.stopReason === "length") {
+		throw new Error(`${prefix}: the summary hit its output token limit and was cut off`);
+	}
 }
 
 function shouldRetryHandoffWithAutoToolChoice(response: AssistantMessage): boolean {
@@ -1070,9 +1087,7 @@ async function summarizeConversationWindow(
 		},
 	);
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Summarization failed", response);
-	}
+	throwIfSummaryFailed("Summarization failed", response);
 
 	const textContent = response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -1111,9 +1126,7 @@ export interface HandoffOptions {
 
 export function renderHandoffPrompt(customInstructions?: string): string {
 	if (!customInstructions) return HANDOFF_DOCUMENT_PROMPT;
-	return prompt.render(handoffDocumentPrompt, {
-		additionalFocus: customInstructions,
-	});
+	return prompt.render(handoffDocumentPrompt, { ...PROMPT_CONTEXT, additionalFocus: customInstructions });
 }
 
 export interface HandoffFromContextOptions {
@@ -1177,9 +1190,7 @@ export async function generateHandoffFromContext(
 		);
 	}
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Handoff generation failed", response);
-	}
+	throwIfSummaryFailed("Handoff generation failed", response);
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
@@ -2428,9 +2439,7 @@ async function generateTurnPrefixSummary(
 		},
 	);
 
-	if (response.stopReason === "error") {
-		throw createSummarizationError("Turn prefix summarization failed", response);
-	}
+	throwIfSummaryFailed("Turn prefix summarization failed", response);
 
 	return response.content
 		.filter((c): c is { type: "text"; text: string } => c.type === "text")
