@@ -17,6 +17,7 @@
 
 - `remote.autoStart` no longer prints the remote control notice at launch: a green `/rc` at the right end of the home footer and the status line shows it is on, for as long as it is. A typed `/rc` and `/rc status` still print the details
 - The system prompt no longer repeats MCP tool names in the eval tool's session list (they stay in the MCP routes), names `task` as the default delegation surface over eval `agent()`/`workpool()`, and states when a decision counts as already fixed so no form is opened for it
+- The `ui.present` tool description is about 40% shorter: per-component field lists and the two examples are gone (the schema already carries them), while the limits, image-source rules and "forms never authorize" rules stay
 
 ### Fixed
 
