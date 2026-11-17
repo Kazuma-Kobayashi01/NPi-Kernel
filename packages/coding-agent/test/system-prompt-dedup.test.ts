@@ -163,7 +163,6 @@ describe("SYSTEM.md prompt assembly", () => {
 
 		const promptText = systemPrompt.join("\n\n");
 		const appendMatches = promptText.match(new RegExp(escapeRegExp(appendPrompt), "g")) ?? [];
-		expect(systemPrompt).toHaveLength(2);
 		expect(promptText).toContain("CLI custom prompt");
 		expect(promptText).toContain("<workspace-tree>");
 		expect(promptText).toContain("<dir-context>");

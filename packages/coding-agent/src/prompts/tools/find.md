@@ -1,4 +1,4 @@
-Describe behavior, get implementing files and line ranges. MUST use first for unknown locations; known strings/regex/symbols → `grep`, names → `glob`.
+Describe behavior, get implementing files and line ranges. Use it when you can describe what code does but have no literal to search for; each call runs several model judgments. Known strings/regex/symbols → `grep`, names → `glob`, known paths → `read`.
 `query`: plain language, not regex; quoted phrases match whole. `grep_keywords`: likely verbatim terms, `[]` if unsure.
 `path`: one directory or file, host path or internal URL (`npi://`, `npi://<file>.md`, `skill://<name>`, `local://…`); omitted = workspace root. Scope known subsystem; batch related questions. Searches live files, no index; no `:start-end` selector (judges whole files).
 Hits strongest first: `path:start-end score snippet` (workspace-relative, or URL under URL scope); read returned ranges. Scores: absolute comparable 0–1 probability; below ~0.4 = weak evidence, so widen query or use `grep` before concluding absence.

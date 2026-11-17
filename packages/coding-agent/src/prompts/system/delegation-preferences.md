@@ -15,7 +15,7 @@ MODERATE appetite: delegate only when there is a clear, material gain in speed o
 {{#when delegationAppetite "==" "conservative"}}
 CONSERVATIVE appetite: default to working inline. Delegate only a substantial, strongly independent slice whose exceptional value clearly outweighs startup, context transfer, and integration costs; avoid exploratory or marginal delegations.
 {{/when}}
-- When the setup is the user's call, present ONE Interactive UI form before spawning (`ui.present`, `mode: "interactive"`): `option-cards` for the agent, fields for scope breadth and isolation, and a model/thinking selector only when the user must choose one. Spawn with the submitted values and never call `ask` for this.
+- Spawn with the configured setup by default. Only when the user asks to choose the setup, or the active interaction policy asks for subagent setup forms, present ONE Interactive UI form before spawning (`ui.present`, `mode: "interactive"`): `option-cards` for the agent, fields for scope breadth and isolation, and a model/thinking selector only when the user must choose one. Spawn with the submitted values and never call `ask` for this.
 - Auto subagent mode: the task tool itself performs the model/thinking Ask. Do not pre-ask or duplicate it; cancellation starts no agent.
 {{#if modelRoster}}
 - Model roster (the user's schedule for Auto mode): give every item of a batch the same `model` naming one tier, chosen by the hardest item, and the batch runs on that tier without the Ask:

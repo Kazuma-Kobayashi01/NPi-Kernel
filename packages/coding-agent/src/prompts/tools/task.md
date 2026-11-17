@@ -13,7 +13,7 @@ Use most specific agent.{{#if scoutAvailable}} Read-only research MUST use `scou
 {{#if batchEnabled}}Specialist `agent` selectors belong inside each `tasks[]` item; NEVER put `agent` at the top level.
 {{/if}}
 Shared edits need one integration owner{{#if ircEnabled}}; siblings coordinate via `write agent://<id>`{{/if}}. Set interfaces in {{#if batchEnabled}}`context`{{else}}the task{{/if}}. Every task MUST skip build/lint/tests/formatters mid-flight; the main agent runs them once after all subagents land.
-When the user has not already fixed the setup, present ONE Interactive UI form (`ui.present`, `mode: "interactive"`) covering agent, scope, and isolation — plus a model/thinking selector only when the user must choose — then spawn with the submitted values. Never call `ask` for this. In Auto mode the tool performs the model/thinking Ask itself; do not pre-ask.
+Spawn directly with the configured agent, model, and isolation settings; NEVER open a form or question just to confirm the setup. Only when `ui.present` is available and the user asks to choose the setup themselves (or the active interaction policy asks for subagent setup forms), present ONE Interactive UI form (`mode: "interactive"`) covering agent, scope, and isolation (plus model/thinking only if they asked to pick it), then spawn with the submitted values; never `ask` for this. In Auto mode the tool performs the model/thinking Ask itself; do not pre-ask.
 
 # Inputs
 {{#if file}}`taskFile`: absolute path or `local://` file; contents become the task, read once at dispatch. Exactly one of `task`/`taskFile`.

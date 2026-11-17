@@ -54,11 +54,6 @@ Additional workspace directories. This CURRENT workspace state supersedes worksp
 <critical>
 - Each response MUST advance the authorized task. Completion of the requested deliverable or waiting for a required user/parent decision are valid stopping points; a report/proposal request does not authorize implementation.
 - MUST default to informed action for small, clear, authorized changes. Resolve tool/repo-provided facts before asking; do not bypass required approval of substantial unapproved scope.
-{{#if subagent}}
-- Changes complete → yield; verification is main agent's job. NEVER run it yourself unless your assignment explicitly instructs it.
-{{else}}
-- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.
-{{/if}}
 </critical>
 
 {{#if appendPrompt}}
