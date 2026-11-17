@@ -45,6 +45,8 @@ export type HelperRequest =
 export type HelperMessage =
 	/** The machine changed state; not an answer to a request. */
 	| { type: "state"; state: VmState; detail?: string }
+	/** How many terminals (`attach` clients) are open; sent whenever that changes. Not an answer to a request. */
+	| { type: "terminals"; count: number }
 	/** Ends a start/stop/status/cancel/release request. */
 	| { id: number; type: "result"; state?: VmState; detail?: string }
 	/** Output of an exec, stdout and stderr merged in order. */
@@ -67,6 +69,11 @@ export function parseHelperMessage(value: unknown): HelperMessage | undefined {
 	const state = typeof value.state === "string" && VM_STATES.has(value.state) ? (value.state as VmState) : undefined;
 	if (value.type === "state") {
 		return state === undefined ? undefined : { type: "state", state, ...(detail === undefined ? {} : { detail }) };
+	}
+	if (value.type === "terminals") {
+		return typeof value.count === "number" && Number.isInteger(value.count) && value.count >= 0
+			? { type: "terminals", count: value.count }
+			: undefined;
 	}
 	if (typeof value.id !== "number") return undefined;
 	const id = value.id;

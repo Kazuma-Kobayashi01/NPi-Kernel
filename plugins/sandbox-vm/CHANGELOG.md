@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed VM start no longer leaves every later command failing with "the VM is error" until the idle stop: the next command starts a fresh VM.
+- The idle stop no longer shuts the VM down under an open terminal, and a VM started only for a terminal (or by hand) now stops after its idle time too.
+- A program in the terminal that does not read its input (pasting into `sleep`, say) or a terminal client that reads slowly no longer stalls the agent's commands, cancels and `/vm stop`.
+- `/vm stop` now answers when the guest cannot be asked to power off (it did not come up, or ignored the request) instead of hanging.
+- Terminal connections close their socket exactly once, and a terminal that went away can no longer take the helper (and the VM) down with it.
+- A variable passed with a command now wins over the value an earlier command of the session saved; commands of one session that end together no longer write into each other's saved state or working directory.
+- A command killed by a signal nobody sent (the OOM killer, say) reports exit code 128 + signal instead of "cancelled".
+- Background jobs and commands without a session no longer leave state folders behind in the guest's memory.
+- Moving the session to another folder remounts the project at the next command when nothing else uses the VM.
+- The guest agent must be rebuilt into the images (`scripts/build-image.sh`) for the fixes it carries: the terminal input, the variables, the exit codes and the state folders.
+
 ## [1.0.2] - 2026-11-16
 
 - `/vm clean` (asks first) and RPC `sandbox-vm/clean`: for removing the VM. Stops it, unsets a global `exec.backend` that names it (so bash keeps working after the plugin is uninstalled), deletes every image built on this machine, `sandbox-vm.json` and the terminal routes of dead processes, and reports the size of the images the package ships (they go with `npi plugin uninstall`). NPi Desktop's Settings → Approvals → Remove Sandbox VM calls it and uninstalls the plugin.

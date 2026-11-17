@@ -40,7 +40,9 @@ export class HelperClient {
 	#nextId = 1;
 	readonly #pending = new Map<number, Pending>();
 	readonly #stateListeners = new Set<(status: VmStatus) => void>();
+	readonly #terminalListeners = new Set<(count: number) => void>();
 	#status: VmStatus = { state: "stopped" };
+	#terminals = 0;
 
 	constructor(command: readonly string[]) {
 		this.#command = command;
@@ -54,6 +56,23 @@ export class HelperClient {
 	onState(listener: (status: VmStatus) => void): () => void {
 		this.#stateListeners.add(listener);
 		return () => this.#stateListeners.delete(listener);
+	}
+
+	/** How many terminals are attached to the VM, as the helper last reported. */
+	get terminals(): number {
+		return this.#terminals;
+	}
+
+	/** Observe the number of attached terminals; returns the unsubscribe function. */
+	onTerminals(listener: (count: number) => void): () => void {
+		this.#terminalListeners.add(listener);
+		return () => this.#terminalListeners.delete(listener);
+	}
+
+	#setTerminals(count: number): void {
+		if (this.#terminals === count) return;
+		this.#terminals = count;
+		for (const listener of this.#terminalListeners) listener(count);
 	}
 
 	#setStatus(status: VmStatus): void {
@@ -96,6 +115,7 @@ export class HelperClient {
 	#onExit(child: Bun.Subprocess<"pipe", "pipe", "pipe">, code: number): void {
 		if (this.#child !== child) return;
 		this.#child = undefined;
+		this.#setTerminals(0);
 		this.#setStatus({ state: "stopped", detail: `helper exited (${code})` });
 		const error = new Error(`VM helper exited with code ${code}`);
 		const pending = [...this.#pending.values()];
@@ -106,6 +126,10 @@ export class HelperClient {
 	#dispatch(message: HelperMessage): void {
 		if (message.type === "state") {
 			this.#setStatus({ state: message.state, ...(message.detail === undefined ? {} : { detail: message.detail }) });
+			return;
+		}
+		if (message.type === "terminals") {
+			this.#setTerminals(message.count);
 			return;
 		}
 		const entry = this.#pending.get(message.id);

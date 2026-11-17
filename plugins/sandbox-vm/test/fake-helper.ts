@@ -1,6 +1,10 @@
 /**
  * A stand-in for the VM helper that speaks the plugin's line protocol and runs commands with `sh` on this
- * machine. `__config` answers with the start config it received; `__crash` kills the helper mid-command.
+ * machine. `__config` answers with the start config it received; `__crash` kills the helper mid-command;
+ * `__terminals <n>` reports n attached terminals, as the real helper does when terminal clients come and go.
+ *
+ * `--fail-once <file>`: when the file does not exist yet, create it and fail the start the way the real helper
+ * does (state `error`, every later start refused), so only a new helper process can start the VM.
  */
 import type { HelperMessage, HelperRequest } from "../src/protocol";
 
@@ -9,6 +13,9 @@ const send = (message: HelperMessage): void => {
 };
 
 let startConfig: unknown;
+let failed = false;
+const failOnceIndex = process.argv.indexOf("--fail-once");
+const failOnceFile = failOnceIndex < 0 ? undefined : process.argv[failOnceIndex + 1];
 const running = new Map<number, Bun.Subprocess>();
 const released: string[] = [];
 
@@ -24,6 +31,11 @@ async function exec(id: number, request: Extract<HelperRequest, { op: "exec" }>)
 		return;
 	}
 	if (request.command === "__crash") process.exit(7);
+	if (request.command.startsWith("__terminals ")) {
+		process.stdout.write(`${JSON.stringify({ type: "terminals", count: Number(request.command.slice(12)) })}\n`);
+		send({ id, type: "exit", exitCode: 0 });
+		return;
+	}
 	const child = Bun.spawn(["sh", "-c", request.command], {
 		cwd: request.cwd,
 		env: { PATH: Bun.env.PATH ?? "", ...request.env },
@@ -46,6 +58,17 @@ for await (const line of console) {
 	const request = JSON.parse(line) as HelperRequest;
 	switch (request.op) {
 		case "start":
+			if (failed) {
+				send({ id: request.id, type: "error", message: "the VM is error" });
+				break;
+			}
+			if (failOnceFile && !(await Bun.file(failOnceFile).exists())) {
+				await Bun.write(failOnceFile, "");
+				failed = true;
+				send({ id: request.id, type: "error", message: "the guest did not come up within 90 seconds" });
+				send({ type: "state", state: "error", detail: "the guest did not come up within 90 seconds" });
+				break;
+			}
 			startConfig = request.config;
 			send({ id: request.id, type: "result", state: "running" });
 			break;

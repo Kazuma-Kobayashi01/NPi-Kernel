@@ -54,6 +54,8 @@ export class VmController {
 	readonly #helperCommand: (config: SandboxVmConfig) => Promise<readonly string[]>;
 	#client: HelperClient | undefined;
 	#projectDir: string | undefined;
+	/** The project folder the running VM mounted; differs from `#projectDir` after the session moved. */
+	#mountedDir: string | undefined;
 	#starting: Promise<VmStatus> | undefined;
 	#status: VmStatus = { state: "stopped" };
 	readonly #routes: { publish(helper: string): Promise<unknown>; withdraw(): Promise<void> } | undefined;
@@ -120,7 +122,14 @@ export class VmController {
 				const command = await this.#helperCommand(config);
 				this.#helperPath = command[0];
 				const client = new HelperClient(command);
-				client.onState(status => this.#setStatus(status));
+				// A client that was let go (stopped, or dropped after a failed start) reports its exit too; only the
+				// current one speaks for the VM.
+				client.onState(status => {
+					if (this.#client === client) this.#setStatus(status);
+				});
+				client.onTerminals(() => {
+					if (this.#client === client) this.#armIdleStop();
+				});
 				this.#client = client;
 			}
 			const vmConfig: VmConfig = {
@@ -135,10 +144,21 @@ export class VmController {
 				],
 			};
 			const status = await this.#client.start(vmConfig);
+			this.#mountedDir = projectDir;
 			if (this.#routes && this.#helperPath) await this.#routes.publish(this.#helperPath);
 			this.#setStatus(status);
+			// Started for a terminal or by hand, no command may follow: the idle time counts from now.
+			this.#armIdleStop();
 			return status;
 		} catch (error) {
+			// A helper whose start failed keeps a half-started VM and refuses every later start: let it go (with its
+			// VM), so the next command starts afresh instead of failing until the idle stop.
+			const failed = this.#client;
+			this.#client = undefined;
+			if (failed) {
+				await this.#routes?.withdraw().catch(() => undefined);
+				failed.close();
+			}
 			let message = error instanceof Error ? error.message : String(error);
 			if (message.includes("VM image not found")) {
 				const { base } = await this.#loadConfig();
@@ -151,13 +171,16 @@ export class VmController {
 		}
 	}
 
-	/** Stop the VM once it has had no command for the idle time; the next command starts it again. */
+	/**
+	 * Stop the VM once it has had no command and no open terminal for the idle time; the next command starts it
+	 * again. Called whenever a command ends or the number of terminals changes.
+	 */
 	#armIdleStop(): void {
 		if (this.#idleTimer) clearTimeout(this.#idleTimer);
 		this.#idleTimer = undefined;
-		if (this.#idleMs <= 0 || this.#running > 0 || !this.#client) return;
+		if (this.#idleMs <= 0 || this.#running > 0 || !this.#client || this.#client.terminals > 0) return;
 		this.#idleTimer = setTimeout(() => {
-			if (this.#running === 0) void this.stop().catch(() => undefined);
+			if (this.#running === 0 && !this.#client?.terminals) void this.stop().catch(() => undefined);
 		}, this.#idleMs);
 		this.#idleTimer.unref();
 	}
@@ -284,6 +307,16 @@ export class VmController {
 			this.#running++;
 			if (this.#idleTimer) clearTimeout(this.#idleTimer);
 			try {
+				// The session moved to another folder: the VM still mounts the old one. Restart it when nothing else
+				// uses it; otherwise the command runs with the old mount (and says so if its folder is missing).
+				if (
+					this.#client?.status.state === "running" &&
+					this.#mountedDir !== this.#projectDir &&
+					this.#running === 1 &&
+					this.#client.terminals === 0
+				) {
+					await this.stop();
+				}
 				if (this.#client?.status.state !== "running") await this.start();
 				const client = this.#client;
 				if (client?.status.state !== "running") {

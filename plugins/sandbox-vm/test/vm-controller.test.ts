@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExecBackendResult } from "@oh-my-pi/pi-coding-agent";
@@ -132,6 +133,58 @@ describe("VM controller", () => {
 
 		await expect(run(controller, "__crash")).rejects.toThrow(/VM helper exited/);
 		expect(controller.status.state).toBe("stopped");
+	});
+
+	it("starts afresh on the next command after a start failed", async () => {
+		const marker = path.join(os.tmpdir(), `sandbox-vm-fail-once-${process.pid}-${Date.now()}`);
+		const controller = makeController({}, [process.execPath, FAKE_HELPER, "--fail-once", marker]);
+		try {
+			await expect(run(controller, "true")).rejects.toThrow(/did not come up/);
+			expect(controller.status.state).toBe("error");
+
+			const again = await run(controller, "echo up");
+
+			expect(again.output).toBe("up\n");
+			expect(controller.status.state).toBe("running");
+		} finally {
+			await fs.rm(marker, { force: true });
+		}
+	});
+
+	it("keeps the VM running past its idle time while a terminal is attached", async () => {
+		const controller = makeController({}, undefined, 300);
+		await run(controller, "__terminals 1");
+
+		await Bun.sleep(700);
+		expect(controller.status.state).toBe("running");
+
+		await run(controller, "__terminals 0");
+		await Bun.sleep(700);
+		expect(controller.status.state).toBe("stopped");
+	});
+
+	it("stops a VM that was started without a command after its idle time", async () => {
+		const controller = makeController({}, undefined, 300);
+		await controller.start();
+
+		await Bun.sleep(700);
+
+		expect(controller.status.state).toBe("stopped");
+	});
+
+	it("remounts the project when the session moved to another folder", async () => {
+		const controller = makeController();
+		await run(controller, "true");
+		const other = await fs.mkdtemp(path.join(os.tmpdir(), "sandbox-vm-project-"));
+		try {
+			controller.setProjectDir(other);
+
+			const { output } = await run(controller, "__config");
+
+			expect(JSON.parse(output).mounts[0]).toEqual({ path: other, readOnly: false });
+		} finally {
+			await fs.rm(other, { recursive: true, force: true });
+		}
 	});
 
 	it("fails with a clear error when the helper is not installed", async () => {

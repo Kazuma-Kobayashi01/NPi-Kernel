@@ -17,6 +17,9 @@ import ctypes
 import hashlib
 import json
 import os
+import queue
+import re
+import shlex
 import shutil
 import signal
 import struct
@@ -24,6 +27,7 @@ import subprocess
 import sys
 import termios
 import threading
+import time
 import tty
 
 PORT = "/dev/hvc1"
@@ -37,17 +41,21 @@ BASE_ENV = {
     "TERM": "dumb",
 }
 
-# Runs one command in the session's state: variables and functions the earlier commands left, then the command,
-# then (on any exit) what it left for the next one. The command text is sourced from a file, so it is parsed
-# exactly as typed, `exit N` included.
+# Runs one command in the session's state: variables and functions the earlier commands left, then this request's
+# own variables (they win over saved ones, as on the host), then the command, then (on any exit) what it left for
+# the next one. Temporary files carry the shell's pid, so commands of one session that end together do not write
+# into each other's; the working directory goes to a file of this command only. The command text is sourced from a
+# file, so it is parsed exactly as typed, `exit N` included.
 WRAPPER = r"""
 S="$NPI_STATE"
 [ -f "$S/env" ] && . "$S/env" 2>/dev/null
 [ -f "$S/funcs" ] && . "$S/funcs" 2>/dev/null
+[ -f "$NPI_ENVFILE" ] && . "$NPI_ENVFILE"
 if [ -n "$NPI_CWD" ]; then cd "$NPI_CWD" || exit 1; fi
-trap 'export -p | grep -v -E "^declare -x (PWD|OLDPWD|SHLVL|_|NPI_[A-Z]+)=" > "$S/env.tmp" 2>/dev/null && mv "$S/env.tmp" "$S/env"; declare -f > "$S/funcs.tmp" 2>/dev/null && mv "$S/funcs.tmp" "$S/funcs"; pwd > "$S/cwd"' EXIT
+trap 'export -p | grep -v -E "^declare -x (PWD|OLDPWD|SHLVL|_|NPI_[A-Z]+)=" > "$S/env.$$" 2>/dev/null && mv "$S/env.$$" "$S/env"; declare -f > "$S/funcs.$$" 2>/dev/null && mv "$S/funcs.$$" "$S/funcs"; pwd > "$NPI_CWDFILE"' EXIT
 . "$NPI_CMDFILE"
 """
+NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 write_lock = threading.Lock()
 jobs_lock = threading.Lock()
@@ -70,6 +78,18 @@ def state_dir(key):
     return path
 
 
+def is_one_off(key):
+    """A state folder no later command reuses: a background job (`<key>:async:<id>`) or a command without a key."""
+    return ":async:" in key or key.startswith("anonymous-")
+
+
+def remove_quietly(path):
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def kill_group(proc, sig=signal.SIGKILL):
     try:
         os.killpg(proc.pid, sig)
@@ -84,15 +104,21 @@ def run_exec(request):
     cmd_dir = os.path.join(STATE_ROOT, "c")
     os.makedirs(cmd_dir, exist_ok=True)
     cmd_file = os.path.join(cmd_dir, "%d.sh" % rid)
+    env_file = os.path.join(cmd_dir, "%d.env" % rid)
+    cwd_file = os.path.join(cmd_dir, "%d.cwd" % rid)
     with open(cmd_file, "w", encoding="utf-8") as handle:
         handle.write(request.get("command", ""))
         handle.write("\n")
     cwd = request.get("cwd") or ""
     env = dict(BASE_ENV)
+    overrides = []
     for name, value in (request.get("env") or {}).items():
-        if isinstance(name, str) and isinstance(value, str):
+        if isinstance(name, str) and isinstance(value, str) and NAME_RE.match(name) and not name.startswith("NPI_"):
             env[name] = value
-    env.update(NPI_STATE=sdir, NPI_CWD=cwd, NPI_CMDFILE=cmd_file)
+            overrides.append("export %s=%s\n" % (name, shlex.quote(value)))
+    with open(env_file, "w", encoding="utf-8") as handle:
+        handle.writelines(overrides)
+    env.update(NPI_STATE=sdir, NPI_CWD=cwd, NPI_CMDFILE=cmd_file, NPI_ENVFILE=env_file, NPI_CWDFILE=cwd_file)
     job = {"cancelled": False, "timed_out": False}
     try:
         proc = subprocess.Popen(
@@ -101,6 +127,8 @@ def run_exec(request):
             start_new_session=True,
         )
     except OSError as error:
+        for path in (cmd_file, env_file):
+            remove_quietly(path)
         send({"id": rid, "type": "error", "message": "could not start bash: %s" % error})
         return
     job["proc"] = proc
@@ -141,25 +169,27 @@ def run_exec(request):
         timer.cancel()
     with jobs_lock:
         jobs.pop(rid, None)
+    where = ""
     try:
-        os.unlink(cmd_file)
+        with open(cwd_file, encoding="utf-8") as handle:
+            where = handle.read().strip()
     except OSError:
         pass
+    for path in (cmd_file, env_file, cwd_file):
+        remove_quietly(path)
+    if is_one_off(key):
+        shutil.rmtree(sdir, ignore_errors=True)
 
     exit_message = {"id": rid, "type": "exit"}
     if job["timed_out"]:
         exit_message["timedOut"] = True
-    elif job["cancelled"] or code < 0:
+    elif job["cancelled"]:
         exit_message["cancelled"] = True
     else:
-        exit_message["exitCode"] = code
-        try:
-            with open(os.path.join(sdir, "cwd"), encoding="utf-8") as handle:
-                where = handle.read().strip()
-            if where and where != cwd:
-                exit_message["workingDir"] = where
-        except OSError:
-            pass
+        # Killed by a signal nobody here sent (the OOM killer, say): report it the way a shell would, 128 + signal.
+        exit_message["exitCode"] = code if code >= 0 else 128 - code
+        if where and where != cwd:
+            exit_message["workingDir"] = where
     send(exit_message)
 
 
@@ -193,16 +223,30 @@ def do_release(request):
     key = request.get("sessionKey") or ""
     prefix = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
     shutil.rmtree(os.path.join(STATE_ROOT, "s", prefix), ignore_errors=True)
-    # Background jobs of the session (`<key>:async:<id>`) have their own state folders.
+    # Background jobs of the session (`<key>:async:<id>`) remove their own state folders when they end.
     send({"id": request["id"], "type": "result"})
 
 
-ptys = {}  # ptyId -> {"pid": int, "fd": int}
+ptys = {}  # ptyId -> {"pid": int, "fd": int, "input": queue.Queue}
 ptys_lock = threading.Lock()
 
 
 def set_window(fd, cols, rows):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", max(1, rows), max(1, cols), 0, 0))
+
+
+def pty_writer(fd, pending):
+    """Feeds one pty its input. A program that does not read stdin blocks this thread, never the agent's loop."""
+    while True:
+        data = pending.get()
+        if data is None:
+            return
+        view = memoryview(data)
+        try:
+            while view:
+                view = view[os.write(fd, view):]
+        except OSError:
+            return
 
 
 def pty_reader(pty_id, pid, fd):
@@ -220,7 +264,9 @@ def pty_reader(pty_id, pid, fd):
     except ChildProcessError:
         code = 0
     with ptys_lock:
-        ptys.pop(pty_id, None)
+        entry = ptys.pop(pty_id, None)
+    if entry:
+        entry["input"].put(None)
     try:
         os.close(fd)
     except OSError:
@@ -246,8 +292,10 @@ def do_pty_open(request):
         finally:
             os._exit(127)
     set_window(fd, cols, rows)
+    pending = queue.Queue()
     with ptys_lock:
-        ptys[pty_id] = {"pid": pid, "fd": fd}
+        ptys[pty_id] = {"pid": pid, "fd": fd, "input": pending}
+    threading.Thread(target=pty_writer, args=(fd, pending), daemon=True).start()
     threading.Thread(target=pty_reader, args=(pty_id, pid, fd), daemon=True).start()
 
 
@@ -255,10 +303,7 @@ def do_pty_input(request):
     with ptys_lock:
         entry = ptys.get(request.get("ptyId"))
     if entry:
-        data = base64.b64decode(request.get("d") or "")
-        view = memoryview(data)
-        while view:
-            view = view[os.write(entry["fd"], view):]
+        entry["input"].put(base64.b64decode(request.get("d") or ""))
 
 
 def do_pty_resize(request):
@@ -321,6 +366,7 @@ def main():
     while True:
         chunk = os.read(port_fd, 65536)
         if not chunk:
+            time.sleep(0.1)  # the host side is closed; do not spin
             continue
         buffer += chunk
         while b"\n" in buffer:

@@ -148,26 +148,52 @@ func parseObject(_ line: Data) -> [String: Any]? {
 // MARK: - Terminal socket
 
 /// One terminal client: a connection on the terminal socket and the guest pty it drives.
+///
+/// Ending a connection is two steps so its descriptor is closed exactly once: `hangUp` (any thread, any number of
+/// times) shuts the socket down after what was already sent, which ends the reader's `read`; the reader then calls
+/// `close` after its last read. Closing from elsewhere could close a descriptor number that another connection or
+/// file has since been given.
 final class TerminalClient {
 	let fd: Int32
 	var ptyId: Int?
-	private let writeLock = NSLock()
+	/// Touched only on `writer`.
+	private var hungUp = false
 
-	init(fd: Int32) { self.fd = fd }
+	init(fd: Int32) {
+		self.fd = fd
+		// A write to a peer that went away must fail with EPIPE, not raise SIGPIPE and kill the helper (and its VM).
+		var on: Int32 = 1
+		setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+	}
+
+	/// Writes to this client, in order, off the main queue: a client that stops reading must not stall the helper.
+	private let writer = DispatchQueue(label: "npi-vm-helper.terminal-writer")
 
 	func send(_ object: [String: Any]) {
 		guard var data = try? JSONSerialization.data(withJSONObject: object, options: []) else { return }
 		data.append(0x0a)
-		writeLock.lock()
-		defer { writeLock.unlock() }
-		var offset = 0
-		while offset < data.count {
-			let written = data.withUnsafeBytes { write(fd, $0.baseAddress! + offset, data.count - offset) }
-			if written <= 0 { return }
-			offset += written
+		writer.async { [self] in
+			guard !hungUp else { return }
+			var offset = 0
+			while offset < data.count {
+				let written = data.withUnsafeBytes { write(fd, $0.baseAddress! + offset, data.count - offset) }
+				if written <= 0 { return }
+				offset += written
+			}
 		}
 	}
 
+	/// End the connection once what was sent before has been written: no more sends, and the peer and this side's
+	/// reader both see end of input.
+	func hangUp() {
+		writer.async { [self] in
+			guard !hungUp else { return }
+			hungUp = true
+			Darwin.shutdown(fd, SHUT_RDWR)
+		}
+	}
+
+	/// Release the descriptor. Only the connection's reader calls it, once, after its last read.
 	func close() { Darwin.close(fd) }
 }
 
@@ -206,10 +232,21 @@ final class TerminalHub {
 	private var clients: [Int: TerminalClient] = [:]  // guest ptyId -> client
 	private var nextPty = 1
 	private let toGuest: ([String: Any]) -> Void
+	/// Told how many terminals are open whenever that changes (main queue).
+	private let onCount: (Int) -> Void
 	/// Whether the guest agent announced the `pty-*` ops; an image built before they existed did not.
 	var guestHasPty = false
 
-	init(toGuest: @escaping ([String: Any]) -> Void) { self.toGuest = toGuest }
+	init(toGuest: @escaping ([String: Any]) -> Void, onCount: @escaping (Int) -> Void) {
+		self.toGuest = toGuest
+		self.onCount = onCount
+	}
+
+	private func setClient(_ id: Int, _ client: TerminalClient?) {
+		let before = clients.count
+		clients[id] = client
+		if clients.count != before { onCount(clients.count) }
+	}
 
 	func listen(on path: String) {
 		guard let address = unixAddress(path) else { log("terminal socket path too long: \(path)"); return }
@@ -250,13 +287,13 @@ final class TerminalHub {
 				let text = "\r\nThis VM image predates the terminal. Rebuild it with scripts/build-image.sh (alpine or ubuntu), then stop and start the VM.\r\n"
 				client.send(["t": "out", "d": Data(text.utf8).base64EncodedString()])
 				client.send(["t": "exit", "code": 1])
-				client.close()
+				client.hangUp()
 				return
 			}
 			let id = nextPty
 			nextPty += 1
 			client.ptyId = id
-			clients[id] = client
+			setClient(id, client)
 			toGuest([
 				"op": "pty-open", "ptyId": id, "cols": message["cols"] ?? 80, "rows": message["rows"] ?? 24,
 				"cwd": message["cwd"] ?? "/", "term": message["term"] ?? "xterm-256color",
@@ -269,9 +306,11 @@ final class TerminalHub {
 		}
 	}
 
+	/// The connection's reader ended: forget its pty (closing it in the guest) and release the descriptor.
 	private func drop(_ client: TerminalClient) {
 		if let id = client.ptyId {
-			clients[id] = nil
+			client.ptyId = nil
+			setClient(id, nil)
 			toGuest(["op": "pty-close", "ptyId": id])
 		}
 		client.close()
@@ -283,16 +322,15 @@ final class TerminalHub {
 		if object["type"] as? String == "pty" {
 			client.send(["t": "out", "d": object["d"] ?? ""])
 		} else {
-			clients[id] = nil
 			client.ptyId = nil
+			setClient(id, nil)
 			client.send(["t": "exit", "code": object["code"] ?? 0])
-			client.close()
+			client.hangUp()
 		}
 	}
 
 	func shutdown() {
-		for client in clients.values { client.close() }
-		clients.removeAll()
+		for client in clients.values { client.hangUp() }
 		if let path { unlink(path) }
 	}
 }
@@ -343,7 +381,7 @@ func runAttachMode(_ arguments: [String]) -> Never {
 
 	FileHandle.standardInput.readabilityHandler = { file in
 		let chunk = file.availableData
-		if chunk.isEmpty { file.readabilityHandler = nil; client.close(); return }
+		if chunk.isEmpty { file.readabilityHandler = nil; client.hangUp(); return }
 		client.send(["t": "in", "d": chunk.base64EncodedString()])
 	}
 	Thread.detachNewThread {
@@ -377,7 +415,12 @@ final class Helper: NSObject, VZVirtualMachineDelegate {
 	var agentReady = false
 	var readers: [LineReader] = []
 	var terminalSocket: String?
-	lazy var terminals = TerminalHub(toGuest: { [unowned self] in self.sendToGuest($0) })
+	lazy var terminals = TerminalHub(
+		toGuest: { [unowned self] in self.sendToGuest($0) },
+		onCount: { emit(["type": "terminals", "count": $0]) })
+	/// Writes to the guest agent, in order, off the main queue: a guest that stops reading must not stall the
+	/// helper (its protocol, the terminals, the forced stop).
+	let guestWriter = DispatchQueue(label: "npi-vm-helper.guest-writer")
 
 	func setState(_ next: String, detail: String? = nil) {
 		state = next
@@ -407,9 +450,10 @@ final class Helper: NSObject, VZVirtualMachineDelegate {
 	}
 
 	func sendToGuest(_ object: [String: Any]) {
-		guard let channels, let data = try? JSONSerialization.data(withJSONObject: object, options: []) else { return }
-		channels.agentIn.fileHandleForWriting.write(data)
-		channels.agentIn.fileHandleForWriting.write(Data([0x0a]))
+		guard let channels, var data = try? JSONSerialization.data(withJSONObject: object, options: []) else { return }
+		data.append(0x0a)
+		let handle = channels.agentIn.fileHandleForWriting
+		guestWriter.async { handle.write(data) }
 	}
 
 	func start(_ id: Int, _ raw: [String: Any]) {
@@ -475,7 +519,9 @@ final class Helper: NSObject, VZVirtualMachineDelegate {
 			if case .failure(let error) = result { fail(startId, "the VM did not start: \(error)") }
 		}
 		DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [self] in
-			if startId != nil && !agentReady { fail(startId, "the guest did not come up within 90 seconds") }
+			// Covers the mounts too: `startId` stays set until the last mount answered.
+			guard startId != nil else { return }
+			fail(startId, agentReady ? "the guest did not mount the shared folders within 90 seconds" : "the guest did not come up within 90 seconds")
 		}
 	}
 
@@ -529,9 +575,18 @@ final class Helper: NSObject, VZVirtualMachineDelegate {
 		}
 		stopId = id
 		terminals.shutdown()
-		sendToGuest(["id": -100, "op": "poweroff"])
-		DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-			if machine.state != .stopped { machine.stop { _ in } }
+		func finish() -> Never {
+			emit(["id": id, "type": "result", "state": "stopped"])
+			exit(0)
+		}
+		// A machine that never ran (or already failed) has nothing to shut down.
+		guard machine.state != .stopped, machine.state != .error else { finish() }
+		// Ask the guest to power off; without an agent to ask, or if it has not within 10 s, pull the plug. A forced
+		// stop does not reach the delegate, so its completion answers the request.
+		if agentReady { sendToGuest(["id": -100, "op": "poweroff"]) }
+		DispatchQueue.main.asyncAfter(deadline: .now() + (agentReady ? 10 : 0)) {
+			guard machine.state != .stopped, machine.state != .error, machine.canStop else { finish() }
+			machine.stop { _ in finish() }
 		}
 	}
 
