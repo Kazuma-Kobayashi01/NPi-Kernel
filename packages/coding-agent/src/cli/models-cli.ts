@@ -78,6 +78,8 @@ interface ModelJson {
 	selector: string;
 	name: string;
 	contextWindow: number | null;
+	/** The largest window the model can run with (its extended tier), what `modelContextWindows` may choose up to. */
+	maxContextWindow: number | null;
 	maxTokens: number | null;
 	reasoning: boolean;
 	/** Supported thinking efforts when the model thinks, otherwise null. */
@@ -113,7 +115,7 @@ function byProviderThenId(left: Model<Api>, right: Model<Api>): number {
 	return left.id.localeCompare(right.id);
 }
 
-function toModelJson(model: Model<Api>): ModelJson {
+function toModelJson(model: Model<Api>, source: ModelsListingSource): ModelJson {
 	// Scalar legs report the card in force now, not the one current when the row was built.
 	const { input, output, cacheRead, cacheWrite } = getEffectiveTokenCost(model.cost);
 	return {
@@ -123,6 +125,7 @@ function toModelJson(model: Model<Api>): ModelJson {
 		selector: `${model.provider}/${model.id}`,
 		name: model.name,
 		contextWindow: model.contextWindow,
+		maxContextWindow: source.contextWindowCeiling?.(model) ?? model.contextWindow,
 		maxTokens: model.maxTokens,
 		reasoning: model.reasoning,
 		thinking: model.thinking ? getSupportedEfforts(model) : null,
@@ -187,6 +190,8 @@ export interface ModelsListingSource {
 	/** Return models available for the selected catalog kind, or every kind for `all`. */
 	getAvailable(kind?: ModelKind | "all"): Model<Api>[];
 	getError(): ConfigError | undefined;
+	/** The largest window `model` can run with; absent sources report the catalog window. */
+	contextWindowCeiling?(model: Model<Api>): number | null;
 }
 
 /**
@@ -232,7 +237,7 @@ export function renderProviderModels(
 				`Warning: models.yml validation failed — custom providers disabled\n${configError.message}\n`,
 			);
 		}
-		const output: ModelsJson = { models: filtered.slice().sort(byProviderThenId).map(toModelJson) };
+		const output: ModelsJson = { models: filtered.slice().sort(byProviderThenId).map(model => toModelJson(model, source)) };
 		writeLine(JSON.stringify(output));
 		return;
 	}

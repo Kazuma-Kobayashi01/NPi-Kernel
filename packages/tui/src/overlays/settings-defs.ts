@@ -206,6 +206,11 @@ export interface ProviderLimitsSettingDef extends BaseSettingDef {
 	type: "providerLimits";
 }
 
+/** `modelContextWindows`: a model list, each model's window picked from its stops. */
+export interface ModelContextWindowsSettingDef extends BaseSettingDef {
+	type: "modelContextWindows";
+}
+
 /** Array-of-enum setting edited as a toggle list; `ordered` lists render positions and support reordering. */
 export interface MultiSelectSettingDef extends BaseSettingDef {
 	type: "multiselect";
@@ -219,6 +224,7 @@ export type SettingDef =
 	| SubmenuSettingDef
 	| TextInputSettingDef
 	| ProviderLimitsSettingDef
+	| ModelContextWindowsSettingDef
 	| MultiSelectSettingDef;
 
 function resolveOptions(ui: AnyUiMetadata): OptionList | "runtime" | undefined {
@@ -288,9 +294,9 @@ function entryToSettingDef(entry: SettingsDisplayEntry): SettingDef | null {
 	}
 
 	if (schemaType === "record") {
-		return path === "providers.maxInFlightRequests"
-			? { ...base, type: "providerLimits" }
-			: { ...base, type: "text", secret: false };
+		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
+		if (path === "modelContextWindows") return { ...base, type: "modelContextWindows" };
+		return { ...base, type: "text", secret: false };
 	}
 
 	return null;

@@ -2,12 +2,14 @@ import {
 	type AgentCompactionThresholdOverride,
 	validateModelCompactionThresholds,
 } from "../config/compaction-threshold";
+import { validateModelContextWindows } from "../config/model-context-window";
 import { combine, register, type SettingValueOf } from "../config/registry";
 import { COMPACTION_METHOD_CHOICES, DEFAULT_COMPACTION_METHOD_ORDER } from "./compaction-methods";
 import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
 
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_MODEL_COMPACTION_THRESHOLDS: Record<string, AgentCompactionThresholdOverride> = {};
+const EMPTY_MODEL_CONTEXT_WINDOWS: Record<string, number | null> = {};
 
 export const cfgWorkspaceAdditionalDirectories = register({
 	id: "workspace.additionalDirectories",
@@ -100,6 +102,27 @@ export const cfgExtendedContext = register({
 		description:
 			"Use larger context windows where supported; may incur premium pricing. Off keeps default or standard-pricing windows",
 	},
+});
+
+/**
+ * Per-model context windows: `provider/model-id` → tokens (200K, 400K or 1M,
+ * at most the model's largest window). A choice past the standard window opts
+ * that model into its extended window; a smaller one caps the window the
+ * session binds (`ModelRegistry.fitContextWindow`). Edited from /settings and
+ * the Desktop model settings.
+ */
+export const cfgModelContextWindows = register({
+	id: "modelContextWindows",
+	type: "record",
+	default: EMPTY_MODEL_CONTEXT_WINDOWS,
+	ui: {
+		tab: "context",
+		group: "General",
+		label: "Model Context Windows",
+		description:
+			"Context window per model: 200K, 400K or 1M, capped at the model's largest window. Larger windows may incur premium pricing",
+	},
+	validate: validateModelContextWindows,
 });
 
 // Compaction

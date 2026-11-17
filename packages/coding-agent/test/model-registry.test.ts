@@ -24,7 +24,11 @@ import { resetSettingsForTest, Settings, settings } from "@oh-my-pi/pi-coding-ag
 import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
 import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
 
-import { cfgCompactionModelThresholds, cfgExtendedContext } from "@oh-my-pi/pi-coding-agent/session/context-settings";
+import {
+	cfgCompactionModelThresholds,
+	cfgExtendedContext,
+	cfgModelContextWindows,
+} from "@oh-my-pi/pi-coding-agent/session/context-settings";
 
 describe("ModelRegistry", () => {
 	let tempDir: string;
@@ -2688,6 +2692,42 @@ describe("ModelRegistry", () => {
 			});
 			if (!row) throw new Error("Expected the custom gpt-5.6-terra row");
 			expect(registry.fitContextWindow(row, subagentScope).contextWindow).toBe(128_000);
+		});
+
+		test("a modelContextWindows entry opens the extended window past standard and caps the bound window below it", async () => {
+			writeRawModelsJson({
+				"proxy-window": {
+					baseUrl: "https://example.com/v1",
+					auth: "none",
+					api: "openai-responses",
+					models: [{ id: "gpt-6-astra", contextWindow: 272_000, maxContextWindow: 922_000, maxTokens: 128_000 }],
+				},
+			});
+			const testSettings = Settings.isolated({ extendedContext: false });
+			const registry = new ModelRegistry(authStorage, modelsJsonPath, { settings: testSettings });
+			const model = { provider: "proxy-window", id: "gpt-6-astra" };
+			expect(registry.contextWindowCeiling(model)).toBe(922_000);
+
+			// Past the standard window: the catalog row opts into the extended tier, the session caps at the choice.
+			cfgModelContextWindows.set(testSettings, { "proxy-window/gpt-6-astra": 400_000 });
+			await registry.reapplyModelPolicies();
+			const row = registry.find("proxy-window", "gpt-6-astra");
+			if (!row) throw new Error("Expected the gpt-6-astra row");
+			expect(row.contextWindow).toBe(922_000);
+			expect(registry.fitContextWindow(row, testSettings).contextWindow).toBe(400_000);
+
+			// Below the standard window: the catalog keeps standard, the bound row is capped.
+			cfgModelContextWindows.set(testSettings, { "proxy-window/gpt-6-astra": 200_000 });
+			await registry.reapplyModelPolicies();
+			const standardRow = registry.find("proxy-window", "gpt-6-astra");
+			if (!standardRow) throw new Error("Expected the gpt-6-astra row");
+			expect(standardRow.contextWindow).toBe(272_000);
+			const capped = registry.fitContextWindow(standardRow, testSettings);
+			expect(capped.contextWindow).toBe(200_000);
+
+			// A capped row refits from its catalog row, so clearing the entry widens it again.
+			cfgModelContextWindows.set(testSettings, {});
+			expect(registry.fitContextWindow(capped, testSettings).contextWindow).toBe(272_000);
 		});
 
 		test("an overlay that authors no window keeps the bundled row's tiers", async () => {

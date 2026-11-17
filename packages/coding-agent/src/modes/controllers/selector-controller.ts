@@ -39,6 +39,7 @@ import { formatModelSelectorValue } from "@oh-my-pi/pi-tui/overlays/model-select
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
 import { createSettingsHost } from "../../config/settings-ui";
+import { describeContextWindowModels } from "../../config/model-context-window";
 import { createPluginSettingsHost } from "../../extensibility/plugins/settings-host";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
@@ -138,7 +139,7 @@ import { RankDashboardComponent, type RankDashboardOptions } from "@oh-my-pi/pi-
 import type { SessionObserverRegistry } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 
 import { cfgAdvisorSyncBacklog } from "../../advisor/settings";
-import { cfgBranchSummaryEnabled } from "../../session/context-settings";
+import { cfgBranchSummaryEnabled, cfgExtendedContext } from "../../session/context-settings";
 import { withEditionHiddenProviders } from "../../config/edition";
 import { cfgCycleOrder, cfgDisabledProviders, cfgModelRoleStorage } from "../../config/model-settings";
 import { cfgDefaultThinkingLevel, cfgRetryFallbackChains, cfgSessionWorktreeScope } from "../../session/settings";
@@ -353,6 +354,11 @@ export class SelectorController {
 						availableThemes,
 						providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
 							(a, b) => a.localeCompare(b),
+						),
+						contextWindowModels: describeContextWindowModels(
+							this.ctx.session.modelRegistry,
+							this.ctx.session.getAvailableModels(),
+							{ extendedContext: cfgExtendedContext.get(this.ctx.settings), current: this.ctx.session.model },
 						),
 						settings: createSettingsHost(),
 						plugins: createPluginSettingsHost(getProjectDir()),

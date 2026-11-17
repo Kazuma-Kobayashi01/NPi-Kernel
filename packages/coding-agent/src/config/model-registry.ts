@@ -145,7 +145,9 @@ import {
 	cfgCompactionModelThresholds,
 	cfgCompactionModelThresholdsEnabled,
 	cfgExtendedContext,
+	cfgModelContextWindows,
 } from "../session/context-settings";
+import { modelContextWindowChoice } from "./model-context-window";
 import { matchModelCompactionThreshold } from "./compaction-threshold";
 
 // DeviceCheck attestation (`x-oai-attestation`) for ChatGPT-OAuth Codex
@@ -258,6 +260,21 @@ function compactionPointReaches(points: unknown, model: Model<Api>, window: numb
 	const threshold = matchModelCompactionThreshold(points, model)?.threshold;
 	if (!threshold || threshold.thresholdTokens <= 0) return false;
 	return threshold.fixed ? threshold.thresholdTokens >= window : threshold.thresholdTokens > window;
+}
+
+/** The `modelContextWindows` map in force, or undefined when unreadable. */
+function getModelContextWindowsFromSettings(settingsInstance?: Settings): unknown {
+	try {
+		return cfgModelContextWindows.get(settingsInstance ?? settings);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Whether `model`'s `modelContextWindows` entry asks for more than `window` (opting it into its extended window). */
+function contextChoiceReaches(choices: unknown, model: { provider: string; id: string }, window: number): boolean {
+	const choice = modelContextWindowChoice(choices, model);
+	return choice !== undefined && choice > window;
 }
 
 function contextWindowKey(model: { provider: string; id: string }): string {
@@ -386,8 +403,10 @@ export class ModelRegistry {
 	// inherit them), and per `contextWindowKey` as composition finalized them.
 	#policyWindowTiers = new WeakMap<Model<Api>, ContextWindowTiers>();
 	#windowTiers = new Map<string, ContextWindowTiers>();
-	// A catalog row refitted to the other tier by `fitContextWindow`; a row has only one other tier.
+	// The latest refit of a catalog row by `fitContextWindow` (other tier and/or capped window).
 	#refittedRows = new WeakMap<Model<Api>, Model<Api>>();
+	// The catalog row each `fitContextWindow` result was refitted from.
+	#refitSources = new WeakMap<Model<Api>, Model<Api>>();
 	#lastDiscoveryWarnings: Map<string, string> = new Map();
 	// Runtime extension model overlays — persist across refresh() cycles so that
 	// models registered by extensions survive the model selector's offline reload.
@@ -2786,6 +2805,7 @@ export class ModelRegistry {
 		}
 		const extendedContext = isExtendedContextEnabledFromSettings(this.#settings);
 		const compactionPoints = getModelCompactionPointsFromSettings(this.#settings);
+		const contextChoices = getModelContextWindowsFromSettings(this.#settings);
 		let liveKeys: Set<string> | null = null;
 		const hasLiveModel = (provider: string, id: string) => {
 			liveKeys ??= new Set(models.map(m => `${m.provider}\u0000${m.id}`));
@@ -2810,6 +2830,7 @@ export class ModelRegistry {
 				pinned: override?.contextWindow !== undefined,
 				extendedContext,
 				compactionPoints,
+				contextChoices,
 			});
 		});
 	}
@@ -2831,7 +2852,7 @@ export class ModelRegistry {
 		model: Model<Api>,
 		maximum: number | undefined,
 		baseline: Model<Api>,
-		options: { pinned: boolean; extendedContext: boolean; compactionPoints: unknown },
+		options: { pinned: boolean; extendedContext: boolean; compactionPoints: unknown; contextChoices: unknown },
 	): Model<Api> {
 		const current = model.contextWindow;
 		const policy = options.pinned ? undefined : this.#policyWindowTiers.get(baseline);
@@ -2851,7 +2872,11 @@ export class ModelRegistry {
 		const extended = Math.max(policy?.extended ?? current, window ?? 0);
 		this.#recordWindowTiers(baseline, extended > standard ? { standard, extended } : undefined);
 		if (window === undefined || window <= current) return model;
-		if (!options.extendedContext && !compactionPointReaches(options.compactionPoints, baseline, standard)) {
+		if (
+			!options.extendedContext &&
+			!compactionPointReaches(options.compactionPoints, baseline, standard) &&
+			!contextChoiceReaches(options.contextChoices, baseline, standard)
+		) {
 			return model;
 		}
 		return applyModelOverride(model, { contextWindow: window });
@@ -2870,27 +2895,51 @@ export class ModelRegistry {
 	}
 
 	/**
-	 * `model` with the tier `scope`'s own settings select: extended when its
-	 * `extendedContext` is on or its `compaction.modelThresholds` entry for the
-	 * model reaches past the standard window, else standard. Catalog rows follow
-	 * the registry's settings; a session whose settings differ (a subagent with a
+	 * The largest window `model` can run with: its extended tier when it has
+	 * one, else its catalog window. What the `modelContextWindows` pickers offer
+	 * up to (`contextWindowStops`).
+	 */
+	contextWindowCeiling(model: { provider: string; id: string }): number | null {
+		const row = this.find(model.provider, model.id);
+		const tiers = this.contextWindowTiers(model);
+		const window = row?.contextWindow ?? null;
+		if (!tiers) return window;
+		return Math.max(tiers.extended, window ?? 0);
+	}
+
+	/**
+	 * `model` with the window `scope`'s own settings select: extended when its
+	 * `extendedContext` is on, its `compaction.modelThresholds` entry for the
+	 * model reaches past the standard window, or its `modelContextWindows` entry
+	 * asks for more than the standard window, else standard; then capped at that
+	 * `modelContextWindows` entry. Catalog rows follow the registry's settings
+	 * (never capped); a session whose settings differ (a subagent with a
 	 * `task.agentCompactionThresholdOverrides` entry runs with model entries off)
 	 * adopts rows through this so it never inherits another scope's opt-in.
-	 * Returns `model` itself when it already has that window.
+	 * A row this returned refits from the row it came from, so a cap can widen
+	 * again. Returns `model` itself when it already has that window.
 	 */
 	fitContextWindow(model: Model<Api>, scope: Settings): Model<Api> {
-		const tiers = this.contextWindowTiers(model);
-		if (!tiers || (model.contextWindow !== tiers.standard && model.contextWindow !== tiers.extended)) return model;
-		const window =
-			isExtendedContextEnabledFromSettings(scope) ||
-			compactionPointReaches(getModelCompactionPointsFromSettings(scope), model, tiers.standard)
-				? tiers.extended
-				: tiers.standard;
+		const source = this.#refitSources.get(model) ?? model;
+		const tiers = this.contextWindowTiers(source);
+		const choice = modelContextWindowChoice(getModelContextWindowsFromSettings(scope), source);
+		let window = source.contextWindow;
+		if (tiers && (window === tiers.standard || window === tiers.extended)) {
+			window =
+				isExtendedContextEnabledFromSettings(scope) ||
+				compactionPointReaches(getModelCompactionPointsFromSettings(scope), source, tiers.standard) ||
+				(choice !== undefined && choice > tiers.standard)
+					? tiers.extended
+					: tiers.standard;
+		}
+		if (window !== null && choice !== undefined && choice < window) window = choice;
 		if (model.contextWindow === window) return model;
-		const cached = this.#refittedRows.get(model);
+		if (source.contextWindow === window || window === null) return source;
+		const cached = this.#refittedRows.get(source);
 		if (cached?.contextWindow === window) return cached;
-		const refitted = applyModelOverride(model, { contextWindow: window });
-		this.#refittedRows.set(model, refitted);
+		const refitted = applyModelOverride(source, { contextWindow: window });
+		this.#refittedRows.set(source, refitted);
+		this.#refitSources.set(refitted, source);
 		return refitted;
 	}
 
@@ -2936,13 +2985,19 @@ export class ModelRegistry {
 	#applyHardcodedModelPolicies(models: Model<Api>[]): Model<Api>[] {
 		const extendedContext = isExtendedContextEnabledFromSettings(this.#settings);
 		const compactionPoints = getModelCompactionPointsFromSettings(this.#settings);
+		const contextChoices = getModelContextWindowsFromSettings(this.#settings);
 		return models.map(model => {
 			let tiers: ContextWindowTiers | undefined;
 			// Hosts whose context window is authoritative (subscription limits that
 			// carry public price tiers only as estimates) skip every inferred
 			// window policy.
 			if (!model.contextWindowAuthoritative) {
-				({ model, tiers } = this.#applyContextWindowPolicies(model, extendedContext, compactionPoints));
+				({ model, tiers } = this.#applyContextWindowPolicies(
+					model,
+					extendedContext,
+					compactionPoints,
+					contextChoices,
+				));
 			}
 			if (tiers) this.#policyWindowTiers.set(model, tiers);
 			return model;
@@ -2959,6 +3014,7 @@ export class ModelRegistry {
 		model: Model<Api>,
 		extendedContext: boolean,
 		compactionPoints: unknown,
+		contextChoices: unknown,
 	): { model: Model<Api>; tiers?: ContextWindowTiers } {
 		// Without a maximum or a long-context tier both resolutions are identical.
 		if (resolveMaxContextWindow(model) === undefined && model.cost.longContext?.inputThreshold === undefined) {
@@ -2971,7 +3027,10 @@ export class ModelRegistry {
 		if (standardWindow === null || extendedWindow === null || extendedWindow <= standardWindow) {
 			return { model: extendedContext ? extended : standard };
 		}
-		const optedIn = extendedContext || compactionPointReaches(compactionPoints, model, standardWindow);
+		const optedIn =
+			extendedContext ||
+			compactionPointReaches(compactionPoints, model, standardWindow) ||
+			contextChoiceReaches(contextChoices, model, standardWindow);
 		return {
 			model: optedIn ? extended : standard,
 			tiers: { standard: standardWindow, extended: extendedWindow },

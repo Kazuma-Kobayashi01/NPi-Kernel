@@ -534,6 +534,172 @@ class ProviderLimitsSubmenu extends Container {
 	}
 }
 
+/** One model in the `modelContextWindows` editor. */
+export interface ContextWindowModel {
+	/** `provider/model-id`, the setting's key. */
+	key: string;
+	name: string;
+	/** The window the model runs with when it has no entry. */
+	defaultWindow: number | null;
+	/** The windows it can pick (200K, 400K, up to 1M or its largest window); empty: nothing to pick. */
+	stops: readonly number[];
+}
+
+/** A window as the editor labels it: `200K`, `1M`, `1.05M`. */
+export function formatContextWindowTokens(tokens: number): string {
+	if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(2))}M`;
+	return `${Math.round(tokens / 1_000)}K`;
+}
+
+function contextWindowEntries(value: unknown): Record<string, number> {
+	const out: Record<string, number> = {};
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return out;
+	for (const [key, tokens] of Object.entries(value)) {
+		if (typeof tokens === "number" && Number.isSafeInteger(tokens) && tokens > 0) out[key] = tokens;
+	}
+	return out;
+}
+
+function formatModelContextWindows(value: unknown): string {
+	const entries = Object.entries(contextWindowEntries(value)).sort(([a], [b]) => a.localeCompare(b));
+	if (entries.length === 0) return "Model defaults";
+	return entries.map(([key, tokens]) => `${key}: ${formatContextWindowTokens(tokens)}`).join(", ");
+}
+
+const CONTEXT_WINDOW_DEFAULT = "__default";
+
+class ModelContextWindowsSubmenu extends Container {
+	#field: SelectFormField | undefined;
+	readonly #settings: SettingsHost;
+	readonly #path: string;
+	readonly #models: readonly ContextWindowModel[];
+	readonly #onChange: (value: Record<string, number>) => void;
+	readonly #onCancel: () => void;
+	readonly #requestRender: (() => void) | undefined;
+
+	constructor(
+		settings: SettingsHost,
+		path: string,
+		models: readonly ContextWindowModel[],
+		onChange: (value: Record<string, number>) => void,
+		onCancel: () => void,
+		requestRender?: () => void,
+	) {
+		super();
+		this.#settings = settings;
+		this.#path = path;
+		this.#models = models.filter(model => model.stops.length > 0);
+		this.#onChange = onChange;
+		this.#onCancel = onCancel;
+		this.#requestRender = requestRender;
+		this.#showModels();
+	}
+
+	#entries(): Record<string, number> {
+		return contextWindowEntries(this.#settings.get(this.#path));
+	}
+
+	#showModels(selected?: string): void {
+		this.clear();
+		const entries = this.#entries();
+		const items: SelectItem[] = this.#models.map(model => {
+			const chosen = entries[model.key];
+			const top = formatContextWindowTokens(model.stops[model.stops.length - 1]);
+			return {
+				value: model.key,
+				label: model.name,
+				description:
+					chosen === undefined
+						? `Default${model.defaultWindow ? ` (${formatContextWindowTokens(model.defaultWindow)})` : ""} · up to ${top}`
+						: `${formatContextWindowTokens(chosen)} · up to ${top}`,
+			};
+		});
+		if (Object.keys(entries).length > 0) {
+			items.push({ value: "__clear_all", label: "Reset all", description: "Every model back to its default window" });
+		}
+		this.#field = new SelectFormField({
+			theme: formTheme,
+			label: "Model Context Windows",
+			description:
+				this.#models.length === 0
+					? "No available model offers a window of 200K or more."
+					: "Pick a model, then its window: 200K, 400K or 1M, capped at the model's largest window.",
+			items,
+			maxVisible: 12,
+			selectTheme: getSelectListTheme(),
+			hint: `  ${editorKey("tui.select.confirm")} to choose a window · ${editorKey("tui.select.cancel")} to go back`,
+			onSubmit: value => {
+				if (value === "__clear_all") {
+					this.#save({});
+					this.#showModels();
+					this.#requestRender?.();
+					return;
+				}
+				const model = this.#models.find(m => m.key === value);
+				if (model) this.#showWindows(model);
+			},
+			onCancel: this.#onCancel,
+			requestRender: this.#requestRender,
+		});
+		if (selected) this.#field.selectList.setSelectedValue(selected);
+		this.addChild(this.#field);
+	}
+
+	#showWindows(model: ContextWindowModel): void {
+		this.clear();
+		const chosen = this.#entries()[model.key];
+		const items: SelectItem[] = [
+			{
+				value: CONTEXT_WINDOW_DEFAULT,
+				label: "Default",
+				description: model.defaultWindow ? formatContextWindowTokens(model.defaultWindow) : "The model's own window",
+			},
+			...model.stops.map(tokens => ({
+				value: String(tokens),
+				label: formatContextWindowTokens(tokens),
+				description: model.defaultWindow !== null && tokens > model.defaultWindow ? "Extended window, may cost more" : undefined,
+			})),
+		];
+		this.#field = new SelectFormField({
+			theme: formTheme,
+			label: `Context Window: ${model.name}`,
+			description: model.key,
+			items,
+			maxVisible: 8,
+			selectTheme: getSelectListTheme(),
+			hint: `  ${editorKey("tui.select.confirm")} to save · ${editorKey("tui.select.cancel")} to go back`,
+			onSubmit: value => {
+				const next = { ...this.#entries() };
+				if (value === CONTEXT_WINDOW_DEFAULT) delete next[model.key];
+				else next[model.key] = Number(value);
+				this.#save(next);
+				this.#showModels(model.key);
+				this.#requestRender?.();
+			},
+			onCancel: () => {
+				this.#showModels(model.key);
+				this.#requestRender?.();
+			},
+			requestRender: this.#requestRender,
+		});
+		this.#field.selectList.setSelectedValue(chosen === undefined ? CONTEXT_WINDOW_DEFAULT : String(chosen));
+		this.addChild(this.#field);
+	}
+
+	#save(next: Record<string, number>): void {
+		this.#settings.set(this.#path, next);
+		this.#onChange(next);
+	}
+
+	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
+		this.#field?.routeMouse(event, line, col);
+	}
+
+	handleInput(data: string): void {
+		this.#field?.handleInput(data);
+	}
+}
+
 /** Stable sidebar width derived from the host's complete schema. */
 function settingsSidebarWidth(entries: readonly SettingsDisplayEntry[]): number {
 	let nameWidth = 0;
@@ -571,6 +737,8 @@ export interface SettingsRuntimeContext {
 	availableThemes: string[];
 	/** Provider/source ids shown in /model. */
 	providers: string[];
+	/** Models offered by the `modelContextWindows` editor, with the windows each can pick. */
+	contextWindowModels?: readonly ContextWindowModel[];
 	/** Active model (api + id); resolves what the snapcompact `auto` shape maps to. */
 	model?: ShapeTarget;
 	/** Shared TUI image budget (graphics ids + transmit-once) for image previews. */
@@ -958,6 +1126,7 @@ export class SettingsSelectorComponent implements Component {
 					mono: !def.secret && MONO_TEXT_SETTING.test(def.path) ? true : undefined,
 				};
 			case "providerLimits":
+			case "modelContextWindows":
 				return { k: "action", label: "Edit…", act: "edit" };
 			case "multiselect":
 				return {
@@ -1117,6 +1286,7 @@ export class SettingsSelectorComponent implements Component {
 				return;
 			}
 			case "providerLimits":
+			case "modelContextWindows":
 				return;
 		}
 	}
@@ -1529,6 +1699,13 @@ export class SettingsSelectorComponent implements Component {
 					submenu: (_cv, done) => this.#createProviderLimitsInput(done),
 				};
 
+			case "modelContextWindows":
+				return {
+					...item,
+					currentValue: formatModelContextWindows(currentValue),
+					submenu: (_cv, done) => this.#createModelContextWindowsInput(def.path, done),
+				};
+
 			case "multiselect":
 				return {
 					...item,
@@ -1732,6 +1909,20 @@ export class SettingsSelectorComponent implements Component {
 			value => {
 				this.#callbacks.onChange("providers.maxInFlightRequests", value);
 				done(this.#formatProviderLimitsValue(value));
+			},
+			() => done(),
+			this.#context.requestRender,
+		);
+	}
+
+	#createModelContextWindowsInput(path: string, done: (value?: string) => void): Container {
+		return new ModelContextWindowsSubmenu(
+			this.#context.settings,
+			path,
+			this.#context.contextWindowModels ?? [],
+			value => {
+				this.#callbacks.onChange(path, value);
+				done(formatModelContextWindows(value));
 			},
 			() => done(),
 			this.#context.requestRender,

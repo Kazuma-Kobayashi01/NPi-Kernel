@@ -4,6 +4,7 @@
 
 ### Added
 
+- Per-model context windows (`modelContextWindows`): pick 200K, 400K or 1M (capped at the model's largest window) from /settings → Context → Model Context Windows; a choice past the default window turns on that model's extended window, a smaller one caps it. `models --json` reports each model's `maxContextWindow`
 - `/web` serves this session to browsers on the LAN: open the printed link (it carries an access token that changes on every start) to see the transcript in NPi Desktop's Code look (its own chat components, tool cards and composer, light or dark like the system), send, steer, queue or stop prompts, and answer approvals and ask dialogs. Pages are locked to this one session. `--listen host:port` and `--tls` (self-signed via `openssl`) are optional, `/web status` and `/web stop` manage it, and a green `/web` shows in the footers while it is on
 - Extensions can provide somewhere other than this machine for `bash` commands to run (`pi.registerExecBackend`, chosen with the `exec.backend` setting); approvals, output handling and background jobs stay the same, and a named backend that is not loaded stops `bash` instead of running locally
 - `--version --all` adds one `name/version` line each for the omp core and the kernel line after the usual `npi/<version>`; plain `--version` still prints the one line
