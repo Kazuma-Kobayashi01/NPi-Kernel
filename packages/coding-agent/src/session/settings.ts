@@ -19,7 +19,11 @@ import {
 	TINY_MODEL_DTYPE_SETTING_OPTIONS,
 	TINY_MODEL_DTYPE_SETTING_VALUES,
 } from "../tiny/dtype";
-import { DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS, MAX_WEB_SEARCH_TIMEOUT_SECONDS } from "../web/search/types";
+import {
+	DEFAULT_WEB_SEARCH_COOLDOWN_MINUTES,
+	DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS,
+	MAX_WEB_SEARCH_TIMEOUT_SECONDS,
+} from "../web/search/types";
 import { DEFAULT_USAGE_RESERVE_PCT } from "@oh-my-pi/pi-ai/auth-storage";
 import { configureProviderStoreResponses } from "@oh-my-pi/pi-ai/providers/openai-responses-state";
 import { configureProviderMaxInFlightRequests } from "@oh-my-pi/pi-ai/stream";
@@ -981,6 +985,26 @@ export const cfgProvidersWebSearchTimeoutSeconds = register({
 			{ value: "120", label: "2 minutes" },
 			{ value: "180", label: "3 minutes" },
 			{ value: "300", label: "5 minutes" },
+		],
+	},
+});
+
+export const cfgProvidersWebSearchCooldownMinutes = register({
+	id: "providers.webSearchCooldownMinutes",
+	type: "number",
+	default: DEFAULT_WEB_SEARCH_COOLDOWN_MINUTES,
+	ui: {
+		tab: "providers",
+		group: "Services",
+		label: "Web Search Cooldown",
+		description:
+			"After a web search backend refuses with a rate limit or bot block (429), try it last for this many minutes; a success clears it. 0 disables",
+		options: [
+			{ value: "0", label: "Off" },
+			{ value: "5", label: "5 minutes" },
+			{ value: "15", label: "15 minutes" },
+			{ value: "30", label: "30 minutes" },
+			{ value: "60", label: "1 hour" },
 		],
 	},
 });

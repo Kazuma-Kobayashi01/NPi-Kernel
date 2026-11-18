@@ -30,8 +30,10 @@ import {
 	type SearchProviderFailure,
 } from "./provider";
 import { rankXAIProviders, targetsX, xaiModelChain, xSearchAvailable } from "./providers/xai";
+import { defaultSearchCooldowns, deferCooling, isCooldownError, type SearchCooldowns } from "./cooldown";
 import { applyQueryConstraints, parseSearchQuery } from "./query";
 import {
+	DEFAULT_WEB_SEARCH_COOLDOWN_MINUTES,
 	DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS,
 	MAX_WEB_SEARCH_TIMEOUT_SECONDS,
 	SearchProviderError,
@@ -39,7 +41,11 @@ import {
 	type SearchResultDetails,
 } from "./types";
 
-import { cfgProvidersAntigravityEndpoint, cfgProvidersWebSearchTimeoutSeconds } from "../../session/settings";
+import {
+	cfgProvidersAntigravityEndpoint,
+	cfgProvidersWebSearchCooldownMinutes,
+	cfgProvidersWebSearchTimeoutSeconds,
+} from "../../session/settings";
 
 /** Web search tool parameters schema */
 export const webSearchSchema = type({
@@ -147,6 +153,24 @@ interface ExecuteSearchOptions {
 	/** The session's active model; `web/hosted` searches through it. */
 	sessionModel?: Model<Api>;
 	signal?: AbortSignal;
+	/** Backend cooldown table; defaults to the shared file, `null` disables cooldowns. */
+	cooldowns?: SearchCooldowns | null;
+}
+
+/** Cooldown identity of a chain candidate: the concrete model, so a hosted swap cools apart from its session model. */
+function cooldownKey(candidate: RoleChainCandidate): string {
+	return `${candidate.model.provider}/${candidate.model.id}`;
+}
+
+/** Configured cooldown in milliseconds; 0 when disabled, the default when Settings is not initialized. */
+function cooldownMs(): number {
+	try {
+		const minutes = cfgProvidersWebSearchCooldownMinutes.get(settings);
+		return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60_000) : 0;
+	} catch {
+		// One-shot callers that do not initialize Settings keep the default.
+		return DEFAULT_WEB_SEARCH_COOLDOWN_MINUTES * 60_000;
+	}
 }
 
 function isHostedPlaceholder(model: Model<Api>): boolean {
@@ -209,6 +233,22 @@ async function runSearch(
 	);
 	// Only xAI reaches X posts; X-only queries try it first even when the role prefers another engine.
 	if (!params.model && targetsX(parsedQuery)) expanded = preferXAI(expanded, modelRegistry);
+
+	// Backends that recently refused (429) go last: still a fallback, no longer a delay in front of every search.
+	const cooldownDurationMs = cooldownMs();
+	const cooldowns =
+		cooldownDurationMs > 0 ? (options.cooldowns === undefined ? defaultSearchCooldowns() : options.cooldowns) : null;
+	let cooling: ReadonlyMap<string, unknown> = new Map();
+	if (cooldowns) {
+		try {
+			cooling = await cooldowns.active();
+		} catch (error) {
+			logger.warn("web search cooldowns unavailable", {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+	expanded = deferCooling(expanded, cooldownKey, cooling);
 
 	// Invariant across candidates; resolve once before walking the role chain.
 	let antigravityEndpointMode: "auto" | "production" | "sandbox" | undefined;
@@ -314,6 +354,13 @@ async function runSearch(
 			}
 
 			const text = formatForLLM(finalResponse, [...fallbackNotes(failures, provider), ...constraintNotes]);
+			if (cooldowns && cooling.has(cooldownKey(candidate))) {
+				await cooldowns.clear(cooldownKey(candidate)).catch(error => {
+					logger.warn("web search cooldown clear failed", {
+						error: error instanceof Error ? error.message : String(error),
+					});
+				});
+			}
 
 			return {
 				content: [{ type: "text" as const, text }],
@@ -328,6 +375,14 @@ async function runSearch(
 			throwIfAborted(signal);
 			failedResponseProvider = provider?.id ?? "none";
 			failures.push({ provider: provider ?? candidateMeta, error });
+			if (cooldowns && isCooldownError(error)) {
+				const reason = formatSearchProviderFailure(error, provider ?? candidateMeta);
+				await cooldowns.start(cooldownKey(candidate), cooldownDurationMs, reason).catch(failure => {
+					logger.warn("web search cooldown write failed", {
+						error: failure instanceof Error ? failure.message : String(failure),
+					});
+				});
+			}
 		}
 	}
 
@@ -397,6 +452,7 @@ export async function runSearchQuery(
 		sessionId?: string;
 		sessionModel?: Model<Api>;
 		signal?: AbortSignal;
+		cooldowns?: SearchCooldowns | null;
 	} = {},
 ): Promise<{ content: Array<{ type: "text"; text: string }>; details: SearchResultDetails }> {
 	const createdAuthStorage = options.authStorage || options.modelRegistry ? undefined : await discoverAuthStorage();
@@ -411,6 +467,7 @@ export async function runSearchQuery(
 			sessionId: options.sessionId,
 			sessionModel: options.sessionModel,
 			signal: options.signal,
+			cooldowns: options.cooldowns,
 		});
 	} finally {
 		createdAuthStorage?.close();

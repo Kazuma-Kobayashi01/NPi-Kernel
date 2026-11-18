@@ -977,6 +977,14 @@ export function getJudgmentCacheDbPath(): string {
 	return dirs.rootSubdir(path.join("cache", "judgment-cache.db"), "cache");
 }
 
+/**
+ * Get the shared web_search backend cooldown file (~/.omp/cache/web-search-cooldowns.json).
+ * Every agent process (Desktop tabs, subagents, the CLI) reads and writes the same file.
+ */
+export function getWebSearchCooldownPath(): string {
+	return dirs.rootSubdir(path.join("cache", "web-search-cooldowns.json"), "cache");
+}
+
 /** Get the legacy Pi extension parse cache database path. */
 export function getLegacyPiExtensionCacheDbPath(): string {
 	return dirs.rootSubdir(path.join("cache", "legacy-pi-extension-cache.db"), "cache");

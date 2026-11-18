@@ -14,6 +14,9 @@ export const DEFAULT_WEB_SEARCH_TIMEOUT_SECONDS = 60;
 /** Maximum configurable hard timeout for each web-search provider transport. */
 export const MAX_WEB_SEARCH_TIMEOUT_SECONDS = 300;
 
+/** Default minutes a backend that refused with 429 is tried last (see `cooldown.ts`). */
+export const DEFAULT_WEB_SEARCH_COOLDOWN_MINUTES = 15;
+
 /** Pure search engines represented by `web/*` catalog models. */
 export type SearchEngineId = Exclude<SearchProviderId, WebSearchGrounding>;
 
