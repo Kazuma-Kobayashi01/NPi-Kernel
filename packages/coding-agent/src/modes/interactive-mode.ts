@@ -8410,7 +8410,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.composer.setHomeBadge(badges.length > 0 ? badges.join(" ") : undefined);
 	}
 
-	/** `remote.autoStart`: `/rc` at launch, in the background; a missing relay or phone only warns. */
+	/** `remote.autoStart`: `/rc` at launch, in the background; with no relay or paired phone it stays off quietly. */
 	async #autoStartRemoteControl(): Promise<void> {
 		try {
 			// Loaded on use: remote control carries the RPC server, which plain TUI startup leaves out (see `main.ts`).

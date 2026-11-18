@@ -219,7 +219,8 @@ export function parseRemoteControlTransport(args: string, savedRelay: string): R
 
 /**
  * Start remote control for this terminal's session and report it (`/rc`, or `remote.autoStart` at launch).
- * An explicit relay URL is saved as `remote.relayUrl` for the next plain `/rc`.
+ * An explicit relay URL is saved as `remote.relayUrl` for the next plain `/rc`. At launch, a setup with no
+ * relay or no paired phone is not an error: `remote.autoStart` is on by default, so it stays off quietly.
  */
 export async function startRemoteControl(
 	ctx: InteractiveModeContext,
@@ -227,15 +228,17 @@ export async function startRemoteControl(
 	options: { auto?: boolean } = {},
 ): Promise<RemoteControl | undefined> {
 	if (ctx.remoteControl) return ctx.remoteControl;
+	const savedRelay = cfgRemoteRelayUrl.get(ctx.settings);
+	if (options.auto && (!savedRelay.trim() || RemoteControl.activeDeviceCount() === 0)) return undefined;
 	const report = (message: string): void => {
 		if (options.auto) ctx.showWarning(`Remote control did not start: ${message}`);
 		else ctx.showError(message);
 	};
 	let transport: RemoteControlTransport;
 	try {
-		transport = parseRemoteControlTransport(args, cfgRemoteRelayUrl.get(ctx.settings));
+		transport = parseRemoteControlTransport(args, savedRelay);
 	} catch (err) {
-		report(options.auto ? "no relay set (run /rc <wss://relay> once)" : errorMessage(err));
+		report(errorMessage(err));
 		return undefined;
 	}
 	if (RemoteControl.activeDeviceCount() === 0) {

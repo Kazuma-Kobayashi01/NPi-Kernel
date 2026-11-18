@@ -20,11 +20,12 @@ export const cfgRemoteRelayUrl = register({
 export const cfgRemoteAutoStart = register({
 	id: "remote.autoStart",
 	type: "boolean",
-	default: false,
+	default: true,
 	ui: {
 		tab: "interaction",
 		group: "Remote Control",
 		label: "Start /rc Automatically",
-		description: "Run /rc when an interactive session starts, through remote.relayUrl, so a paired phone can open it",
+		description:
+			"Run /rc when an interactive session starts, through remote.relayUrl, so a paired phone can open it; without a relay or a paired phone it stays off quietly",
 	},
 });

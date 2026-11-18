@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import * as path from "node:path";
 import type { CollabGuestUiResult } from "@oh-my-pi/pi-coding-agent/collab/host";
+import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
 import { combineGuestUiPeers, type GuestUiPeer } from "@oh-my-pi/pi-coding-agent/modes/controllers/guest-ui-peers";
+import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { startRemoteControl } from "@oh-my-pi/pi-coding-agent/remote/remote-control";
+import { cfgRemoteAutoStart } from "@oh-my-pi/pi-coding-agent/remote/settings";
 import { TempDir } from "@oh-my-pi/pi-utils";
 
 const sourceDir = path.join(import.meta.dir, "..", "src");
@@ -57,6 +61,25 @@ describe("guest dialog peers", () => {
 		phone.answer({ kind: "unavailable" });
 		expect(await pending).toEqual({ kind: "unavailable" });
 		expect(combineGuestUiPeers([undefined, undefined])).toBeUndefined();
+	});
+});
+
+describe("remote.autoStart", () => {
+	test("is on by default and stays quiet without a relay, while a typed /rc still says why", async () => {
+		const settings = Settings.isolated({ "remote.relayUrl": "" });
+		expect(cfgRemoteAutoStart.get(settings)).toBe(true);
+		const said: string[] = [];
+		const ctx = {
+			settings,
+			remoteControl: undefined,
+			showWarning: (m: string) => said.push(`warn: ${m}`),
+			showError: (m: string) => said.push(`error: ${m}`),
+		} as unknown as InteractiveModeContext;
+		expect(await startRemoteControl(ctx, "", { auto: true })).toBeUndefined();
+		expect(said).toEqual([]);
+		expect(await startRemoteControl(ctx, "")).toBeUndefined();
+		expect(said).toHaveLength(1);
+		expect(said[0]).toStartWith("error: Usage: /rc");
 	});
 });
 
