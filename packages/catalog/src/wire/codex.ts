@@ -29,9 +29,10 @@ export function isOfficialCodexApiUrl(baseUrl: string | undefined): boolean {
  * `/models?client_version=` and `/responses`, independently of a model's
  * declared `minimal_client_version`: GPT-6.1 Sol declares 0.153.0 yet is
  * omitted from `/models` at 0.155.1 and listed at 0.159.0. An older pin
- * silently hides newer SKUs from discovery.
+ * silently hides newer SKUs from discovery. GPT-6.2 Astra and Sol declare
+ * 0.166.0.
  */
-export const CODEX_CLIENT_VERSION = "0.159.0";
+export const CODEX_CLIENT_VERSION = "0.170.0";
 
 export const OPENAI_HEADERS = {
 	BETA: "OpenAI-Beta",

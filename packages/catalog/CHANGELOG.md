@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added GPT-6.2 Astra and Sol: `openai/gpt-6.2-astra` ($8/$40, $0.40 cached) and `openai/gpt-6.2-sol` ($2/$10, $0.10 cached) ship bundled with a 1.05M window and the >272K long-context tier; Codex-discovered `gpt-6.2-astra`/`gpt-6.2-sol` get the same rates, 272K/500K default windows with the 922K extended-context maximum, Fast 2x / Ultrafast 6x usage, and routing to Plus-or-higher accounts.
+- Codex requests now report client version 0.170.0, so Codex discovery lists GPT-6.2 Astra and Sol (they require 0.166.0).
+
 ### Fixed
 
 - Fixed Gemini 4 Argon on Command Code reporting $0 spend and dropping image attachments; it now bills at Command Code's $2 input, $10 output and $0.10 cache-read rates per million tokens and accepts images ([#19125](https://github.com/can1357/oh-my-pi/pull/19125) by [@wolfiesch](https://github.com/wolfiesch))

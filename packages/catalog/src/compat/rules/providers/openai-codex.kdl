@@ -140,6 +140,46 @@ provider "openai-codex" {
 			ultrafast 8
 		}
 	}
+	// GPT-6.2 (2026-11-17). Codex credit rates equal the API card at 25
+	// credits per dollar: Astra 200/10/1000 credits ($8/$0.40/$40), Sol
+	// 50/2.5/250 ($2/$0.10/$10, unchanged from GPT-6.1 Sol). The Codex catalog
+	// reports a 272K (Astra) / 500K (Sol) default and a stale 872K maximum
+	// while OpenAI documents 922K max input (1.05M total); the curated maximum
+	// applies only with extended context on, and a higher live maximum still
+	// wins. https://learn.chatgpt.com/docs/pricing
+	models "gpt-6.2-astra" "gpt-6.2-astra-wm" {
+		cost-patch {
+			input 8.0
+			output 40.0
+			cache-read 0.4
+			cache-write 0
+		}
+		limits-patch {
+			context-window 272000
+		}
+		max-context-window 922000
+	}
+	models "gpt-6.2-sol" "gpt-6.2-sol-wm" {
+		cost-patch {
+			input 2.0
+			output 10.0
+			cache-read 0.1
+			cache-write 0
+		}
+		limits-patch {
+			context-window 500000
+		}
+		max-context-window 922000
+	}
+	// GPT-6.2 included-usage multipliers drop to Fast 2x and Ultrafast 6x
+	// Standard (purchased credits bill Ultrafast 3x through 2027-02-28, then
+	// 6x). No Flex rate is published for GPT-6.2 in Codex.
+	models "gpt-6.2-astra" "gpt-6.2-astra-wm" "gpt-6.2-sol" "gpt-6.2-sol-wm" {
+		service-tier-cost {
+			priority 2
+			ultrafast 6
+		}
+	}
 	// GPT-6.1 Terra lists at half GPT-6.1 Sol: $1/$5 with $0.05 cached input
 	// (OpenAI API docs, 2026-10-26). OpenAI documents 922K max input (1.05M
 	// total); the curated maximum applies only with extended context on, and a

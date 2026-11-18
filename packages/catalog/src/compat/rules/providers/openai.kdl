@@ -36,6 +36,21 @@ provider "openai" {
 			cost input=12.5 output=75 cache-read=1.25 cache-write=15.625
 			limits context=400000 max-tokens=128000
 		}
+		// GPT-6.2 (2026-11-17): 1.05M context, 922K max input, 128K output.
+		// https://developers.openai.com/api/docs/models/gpt-6.2-astra
+		// https://developers.openai.com/api/docs/models/gpt-6.2-sol
+		model "gpt-6.2-astra" name="GPT-6.2 Astra" {
+			reasoning #true
+			input "text" "image"
+			cost input=8 output=40 cache-read=0.4 cache-write=10
+			limits context=1050000 max-tokens=128000
+		}
+		model "gpt-6.2-sol" name="GPT-6.2 Sol" {
+			reasoning #true
+			input "text" "image"
+			cost input=2 output=10 cache-read=0.1 cache-write=2.5
+			limits context=1050000 max-tokens=128000
+		}
 
 		// Catalog cost fields are per 1M tokens: GPT transcribers map documented
 		// audio-input/output-token rates directly. Whisper's $0.006/min duration
@@ -212,6 +227,34 @@ provider "openai" {
 			input-threshold 272000
 			multiplier 2.0
 			output-multiplier 1.5
+		}
+	}
+	// GPT-6.2 Astra API card: $8/$40, $0.40 cached, $10 30m cache write; the
+	// >272K tier is $16/$60, $0.80 cached, $20 write (2x input/cache, 1.5x
+	// output). https://developers.openai.com/api/docs/pricing
+	models "gpt-6.2-astra*" {
+		long-context-cost {
+			input-threshold 272000
+			input 16.0
+			output 60.0
+			cache-read 0.8
+			cache-write 20.0
+		}
+	}
+	// GPT-6.2 Sol keeps GPT-6.1 Sol's card and the same >272K multipliers.
+	models "gpt-6.2-sol*" {
+		long-context-cost {
+			input-threshold 272000
+			multiplier 2.0
+			output-multiplier 1.5
+		}
+	}
+	// GPT-6.2 API Ultrafast is a 3x launch rate through 2027-02-28 (Pacific),
+	// then 6x; service tiers carry no effective date, so move this to 6 on
+	// 2027-03-01. No Flex price is published for GPT-6.2 yet.
+	models "gpt-6.2-astra*" "gpt-6.2-sol*" {
+		service-tier-cost {
+			ultrafast 3
 		}
 	}
 	// API Ultrafast is 6x the standard card on both context tiers: GPT-6 Astra

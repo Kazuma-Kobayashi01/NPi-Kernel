@@ -116,12 +116,13 @@ behavior {
 	// Subscription eligibility for model-aware Codex credential routing.
 	// GPT-6.1 Terra launched for Plus, Pro, Enterprise, and Edu, not Free/Go
 	// (https://openai.com/index/introducing-gpt-6-1-terra/, 2026-10-26).
+	// GPT-6.2 Astra and Sol launched for the same plans (2026-11-17).
 	plan-requirement provider="openai-codex" {
 		tier "pro" substring="-spark"
 		tier "paid" exact="gpt-5.6" exact="gpt-5.6-sol" exact="gpt-5.6-sol-pro" \
 			exact="gpt-5.6-luna" exact="gpt-5.6-luna-pro" glob="*/gpt-5.6" glob="*/gpt-5.6-sol" \
 			glob="*/gpt-5.6-sol-pro" glob="*/gpt-5.6-luna" glob="*/gpt-5.6-luna-pro" \
-			glob="gpt-6.1-terra*" glob="*/gpt-6.1-terra*"
+			glob="gpt-6.1-terra*" glob="*/gpt-6.1-terra*" glob="gpt-6.2-*" glob="*/gpt-6.2-*"
 	}
 
 	// Z.AI and Zhipu emit timezone-naive account-reset wall clocks in Beijing
